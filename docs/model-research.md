@@ -1,12 +1,12 @@
 # フェーズ2までのモデル選定と精度改善
 
-更新日: 2026-11-02。対象は映像による全身の位置、手指、足の向き・つま先、遮蔽時の推定。既製モデルの組合せと採用判定をフェーズ2まで実装し、新たな画像認識モデルの学習は行っていない。この文書では上流の公表値、当PoCの4画像での実測、結果待ちの32画像検証を分ける。32画像の成績はまだ記載しない。
+更新日: 2026-11-02。対象は映像による全身の位置、手指、足の向き・つま先、遮蔽時の推定。既製モデルの組合せと採用判定をフェーズ2まで実装し、新たな画像認識モデルの学習は行っていない。この文書は上流の公表値と開発用4画像の診断を記録する。完了した未使用32画像の成績と最終判断は[固定標本検証](holdout-results.md)にまとめた。足専用補正は未使用画像で回帰したため既定OFFを確定した。
 
 ## 採用する構成
 
 YOLOX-tiny HumanArtで人物を検出し、初回は最大のperson領域を選ぶ。その領域でRTMW-lが全身133点を推論し、元映像の手領域をRTMPose-m Hand5へ渡す。手は身体側の手首との整合性などを満たした候補だけ採用する。手動人物ROIが指定された場合はそちらを優先し、人物未検出時は全画面の推論結果で埋めず`missing`として扱う。実装は`dist/inference.mjs`、判定契約は`dist/pose-codec.mjs`と`dist/detector-codec.mjs`にある。
 
-足はLogimade/FOCUSのone2many出力を追加比較できる。人物領域を1.25倍した範囲で検出し、同側の膝・足首に整合する足先だけ元の位置と50%ずつ混ぜる。4画像の診断で候補に残った方式だが、未使用32画像の検証前は既定OFFとする。FOCUSの足だけを小さく切り出す経路とone2one出力も測定結果には残す。
+足はLogimade/FOCUSのone2many出力を追加比較できる。人物領域を1.25倍した範囲で検出し、同側の膝・足首に整合する足先だけ元の位置と50%ずつ混ぜる。4画像の診断で候補に残ったが、未使用32画像では通常・遮蔽の両方で悪化し、既定OFFとした。FOCUSの足だけを小さく切り出す経路とone2one出力も測定結果には残す。
 
 2D推論はPCブラウザ内で順番に実行し、カメラごとの時刻を持つ観測として保存する。人物検出のONNXに含まれるNMSはWASMで実行し、身体・手・足は選択したbackendを使う。校正した二視点からの3D推定、単眼モデルの相対3D、過去の位置や骨長による補完は出力の由来を分ける。RTMW-l、Hand5、FOCUS自体の出力は2Dであり、これらが直接3Dを返すとは扱わない。
 
@@ -126,7 +126,7 @@ FOCUS one2many・person context・50% blendの足37点の測定は次の通り�
 
 clean・手mask・足maskの3条件について、人物検出cropと正解人物cropのreferenceを別々に比較する。RTMW、Hand5選択採用、FOCUS両headのassociation・固定50% blendを全て残し、覆った点も別集計する。足の閾値・手の判定・seed・採用重みをこの32画像の成績から調整しない。人物未検出は分母へ含むPCK失敗とし、元画像・加工画像は成果物へ含めない。
 
-この32画像は当PoCの判定規則を設計した4画像から分離されている。ただし、上流モデルの学習・モデル選択にCOCO valが使われなかったことは保証できず、`trainingOverlapExcluded=false`とする。また手足注釈のある最大人物を選ぶ標本であり、利用者の全映像を代表する抽出ではない。実行はActionsの`python evaluation/holdout-evaluate.py --output evaluation/results/holdout-report.json --cache .cache/wholebody --max-images 32 --threads 2`。この文書の時点では未実行の成績を書かない。
+この32画像は当PoCの判定規則を設計した4画像から分離されている。ただし、上流モデルの学習・モデル選択にCOCO valが使われなかったことは保証できず、`trainingOverlapExcluded=false`とする。また手足注釈のある最大人物を選ぶ標本であり、利用者の全映像を代表する抽出ではない。実行はActionsの`python evaluation/holdout-evaluate.py --output evaluation/results/holdout-report.json --cache .cache/wholebody --max-images 32 --threads 2`。run 41378750685で全32画像の評価を完了し、[詳細結果](holdout-results.md)に失敗・回帰も含めて保存した。
 
 ## ブラウザ用前後処理との数値一致
 
