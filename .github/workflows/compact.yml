@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: compact-vrc-7fe4fac1-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   compact59:
     runs-on: ubuntu-latest

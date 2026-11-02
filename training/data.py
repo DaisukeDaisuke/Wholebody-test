@@ -31,7 +31,7 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def fetch(url, destination, expected_sha256=None):
+def fetch(url, destination, expected_sha256=None, timeout=120, attempts=4):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and destination.stat().st_size:
@@ -39,10 +39,10 @@ def fetch(url, destination, expected_sha256=None):
             return destination
         destination.unlink()
     partial = destination.with_suffix(destination.suffix + ".partial")
-    for attempt in range(4):
+    for attempt in range(attempts):
         try:
             request = urllib.request.Request(url, headers={"User-Agent": "compact-vrc-research/1.0"})
-            with urllib.request.urlopen(request, timeout=120) as source, open(partial, "wb") as target:
+            with urllib.request.urlopen(request, timeout=timeout) as source, open(partial, "wb") as target:
                 while block := source.read(1024 * 1024):
                     target.write(block)
             if expected_sha256 and sha256(partial) != expected_sha256:
@@ -52,7 +52,7 @@ def fetch(url, destination, expected_sha256=None):
         except Exception:
             if partial.exists():
                 partial.unlink()
-            if attempt == 3:
+            if attempt == attempts - 1:
                 raise
             time.sleep(1 + attempt)
 
@@ -104,9 +104,11 @@ def download_records(records, count, cache):
     def one(record):
         image_id = int(record["image"]["id"])
         path = image_root / f"{image_id:012d}.jpg"
-        url = f"https://images.cocodataset.org/val2017/{image_id:012d}.jpg"
+        # The official bucket's path-style HTTPS endpoint has a valid S3 TLS
+        # name. The historical custom hostname can return a proxy/TLS 503.
+        url = f"https://s3.amazonaws.com/images.cocodataset.org/val2017/{image_id:012d}.jpg"
         try:
-            fetch(url, path)
+            fetch(url, path, timeout=20, attempts=2)
             if cv2.imread(str(path)) is None:
                 raise ValueError("Invalid public image")
             return {**record, "path": str(path), "public_url": url}
@@ -119,6 +121,8 @@ def download_records(records, count, cache):
         for start in range(0, len(records), 64):
             batch = list(pool.map(one, records[start:start + min(64, count - len(accepted) + 8)]))
             accepted.extend(record for record in batch if record is not None)
+            if not accepted and not any(batch):
+                raise RuntimeError("Public COCO image endpoint unavailable; no samples silently substituted")
             if len(accepted) >= count:
                 return accepted[:count]
     raise RuntimeError(f"Only {len(accepted)}/{count} public images downloaded")

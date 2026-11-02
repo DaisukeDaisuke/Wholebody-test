@@ -66,7 +66,8 @@ function createSource({file,stream,label}){
   const id=`camera-${++sourceCounter}`,root=document.createElement('section');root.className='source';
   const bar=document.createElement('div');bar.className='source-title';const title=document.createElement('span');title.textContent=`${id} · ${label||file?.name||'カメラ'}`;const close=document.createElement('button');close.textContent='閉じる';bar.append(title,close);
   const media=document.createElement('div');media.className='source-media';const video=document.createElement('video');video.muted=true;video.playsInline=true;video.preload='metadata';const overlay=document.createElement('canvas');media.append(video,overlay);root.append(bar,media);
-  const source={id,root,video,overlay,context:overlay.getContext('2d'),stream,roi:null,points:null,observation:null,face:null,feet:{},lastFace:-Infinity,lastFoot:-Infinity,lastMediaTime:-Infinity,lastFrameAt:-Infinity,frameCaptureAt:0};
+  const frame=document.createElement('canvas');
+  const source={id,root,video,frame,frameContext:frame.getContext('2d'),overlay,context:overlay.getContext('2d'),stream,roi:null,points:null,observation:null,face:null,feet:{},lastFace:-Infinity,lastFoot:-Infinity,lastMediaTime:-Infinity,lastFrameAt:-Infinity,frameCaptureAt:0};
   if(file){source.url=URL.createObjectURL(file);video.src=source.url;const controls=document.createElement('div');controls.className='source-video-controls';const play=document.createElement('button');play.className='secondary';play.textContent='再生';const seek=document.createElement('input');seek.type='range';seek.min=0;seek.max=1;seek.step=.01;seek.value=0;seek.setAttribute('aria-label','動画の再生位置');const time=document.createElement('output');time.textContent='0:00';controls.append(play,seek,time);root.append(controls);play.onclick=()=>video.paused?video.play().catch(fail):video.pause();video.addEventListener('play',()=>play.textContent='停止');video.addEventListener('pause',()=>play.textContent='再生');video.addEventListener('loadedmetadata',()=>seek.max=video.duration);video.addEventListener('timeupdate',()=>{seek.value=video.currentTime;time.textContent=`${Math.floor(video.currentTime/60)}:${String(Math.floor(video.currentTime%60)).padStart(2,'0')}`;});seek.oninput=()=>{video.currentTime=Number(seek.value);source.lastMediaTime=-Infinity;source.observation=null;clearPose();};}
   else video.srcObject=stream;
   video.addEventListener('loadedmetadata',()=>{overlay.width=video.videoWidth;overlay.height=video.videoHeight;draw(source);if(stream||running)video.play().catch(fail);});
@@ -93,7 +94,7 @@ function draw(source){
 }
 async function runBody(source,roi){
   const spec=manifest.body,crop=cropTransform(roi,[192,256],spec.input.crop.padding);
-  preprocessContext.fillStyle='#000';preprocessContext.fillRect(0,0,192,256);preprocessContext.drawImage(source.video,crop.x,crop.y,crop.width,crop.height,0,0,192,256);
+  preprocessContext.fillStyle='#000';preprocessContext.fillRect(0,0,192,256);preprocessContext.drawImage(source.frame,crop.x,crop.y,crop.width,crop.height,0,0,192,256);
   const data=rgbaToTensor(preprocessContext.getImageData(0,0,192,256).data,192,256,spec.input.mean,spec.input.std);
   const input=new ort.Tensor('float32',data,[1,3,256,192]),start=performance.now();let output;
   try{output=await body.run({[spec.input.name]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodeSimCC(output.simcc_x.data,output.simcc_y.data,crop,59,spec.simcc_split_ratio);}
@@ -123,16 +124,18 @@ function poseFor(source){
 async function processFrame(source,token){
   const start=performance.now(),mode=$('mode').value,roi=source.roi||[0,0,source.video.videoWidth,source.video.videoHeight],stamp=source.stream?start:source.video.currentTime*1000;
   const captured=source.frameCaptureAt||start;
+  if(source.frame.width!==source.video.videoWidth||source.frame.height!==source.video.videoHeight){source.frame.width=source.video.videoWidth;source.frame.height=source.video.videoHeight;}
+  source.frameContext.drawImage(source.video,0,0);
   if(mode==='wholebody'){source.points=await runBody(source,roi);if(!running||generation!==token||!sources.includes(source))return;}
   else{source.points=null;source.observation=null;}
   if((mode==='face'||mode==='wholebody'&&$('face-enabled').checked)&&start-source.lastFace>=1000/15){
     const candidate=mode==='face'?{roi,confidence:1}:faceRoiFrom59(source.points);
-    if(candidate){source.face=await parts.runFace(source.video,candidate.roi,{roiConfidence:candidate.confidence,calibration:neutralFace});source.faceRoiConfidence=candidate.confidence;limitedPush(partTimes,source.face.inferenceMs);source.lastFace=performance.now();}else source.face=null;
+    if(candidate){source.face=await parts.runFace(source.frame,candidate.roi,{roiConfidence:candidate.confidence,calibration:neutralFace});source.faceRoiConfidence=candidate.confidence;limitedPush(partTimes,source.face.inferenceMs);source.lastFace=performance.now();}else source.face=null;
   }
   if((mode==='foot'||mode==='wholebody'&&$('foot-enabled').checked)&&start-source.lastFoot>=100){
     for(const side of (mode==='foot'?['left']:['left','right'])){
       const candidate=mode==='foot'?{roi,confidence:1}:footRoiFrom59(source.points,side);
-      if(candidate){source.feet[side]={...await parts.runFoot(source.video,candidate.roi,{roiConfidence:candidate.confidence}),roi:candidate.roi};limitedPush(partTimes,source.feet[side].inferenceMs);}else delete source.feet[side];
+      if(candidate){source.feet[side]={...await parts.runFoot(source.frame,candidate.roi,{roiConfidence:candidate.confidence}),roi:candidate.roi};limitedPush(partTimes,source.feet[side].inferenceMs);}else delete source.feet[side];
     }
     source.lastFoot=performance.now();
   }

@@ -280,6 +280,7 @@ def main():
         "evaluation_annotation_ids": [record["annotation"]["id"] for record in evaluation],
         "annotation_url": ANNOTATION_URL,
         "annotation_sha256": ANNOTATION_SHA256,
+        "image_url_template": "https://s3.amazonaws.com/images.cocodataset.org/val2017/{image_id:012d}.jpg",
         "images_or_private_video_in_artifact": False,
     })
     cached_train = feature_cache(teacher, train, True, args.seed)

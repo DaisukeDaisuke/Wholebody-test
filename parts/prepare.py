@@ -418,7 +418,7 @@ def prepare_face(args):
     ratio_errors = defaultdict(list)
     for annotation in annotations[:args.face_examples]:
         info = images[annotation["image_id"]]
-        source = fetch(f"https://images.cocodataset.org/val2017/{info['id']:012d}.jpg",
+        source = fetch(f"https://s3.amazonaws.com/images.cocodataset.org/val2017/{info['id']:012d}.jpg",
                        args.cache / "face-images" / info["file_name"], 8 * 1024 * 1024)
         image = Image.open(source).convert("RGB")
         crop, bounds = square_crop(image, annotation["face_box"], padding=1.1)
@@ -461,6 +461,7 @@ def prepare_face(args):
               "source": "https://github.com/cunjian/pytorch_face_landmark"}
     report = {"model": record, "dataset": {"name": "COCO-WholeBody v1.0 validation faces", "source": FACE_ANNOTATION_URL,
               "annotationSHA256": digest(annotation_path), "annotationLicense": "CC-BY-NC-4.0; images retain their individual source licenses",
+              "imageURLTemplate": "https://s3.amazonaws.com/images.cocodataset.org/val2017/{image_id:012d}.jpg",
               "faceSelection": "face_valid; face_box minimum side >=64; >=55 labeled points; sorted image/id, first requested count",
               "roiSource": "ground-truth face box; face detection is not evaluated", "images": len({r["imageId"] for r in rows}),
               "faces": len(rows), "landmarks": len(errors)}, "interocularNME": float(np.mean(errors)),
