@@ -1,0 +1,7 @@
+numpy==1.26.4
+mediapipe==0.10.21
+opencv-contrib-python==4.11.0.86
+onnx==1.17.0
+onnxruntime==1.20.1
+huggingface_hub==0.36.0
+Pillow==11.0.0

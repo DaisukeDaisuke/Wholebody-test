@@ -1,0 +1,73 @@
+name: Publish and verify wholebody video tracking
+
+on:
+  push:
+    branches: [stage4-video-20261102]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wholebody-video-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    name: Check delivered JavaScript and Python syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check shipped modules without a browser
+        shell: bash
+        run: |
+          if test -d dist; then
+            while IFS= read -r file; do node --check "$file"; done < <(rg --files dist -g '*.mjs' -g '*.js')
+          fi
+          python -m py_compile scripts/publish_models.py
+          if test -f scripts/evaluate_video.py; then python -m py_compile scripts/evaluate_video.py; fi
+  models:
+    name: Verify upstream inference and publish model-only assets to Hugging Face
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      HF_HUB_DISABLE_PROGRESS_BARS: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - name: Install pinned CPU inference and publication dependencies
+        run: python -m pip install -r scripts/requirements.txt
+      - name: Execute public fixtures and publish original pretrained weights
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/publish_models.py --output artifacts/models
+      - name: Retain model contracts and aggregate execution results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wholebody-model-publication-${{ github.sha }}
+          path: |
+            artifacts/models/manifest.json
+            artifacts/models/verification.json
+            artifacts/models/publication.json
+          if-no-files-found: warn
+          retention-days: 14
