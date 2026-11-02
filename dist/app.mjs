@@ -312,12 +312,27 @@ async function initReceiver() {
     }
   }
 
+  function cancelFootSelection(source, message = '映像が動いたため3点の指定を取り消しました。停止した同じフレームで指定し直してください。') {
+    if (source.selection !== 'foot') return false;
+    source.selection = null; source.footSeedPoints = []; source.footSelectionFrame = null;
+    source.screen.classList.remove('picking');
+    $(`source-${source.id}-foot-seed-state`).textContent = message;
+    updateTargetState(source); drawOverlay(source); updateOperationControls();
+    return true;
+  }
+  function footSelectionFrameMatches(source) {
+    const frame = source.footSelectionFrame, video = source.video;
+    return Boolean(frame && frame.epoch === source.epoch && video.paused && !video.seeking
+      && frame.width === video.videoWidth && frame.height === video.videoHeight
+      && Number.isFinite(video.currentTime) && Math.abs(video.currentTime * 1000 - frame.mediaTimeMs) <= .5);
+  }
+
   function createSource(id) {
     const source = { id, video: $(`source-${id}-video`), overlay: $(`source-${id}-overlay`), screen: $(`source-${id}-screen`),
       kind: null, epoch: 0, stream: null, peer: null, url: null, filename: null, fileIdentity: null,
       pending: null, pool: [], requestId: null, requestKind: null, roi: null, roiStart: null, draftRoi: null, targetVersion: 0, selection: null,
       boardPoints: [], frameCount: 0, lastCaptureTime: null, frameIntervals: [], lastPresentationAt: 0,
-      lastMediaTime: null, lastVideoMediaTimeMs: null, videoFrameIntervals: [], presentedTimes: [], footSeed: null, footSeedPoints: [], seedSequence: 0,
+      lastMediaTime: null, lastVideoMediaTimeMs: null, videoFrameIntervals: [], presentedTimes: [], footSeed: null, footSeedPoints: [], footSelectionFrame: null, seedSequence: 0,
       lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false,
       stepper: null, stepRequested: false, stepRequestId: 0, stepHold: false, stepCompleted: null, stepProcessedCount: 0, lastSteppedFrame: null };
     state.sources.set(id, source);
@@ -335,13 +350,15 @@ async function initReceiver() {
       $(`source-${id}-foot-seed-state`).textContent = source.footSeed ? '現在の3点に切り出し設定を適用しました。' : '切り出し設定を変更しました。必要なら現在の足の3点を指定してください。';
     };
     const updateMode=()=>{$(`source-${id}-foot-controls`).hidden=$(`source-${id}-mode`).value!=='feet';};
-    $(`source-${id}-mode`).onchange=()=>{source.footSeed=null;updateMode();targetChanged(source);updateTargetState(source);};
+    $(`source-${id}-mode`).onchange=()=>{cancelFootSelection(source,'追跡範囲を変更したため3点の指定を取り消しました。');source.footSeed=null;updateMode();targetChanged(source);updateTargetState(source);};
     updateMode();
     $(`source-${id}-foot-seed`).onclick=()=>{
-      if(!source.video.videoWidth)return toast('先に映像を選択してください。',true);
+      if(!source.video.videoWidth||source.video.readyState<2)return toast('先に映像を選択してください。',true);
       if($(`source-${id}-mode`).value!=='feet')return toast('入力方式を「足だけ」に切り替えてください。',true);
+      if(source.video.seeking)return toast('動画の再生位置の変更が終わってから3点を指定してください。',true);
       stopVideoStepper(source, 'selection');
       source.video.pause();source.pending=null;source.selection='foot';source.footSeedPoints=[];source.screen.classList.add('picking');
+      source.footSelectionFrame={epoch:source.epoch,mediaTimeMs:source.video.currentTime*1000,width:source.video.videoWidth,height:source.video.videoHeight};
       $(`source-${id}-foot-seed-state`).textContent='停止した映像で、母趾の先 → 小趾の先 → 踵の中心をクリック';
       drawOverlay(source); updateOperationControls();
     };
@@ -370,6 +387,7 @@ async function initReceiver() {
     });
     $(`source-${id}-roi`).onclick = () => {
       if (!source.video.videoWidth) return toast('先に映像を選択してください。', true);
+      cancelFootSelection(source, '範囲の選択へ切り替えたため3点の指定を取り消しました。');
       if (source.selection !== 'roi') stopVideoStepper(source, 'selection');
       source.selection = source.selection === 'roi' ? null : 'roi';
       source.roiStart = null; source.draftRoi = null;
@@ -395,12 +413,14 @@ async function initReceiver() {
     });
     source.video.addEventListener('loadeddata', updateOperationControls);
     source.video.addEventListener('play', () => {
+      if (!source.video.paused) cancelFootSelection(source);
       if (source.kind !== 'video') return;
       if (source.stepRequested && !source.video.paused) stopVideoStepper(source, 'play');
       if (!source.video.paused) source.stepHold = false;
       updateOperationControls();
     });
     source.video.addEventListener('seeking', () => {
+      cancelFootSelection(source);
       if (source.kind === 'video' && !source.stepper?.ownsSeek(source.video.currentTime)) {
         stopVideoStepper(source, 'user-seek'); source.stepHold = false;
       }
@@ -432,7 +452,7 @@ async function initReceiver() {
     if (source.url) URL.revokeObjectURL(source.url);
     source.url = null; source.kind = null; source.pending = null; source.pool = []; source.lastObservation = null;
     source.roi = null; source.selection = null; source.roiStart = null; source.draftRoi = null; source.targetVersion = 0; source.boardPoints = [];
-    source.footSeed=null;source.footSeedPoints=[];source.presentedTimes=[];
+    source.footSeed=null;source.footSeedPoints=[];source.footSelectionFrame=null;source.presentedTimes=[];
     source.frameCount = 0; source.lastCaptureTime = null; source.frameIntervals = []; source.lastMediaTime = null;
     source.lastVideoMediaTimeMs = null; source.videoFrameIntervals = [];
     source.stepHold = false; source.stepCompleted = null; source.stepProcessedCount = 0; source.lastSteppedFrame = null;
@@ -805,7 +825,10 @@ async function initReceiver() {
     const detection = source.lastObservation?.personDetection;
     let message;
     if (!ready) message = '映像を選んでから人物を指定';
-    else if ($(`source-${source.id}-mode`).value==='feet') message=source.lastObservation?.footTracks?.length?'足の画像追跡 · 全身・奥行きは未観測':'足だけを追跡 · 未検出なら3点を指定';
+    else if ($(`source-${source.id}-mode`).value==='feet') {
+      const visible=(source.lastObservation?.footTracks||[]).reduce((count,track)=>count+['bigToe','littleToe','heel'].filter(key=>Array.isArray(track[key])&&track[key].every(Number.isFinite)).length,0);
+      message=visible?`足の画像追跡 · ${visible}点を観測 · 奥行きは未観測`:source.lastObservation?'足先は欠測 · 必要なら停止して3点を再指定':'足だけを追跡 · 未検出なら3点を指定';
+    }
     else if (source.selection === 'roi') message = '追う人の範囲をドラッグ';
     else if (source.roi) message = '手動指定：この枠の人物を追跡';
     else if (!$('person-detection').checked || detection?.selection === 'full-frame') message = '未指定：全画面から推定';
@@ -839,11 +862,12 @@ async function initReceiver() {
     event.preventDefault();
     const point = sourcePoint(source, event);
     if(source.selection==='foot'){
-      source.footSeedPoints.push(point);
+      if(!footSelectionFrameMatches(source)){cancelFootSelection(source);return;}
+      source.footSeedPoints.push([clamp(point[0],0,source.video.videoWidth-1),clamp(point[1],0,source.video.videoHeight-1)]);
       if(source.footSeedPoints.length===3){
-        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice()),mediaTimeMs:source.video.currentTime*1000,
+        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice()),mediaTimeMs:source.footSelectionFrame.mediaTimeMs,
           cropPolicy:$(`source-${source.id}-foot-crop`).checked?'seed-square':'full-frame'};
-        source.selection=null;source.screen.classList.remove('picking');
+        source.selection=null;source.footSelectionFrame=null;source.screen.classList.remove('picking');
         targetChanged(source);
         $(`source-${source.id}-foot-seed-state`).textContent='3点を記録しました。「動画を順送り解析」で1枚ずつ追跡できます。通常再生も選べます。';
       }else $(`source-${source.id}-foot-seed-state`).textContent=`${source.footSeedPoints.length}/3点 · 次は${source.footSeedPoints.length===1?'小趾の先':'踵の中心'}`;
@@ -1117,7 +1141,7 @@ async function initReceiver() {
       const source = state.sources.get($('board-source').value);
       if (!source.video.videoWidth) return toast('校正する入力の映像を先に開いてください。', true);
       stopVideoStepper(source, 'selection');
-      for (const other of state.sources.values()) { other.selection = null; other.draftRoi = null; other.roiStart = null; other.screen.classList.remove('picking'); updateTargetState(other); }
+      for (const other of state.sources.values()) { cancelFootSelection(other, '校正点の選択へ切り替えたため3点の指定を取り消しました。'); other.selection = null; other.draftRoi = null; other.roiStart = null; other.screen.classList.remove('picking'); updateTargetState(other); }
       source.video.pause(); source.selection = 'board'; source.boardPoints = []; source.screen.classList.add('picking'); source.pending = null;
       const camera = state.cameras.find((item) => item.id === source.id);
       if (camera?.K?.length === 4) ['board-fx', 'board-fy', 'board-cx', 'board-cy'].forEach((id, i) => { if (!$(id).value) $(id).value = camera.K[i].toFixed(3); });

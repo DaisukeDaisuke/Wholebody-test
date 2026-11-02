@@ -193,7 +193,12 @@ export class PoseEngine {
           // Use the detector's existing geometric gates only to start a new
           // identity. It cannot replace an explicitly selected foot after loss.
           const proposals=new FootTracker({maxTracks:1}).update({image,timestampMs,candidates,roi});
-          const found=proposals.footTracks.find(track=>track.bigToe&&track.littleToe&&track.heel);
+          // Detector coordinates may extend beyond its crop. Automatic seeds
+          // must fit the same clipped region that the learned tracker will use;
+          // an outside proposal is a missing detection, not an inference crash.
+          const bounds=roi?[Math.max(0,Math.floor(roi[0])),Math.max(0,Math.floor(roi[1])),Math.min(image.width,Math.ceil(roi[0]+roi[2])),Math.min(image.height,Math.ceil(roi[1]+roi[3]))]:[0,0,image.width,image.height];
+          const insideRegion=point=>Array.isArray(point)&&point.length===2&&point.every(Number.isFinite)&&point[0]>=bounds[0]&&point[0]<bounds[2]&&point[1]>=bounds[1]&&point[1]<bounds[3];
+          const found=proposals.footTracks.find(track=>[track.bigToe,track.littleToe,track.heel].every(insideRegion));
           if(found)result=await tracker.seed({points:[found.bigToe,found.littleToe,found.heel],side:found.modelSide||'unknown',timestampMs,image,roi,seedSource:'detector',seedScores:[found.score,found.score,found.score]});
         }
       }
