@@ -25,7 +25,7 @@ const ids=['rtmw3d-x','focus-foot8-one2many'],weights={};
 for(const id of ids)weights[id]=await acquire(MODEL_SPECS[id].url,new URL(id+'.onnx',cache),MODEL_SPECS[id].sha256);
 const ort=await import(new URL('ort.webgpu.min.mjs',vendor).href);
 ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths=vendor.href;
-ort.env.wasm.wasmBinary=new Uint8Array(await readFile(new URL('ort-wasm-simd-threaded.jsep.wasm',vendor)));
+ort.env.wasm.wasmBinary=new Uint8Array(await readFile(new URL('ort-wasm-simd-threaded.asyncify.wasm',vendor)));
 // Download is finished; no inference step may initiate a network request.
 globalThis.fetch=async()=>{throw new Error('Network disabled during inference');};
 const measured=[];

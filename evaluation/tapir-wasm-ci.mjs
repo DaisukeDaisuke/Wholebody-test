@@ -48,7 +48,7 @@ try {
   stage('runtime-import');
   const ort = await import(new URL('ort.webgpu.min.mjs', vendor).href);
   ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = vendor.href;
-  ort.env.wasm.wasmBinary = new Uint8Array(await readFile(new URL('ort-wasm-simd-threaded.jsep.wasm', vendor)));
+  ort.env.wasm.wasmBinary = new Uint8Array(await readFile(new URL('ort-wasm-simd-threaded.asyncify.wasm', vendor)));
   ort.env.logLevel = 'warning';
   globalThis.fetch = async () => { networkAttempts++; throw new Error('Network requests are disabled during the public tracker integration.'); };
   let createIndex = 0;

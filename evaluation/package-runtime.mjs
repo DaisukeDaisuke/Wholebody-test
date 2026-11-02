@@ -14,7 +14,8 @@ if(!onnxOnly){
 }
 const ortWebVersion='1.31.1';
 const runtime=`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ortWebVersion}/dist/`;
-const files=['ort.webgpu.min.mjs','ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'];
+// The 1.31.1 WebGPU entry uses native WebGPU through Asyncify, not the legacy JSEP bundle.
+const files=['ort.webgpu.min.mjs','ort-wasm-simd-threaded.asyncify.mjs','ort-wasm-simd-threaded.asyncify.wasm'];
 const records=[];
 for(const name of files){
   const response=await fetch(runtime+name);if(!response.ok)throw new Error(`ORT runtime HTTP ${response.status}: ${name}`);

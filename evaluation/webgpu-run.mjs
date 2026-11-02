@@ -31,7 +31,7 @@ try {
   requireCondition(report.playwrightVersion === '1.56.1', 'The Playwright version differs from the declared dependency.');
   const runtimeManifest = JSON.parse(await readFile(join(runtime, 'runtime-manifest.json'), 'utf8'));
   requireCondition(runtimeManifest.ortWebVersion === report.runtimeVersion && runtimeManifest.gitCommit === process.env.GITHUB_SHA, 'The WebGPU runtime was not packaged by this candidate commit.');
-  const runtimeFiles = ['ort.webgpu.min.mjs', 'ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
+  const runtimeFiles = ['ort.webgpu.min.mjs', 'ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm'];
   report.runtime = [];
   for (const name of runtimeFiles) {
     const record = runtimeManifest.records.find(value => value.file === name), bytes = await readFile(join(runtime, name));
