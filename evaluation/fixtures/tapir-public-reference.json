@@ -1,0 +1,154 @@
+{
+  "width": 640,
+  "height": 425,
+  "channels": 3,
+  "pointsXY": [
+    [
+      204.8000030517578,
+      263.5
+    ],
+    [
+      345.6000061035156,
+      212.5
+    ],
+    [
+      441.6000061035156,
+      157.25
+    ]
+  ],
+  "queryYX": [
+    [
+      158.72000122070312,
+      81.92000579833984
+    ],
+    [
+      127.99999237060547,
+      138.24000549316406
+    ],
+    [
+      94.7199935913086,
+      176.63999938964844
+    ]
+  ],
+  "imageFile": "public-rgb.u8",
+  "frameFile": "frame-reference.f32",
+  "attribution": {
+    "license": 4,
+    "file_name": "000000000785.jpg",
+    "coco_url": "http://images.cocodataset.org/val2017/000000000785.jpg",
+    "height": 425,
+    "width": 640,
+    "date_captured": "2013-11-19 21:22:42",
+    "flickr_url": "http://farm8.staticflickr.com/7015/6795644157_f019453ae7_z.jpg",
+    "id": 785,
+    "licenseDetail": {
+      "url": "http://creativecommons.org/licenses/by/2.0/",
+      "id": 4,
+      "name": "Attribution License"
+    },
+    "retrievedFrom": "https://raw.githubusercontent.com/open-mmlab/mmpose/759b39c13fea6ba094afc1fa932f51dc1b11cbf9/tests/data/coco/000000000785.jpg",
+    "sha256": "83981537a7baeafbeb9c8cb67b3484dc26433f574b3685d021fa537e277e4726",
+    "privateMedia": false
+  },
+  "outputs": {
+    "tracks": [
+      82.02452087402344,
+      158.31053161621094,
+      138.43826293945312,
+      128.17715454101562,
+      176.70567321777344,
+      93.97639465332031
+    ],
+    "occlusion": [
+      -6.412099838256836,
+      -6.9176154136657715,
+      -5.063052177429199
+    ],
+    "expected_dist": [
+      -6.185978412628174,
+      -6.1864237785339355,
+      -10.565312385559082
+    ]
+  },
+  "decodedReference": [
+    {
+      "x": 205.0613021850586,
+      "y": 262.8202185034752,
+      "score": 0.9963105916976929,
+      "observable": true
+    },
+    {
+      "x": 346.0956573486328,
+      "y": 212.79410421848297,
+      "score": 0.9969598650932312,
+      "observable": true
+    },
+    {
+      "x": 441.7641830444336,
+      "y": 156.0154989361763,
+      "score": 0.9936879277229309,
+      "observable": true
+    }
+  ],
+  "repeatedFrameReference": {
+    "kind": "Unchanged public RGB image, official PyTorch causal state carried between calls",
+    "frames": [
+      {
+        "frame": 1,
+        "timestampMs": 33.333333333333336,
+        "outputs": {
+          "tracks": [
+            81.99143981933594,
+            158.28028869628906,
+            138.53500366210938,
+            128.25234985351562,
+            176.6461944580078,
+            93.97686767578125
+          ],
+          "occlusion": [
+            -7.603504180908203,
+            -8.126816749572754,
+            -5.639615535736084
+          ],
+          "expected_dist": [
+            -7.042576313018799,
+            -6.7329792976379395,
+            -10.868964195251465
+          ]
+        }
+      },
+      {
+        "frame": 2,
+        "timestampMs": 66.66666666666667,
+        "outputs": {
+          "tracks": [
+            82.02713012695312,
+            158.2954559326172,
+            138.57058715820312,
+            128.2634735107422,
+            176.6676483154297,
+            93.98363494873047
+          ],
+          "occlusion": [
+            -8.309020042419434,
+            -8.276388168334961,
+            -6.212184429168701
+          ],
+          "expected_dist": [
+            -7.576618671417236,
+            -6.731459617614746,
+            -10.70104694366455
+          ]
+        }
+      }
+    ]
+  },
+  "rawRgbSha256": "1433c58c81eabef72c45eb03229268a3499551feefe591b03ccba900cd44c59b",
+  "referenceProvenance": {
+    "workflowRunId": "41384892970",
+    "gitCommit": "274407d44a7fbdcb8411f9dc78286b1f49409c6d",
+    "publicOnly": true,
+    "decoder": "opencv-python-headless==4.11.0.86",
+    "opencv": "4.11.0"
+  }
+}

@@ -2,20 +2,24 @@ import {cropTransform,rgbaToTensor,decodeSimCC,predictedHandBox,handRefinementDe
 import {MODEL_SPECS,REFINEMENT_MANIFEST} from './models.mjs';
 import {detectorTransform,detectorTensor,decodePersons,boxIou} from './detector-codec.mjs';
 import {footTransform,footTensor,decodeFootCandidates,associateFeet,applyFootAssociation} from './foot-codec.mjs';
+import {FootTracker} from './foot-track.mjs';
+import {TapirTracker,seedFootSquareRoi,TAPIR_SEED_ROI_POLICY} from './tapir-tracker.mjs';
+import {TAPIR_REPOSITORY,TAPIR_MANIFEST_URL} from './tapir-models.mjs';
+import {loadWasmBinary} from './wasm-loader.mjs';
 export {BODY_MODELS} from './models.mjs';
 export {BODY_EDGES,HAND_EDGES,FOOT_EDGES} from './pose-codec.mjs';
 
-const ORT_BASE='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const CACHE_NAME='wholebody-phase2-models-v1';
 let runtimePromise;
-async function loadRuntime(offline) {
+async function loadRuntime(offline,signal) {
   if (!runtimePromise) runtimePromise=(async()=>{
-    let ort;
-    try {ort=await import('./vendor/ort.webgpu.min.mjs');ort.env.wasm.wasmPaths=new URL('./vendor/',import.meta.url).href;}
-    catch(error) {if(offline&&!navigator.serviceWorker?.controller)throw new Error('先にオンラインでオフライン準備を行ってください。');ort=await import(ORT_BASE+'ort.webgpu.min.mjs');ort.env.wasm.wasmPaths=ORT_BASE;}
+    const vendor=new URL('./vendor/',import.meta.url),wasm=await loadWasmBinary(vendor,{offline,signal});
+    const ort=await import('./vendor/ort.webgpu.min.mjs');
+    ort.env.wasm.wasmPaths=vendor.href;
+    ort.env.wasm.wasmBinary=wasm.binary;
     ort.env.wasm.numThreads=1;
     ort.env.wasm.proxy=false;
-    return ort;
+    return {ort,delivery:{...wasm.delivery,ortWebVersion:wasm.manifest.ortWebVersion}};
   })().catch(e=>{runtimePromise=null;throw e;});
   return runtimePromise;
 }
@@ -51,17 +55,37 @@ async function resolveSpec(id,offline) {
 }
 
 export class PoseEngine {
-  constructor({onProgress=()=>{}}={}){this.onProgress=onProgress;this.sessions=new Map();this.trackers=new Map();this.busy=false;this.offline=false;this.abort=new AbortController();}
+  constructor({onProgress=()=>{}}={}){this.onProgress=onProgress;this.sessions=new Map();this.trackers=new Map();this.footTrackers=new Map();this.seedVersions=new Map();this.footDetectionTimes=new Map();this.manualFootSources=new Set();this.tapirMaster=null;this.busy=false;this.offline=false;this.abort=new AbortController();}
   notify(stage,progress,message){this.onProgress({stage,progress,message});}
-  async load({bodyModel='rtmw-l',handRefinement=true,personDetection=true,footRefinement=false,backend='webgpu',offline=false}={}){
+  async load({bodyModel='rtmw3d-x',bodyEnabled=true,footTrackingEnabled=false,footTrackingMethod='bootstapir',handRefinement=true,personDetection=true,footRefinement=false,backend='webgpu',offline=false}={}){
     this.offline=offline;this.backend=backend;this.bodyId=bodyModel;this.handRefinement=handRefinement;this.personDetection=personDetection;this.footRefinement=footRefinement;this.abort=new AbortController();
+    if(!['bootstapir','image-flow'].includes(footTrackingMethod))throw new Error('足の追跡方式を選択してください。');
+    this.footTrackingMethod=footTrackingMethod;
     if(backend==='webgpu'&&!navigator.gpu)throw new Error('この推論画面にはWebGPU対応のPCブラウザが必要です。WASMは比較用として明示的に選択できます。');
-    this.notify('runtime',null,'推論ランタイムを読み込み');this.ort=await loadRuntime(offline);
-    await this.loadModel(bodyModel);
-    if(personDetection)await this.loadModel('person-yolox-tiny-416');
-    if(handRefinement)await this.loadModel('hand5');
-    if(footRefinement)await this.loadModel('focus-foot8-one2many');
+    this.notify('runtime',null,'推論ランタイムを読み込み');
+    const runtime=await loadRuntime(offline,this.abort.signal);this.ort=runtime.ort;this.runtimeDelivery=runtime.delivery;
+    if(bodyEnabled)await this.loadModel(bodyModel);
+    if(bodyEnabled&&personDetection)await this.loadModel('person-yolox-tiny-416');
+    if(bodyEnabled&&handRefinement)await this.loadModel('hand5');
+    if(footTrackingEnabled||(bodyEnabled&&footRefinement))await this.loadModel('focus-foot8-one2many');
+    if(footTrackingEnabled&&footTrackingMethod==='bootstapir')await this.loadTapir();
     this.notify('ready',1,'モデル準備完了');return this;
+  }
+  async loadTapir(){
+    if(this.tapirMaster)return this.tapirMaster;
+    if(!TAPIR_MANIFEST_URL)throw new Error('学習済み足追跡モデルはActionsで変換・検証中です。公開リビジョンの確定後に利用できます。');
+    this.notify('bootstapir',null,'学習済み点追跡の配布仕様を確認');
+    const manifest=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBytes(TAPIR_MANIFEST_URL,{offline:this.offline,signal:this.abort.signal})));
+    if(manifest.repository!==TAPIR_REPOSITORY||manifest.license!=='apache-2.0'||manifest.parityPassed!==true||manifest.codecParityPassed!==true||manifest.models?.length!==3)throw new Error('学習済み追跡モデルの検証済み配布仕様と一致しません。');
+    const modelBuffers={};
+    for(const id of ['encoder','query','step']){
+      const model=manifest.models.find(item=>item.id===id),expected=`causal-bootstapir-${id}-256-q3-fp32.onnx`;
+      if(!model||model.filename!==expected||!/^[a-f0-9]{40}$/.test(model.revision||'')||model.url!==`https://huggingface.co/${TAPIR_REPOSITORY}/resolve/${model.revision}/${expected}`)throw new Error('追跡モデルの固定リビジョンが不正です。');
+      modelBuffers[id]=await readBytes(model.url,{offline:this.offline,signal:this.abort.signal,expectedBytes:model.bytes,progress:(fraction,message)=>this.notify('bootstapir-'+id,fraction,`BootsTAPIR ${id} · ${message}`)});
+    }
+    this.notify('bootstapir',null,'3つの追跡セッションを初期化');
+    this.tapirMaster=await TapirTracker.create({ort:this.ort,modelBuffers,manifest,executionProviders:[this.backend],sessionOptions:{graphOptimizationLevel:'all'},graphSessionOptions:{step:{graphOptimizationLevel:'disabled'}}});
+    return this.tapirMaster;
   }
   async loadModel(id){
     if(this.sessions.has(id))return this.sessions.get(id);
@@ -99,16 +123,20 @@ export class PoseEngine {
   }
   async run(id,image,box){
     const record=this.sessions.get(id)||await this.loadModel(id),{session,spec}=record;
+    const prepStart=performance.now();
     const transform=cropTransform(box,spec.inputWH),pixels=rgbaToTensor(image,transform);
     const tensor=new this.ort.Tensor('float32',pixels,[1,3,spec.inputWH[1],spec.inputWH[0]]);
+    this.frameTiming.preprocessMs+=performance.now()-prepStart;
     let result;
-    try{result=await session.run({[session.inputNames[0]]:tensor});return decodeSimCC(result,transform,spec);}
+    try{const start=performance.now();result=await session.run({[session.inputNames[0]]:tensor});this.frameTiming.modelMs+=performance.now()-start;this.frameTiming.modelRuns++;return decodeSimCC(result,transform,spec);}
     finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
   }
   async detectPersons(image){
     const {session,spec}=this.sessions.get('person-yolox-tiny-416')||await this.loadModel('person-yolox-tiny-416');
+    const prepStart=performance.now();
     const transform=detectorTransform(image,spec.inputWH),tensor=new this.ort.Tensor('float32',detectorTensor(image,transform),[1,3,spec.inputWH[1],spec.inputWH[0]]);
-    let result;try{result=await session.run({[session.inputNames[0]]:tensor});return decodePersons(result,transform,spec);}
+    this.frameTiming.preprocessMs+=performance.now()-prepStart;
+    let result;try{const start=performance.now();result=await session.run({[session.inputNames[0]]:tensor});this.frameTiming.modelMs+=performance.now()-start;this.frameTiming.modelRuns++;return decodePersons(result,transform,spec);}
     finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
   }
   async selectPersonBox(sourceId,image,roi,timestampMs){
@@ -126,14 +154,74 @@ export class PoseEngine {
   }
   async refineFeet(image,box,points){
     const {session,spec}=this.sessions.get('focus-foot8-one2many')||await this.loadModel('focus-foot8-one2many');
+    const prepStart=performance.now();
     const [x,y,w,h]=box,transform=footTransform(image,[x-w*.125,y-h*.125,w*1.25,h*1.25]);
     const tensor=new this.ort.Tensor('float32',footTensor(image,transform),[1,3,640,640]);
+    this.frameTiming.preprocessMs+=performance.now()-prepStart;
     let result;try{
-      result=await session.run({[session.inputNames[0]]:tensor});
+      const start=performance.now();result=await session.run({[session.inputNames[0]]:tensor});this.frameTiming.modelMs+=performance.now()-start;this.frameTiming.modelRuns++;
       const association=associateFeet(decodeFootCandidates(Object.values(result)[0],spec,transform),points);
       const acceptedCocoIndices=applyFootAssociation(points,association,{blend:true});
       return {modelId:spec.id,policyId:association.policyId,blendWeight:.5,roi:transform.cropXYWH,acceptedCocoIndices,candidateCount:association.candidateCountEvaluated,selectedCandidateIndex:association.selected?.candidate.candidateIndex??null};
     }finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
+  }
+  async detectFeet(image,box){
+    const {session,spec}=this.sessions.get('focus-foot8-one2many')||await this.loadModel('focus-foot8-one2many');
+    const prepStart=performance.now(),transform=footTransform(image,box||[0,0,image.width,image.height]);
+    const tensor=new this.ort.Tensor('float32',footTensor(image,transform),[1,3,640,640]);
+    this.frameTiming.preprocessMs+=performance.now()-prepStart;
+    let result;
+    try{const start=performance.now();result=await session.run({[session.inputNames[0]]:tensor});this.frameTiming.modelMs+=performance.now()-start;this.frameTiming.modelRuns++;return decodeFootCandidates(Object.values(result)[0],spec,transform);}
+    finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
+  }
+  async estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed,frameMediaTimeMs},started){
+    let tracker=this.footTrackers.get(sourceId);
+    const learned=this.footTrackingMethod==='bootstapir';
+    if(!tracker){tracker=learned?new TapirTracker({ort:this.ort,sessions:this.tapirMaster.sessions,manifest:this.tapirMaster.manifest}):new FootTracker();this.footTrackers.set(sourceId,tracker);}
+    let result=null,manualSeedApplied=false;
+    if(footSeed&&this.seedVersions.get(sourceId)!==footSeed.version){
+      if(Number.isFinite(footSeed.mediaTimeMs)&&Number.isFinite(frameMediaTimeMs)&&Math.abs(footSeed.mediaTimeMs-frameMediaTimeMs)>75)throw new Error('3点を選んだフレームから動画が進んでいます。動画を停止して3点を再指定してください。');
+      // The optional crop uses only the initial three visible points. Keep it
+      // fixed for this identity; an explicit user region always takes priority.
+      const trackingRoi=roi||(learned&&footSeed.cropPolicy==='seed-square'?seedFootSquareRoi(footSeed.points,image):null);
+      result=await tracker.seed({...footSeed,timestampMs,image,roi:trackingRoi,seedSource:'manual'});
+      this.seedVersions.set(sourceId,footSeed.version);this.manualFootSources.add(sourceId);manualSeedApplied=true;
+    }
+    if(learned){
+      if(!result&&tracker.requiresSeed&&!this.manualFootSources.has(sourceId)){
+        const last=this.footDetectionTimes.get(sourceId),detectionDue=!Number.isFinite(last)||timestampMs<last||timestampMs-last>=500;
+        if(detectionDue){
+          const candidates=await this.detectFeet(image,roi);this.footDetectionTimes.set(sourceId,timestampMs);
+          // Use the detector's existing geometric gates only to start a new
+          // identity. It cannot replace an explicitly selected foot after loss.
+          const proposals=new FootTracker({maxTracks:1}).update({image,timestampMs,candidates,roi});
+          // Detector coordinates may extend beyond its crop. Automatic seeds
+          // must fit the same clipped region that the learned tracker will use;
+          // an outside proposal is a missing detection, not an inference crash.
+          const bounds=roi?[Math.max(0,Math.floor(roi[0])),Math.max(0,Math.floor(roi[1])),Math.min(image.width,Math.ceil(roi[0]+roi[2])),Math.min(image.height,Math.ceil(roi[1]+roi[3]))]:[0,0,image.width,image.height];
+          const insideRegion=point=>Array.isArray(point)&&point.length===2&&point.every(Number.isFinite)&&point[0]>=bounds[0]&&point[0]<bounds[2]&&point[1]>=bounds[1]&&point[1]<bounds[3];
+          const found=proposals.footTracks.find(track=>[track.bigToe,track.littleToe,track.heel].every(insideRegion));
+          if(found)result=await tracker.seed({points:[found.bigToe,found.littleToe,found.heel],side:found.modelSide||'unknown',timestampMs,image,roi,seedSource:'detector',seedScores:[found.score,found.score,found.score]});
+        }
+      }
+      if(!result)result=await tracker.update({image,timestampMs});
+      if(result.diagnostics?.modelRan){
+        const timing=result.diagnostics;this.frameTiming.modelMs+=timing.inferenceMs||0;this.frameTiming.modelRuns+=timing.modelRuns||0;
+        this.frameTiming.preprocessMs+=Math.max(0,(timing.processingMs||0)-(timing.inferenceMs||0));
+      }
+    }else{
+      const detectionRan=tracker.needsDetection(timestampMs),candidates=detectionRan?await this.detectFeet(image,roi):undefined;
+      result=tracker.update({image,timestampMs,candidates,roi});
+    }
+    const spec=this.sessions.get('focus-foot8-one2many').spec,modelId=learned?'google/causal-bootstapir':spec.id;
+    const trackingBox=result.diagnostics?.fixedRoi||roi||null;
+    const regionPolicy=roi?'explicit-user-roi':learned&&trackingBox&&footSeed?.cropPolicy==='seed-square'?TAPIR_SEED_ROI_POLICY.id:'full-frame';
+    return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},
+      bbox:trackingBox||[0,0,image.width,image.height],...result,diagnostics:{...result.diagnostics,manualSeedApplied,regionPolicy},inputMode:'feet',refinements:[],
+      personDetection:{enabled:false,detected:null,selection:'foot-only',selectedBox:trackingBox,candidateCount:0},
+      modelId,modelHash:learned?null:spec.actualHash,modelHashes:learned?Object.fromEntries(this.tapirMaster.manifest.models.map(model=>[model.id,model.sha256])):null,
+      backend:this.backend,runtimeDelivery:this.runtimeDelivery,footTrackingMethod:this.footTrackingMethod,scoreKind:learned?'uncalibratedLearnedVisibility':'uncalibratedModelAndFlowQuality',
+      timings:{...this.frameTiming,detectorMs:0,bodyMs:0,handsMs:0,feetMs:performance.now()-started,neuralFrame:this.frameTiming.modelRuns>0,totalMs:performance.now()-started}};
   }
   trackedBox(sourceId,width,height,roi,timestampMs){
     if(roi)return roi.slice();
@@ -152,13 +240,16 @@ export class PoseEngine {
     const box=prev?fresh.map((v,i)=>v*.7+prev.box[i]*.3):fresh;
     this.trackers.set(sourceId,{box,timestampMs,frames:(prev?.frames||0)+1});
   }
-  async estimate(source,{sourceId='a',timestampMs=performance.now(),timeUncertaintyMs=0,roi=null,handRefinement=this.handRefinement,footRefinement=this.footRefinement}={}){
+  async estimate(source,{sourceId='a',timestampMs=performance.now(),timeUncertaintyMs=0,roi=null,mode='wholebody',footSeed=null,frameMediaTimeMs=null,handRefinement=this.handRefinement,footRefinement=this.footRefinement}={}){
     if(this.busy)throw new Error('PoseEngine executes one frame at a time. Keep the newest frame per input.');
-    if(!this.sessions.has(this.bodyId))throw new Error('先にモデルを読み込んでください。');
+    if(!this.sessions.has(mode==='feet'?'focus-foot8-one2many':this.bodyId))throw new Error('先に選択した入力方式のモデルを読み込んでください。');
     this.busy=true;const started=performance.now();
+    this.frameTiming={preprocessMs:0,modelMs:0,modelRuns:0};
     try{
-      const image=this.readFrame(source),detectorStart=performance.now(),{bbox,personDetection}=await this.selectPersonBox(sourceId,image,roi,timestampMs),detectorMs=performance.now()-detectorStart;
-      if(!bbox)return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox:[0,0,image.width,image.height],keypoints:Array.from({length:133},(_,id)=>({id,x:0,y:0,score:0,rawScore:0,observable:false,source:'missing'})),refinements:[],personDetection,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{detectorMs,bodyMs:0,handsMs:0,feetMs:0,totalMs:performance.now()-started},depthKind:'none'};
+      const image=this.readFrame(source);this.frameTiming.preprocessMs=performance.now()-started;
+      if(mode==='feet')return await this.estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed,frameMediaTimeMs},started);
+      const detectorStart=performance.now(),{bbox,personDetection}=await this.selectPersonBox(sourceId,image,roi,timestampMs),detectorMs=performance.now()-detectorStart;
+      if(!bbox)return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox:[0,0,image.width,image.height],keypoints:Array.from({length:133},(_,id)=>({id,x:0,y:0,score:0,rawScore:0,observable:false,source:'missing'})),refinements:[],personDetection,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,runtimeDelivery:this.runtimeDelivery,timings:{...this.frameTiming,neuralFrame:this.frameTiming.modelRuns>0,detectorMs,bodyMs:0,handsMs:0,feetMs:0,totalMs:performance.now()-started},depthKind:'none'};
       const bodyStart=performance.now();
       const points=await this.run(this.bodyId,image,bbox),bodyMs=performance.now()-bodyStart;
       const handsStart=performance.now(),refinements=[];
@@ -176,9 +267,9 @@ export class PoseEngine {
       for(const point of points){point.observable=point.observable&&point.x>=0&&point.y>=0&&point.x<image.width&&point.y<image.height;}
       this.updateTracker(sourceId,points,image,timestampMs);
       if(this.trackers.has(sourceId))this.trackers.get(sourceId).candidateCount=personDetection.candidateCount;
-      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,footRefinements,personDetection,scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{detectorMs,bodyMs,handsMs,feetMs,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
+      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,footRefinements,personDetection,inputMode:'wholebody',scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,runtimeDelivery:this.runtimeDelivery,timings:{...this.frameTiming,neuralFrame:true,detectorMs,bodyMs,handsMs,feetMs,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
     }finally{this.busy=false;}
   }
-  async dispose(){this.abort.abort();for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();}
-  resetSource(sourceId){this.trackers.delete(sourceId);}
+  async dispose(){this.abort.abort();for(const tracker of this.footTrackers.values())tracker.reset();await this.tapirMaster?.dispose();this.tapirMaster=null;for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();this.footTrackers.clear();this.seedVersions.clear();this.footDetectionTimes.clear();this.manualFootSources.clear();}
+  resetSource(sourceId){this.trackers.delete(sourceId);this.footTrackers.get(sourceId)?.reset();this.footTrackers.delete(sourceId);this.seedVersions.delete(sourceId);this.footDetectionTimes.delete(sourceId);this.manualFootSources.delete(sourceId);}
 }

@@ -4,7 +4,8 @@ export async function loadEvaluationPanel() {
   const container = $('evaluation-content');
   const button = $('refresh-evaluation');
   button.disabled = true;
-  const paths = ['report.json', 'codec-parity.json', 'geometry-report.json', 'panoptic-report.json', 'foot-report.json', 'detector-report.json', 'holdout-report.json'];
+  const paths = ['report.json', 'codec-parity.json', 'geometry-report.json', 'panoptic-report.json', 'foot-report.json', 'detector-report.json', 'holdout-report.json',
+    'phase3-real-model.json', 'phase3-tapir-wasm.json', 'phase3-vrm-integration.json', 'phase3-bridge-report.json', 'phase3-webgpu.json'];
   const element = (tag, text, className) => {
     const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;
   };
@@ -20,6 +21,41 @@ export async function loadEvaluationPanel() {
       const row = element('tr'); cells.forEach((value) => row.append(typeof value === 'object' && value.nodeType ? value : element('td', value))); body.append(row);
     });
     wrapper.append(grid); return wrapper;
+  };
+  const renderPhase3 = (real, wasm, vrm, bridge, gpu) => {
+    const section = element('section', undefined, 'holdout-results');
+    section.append(element('span', 'フェーズ3 · 公開データをActionsで実行', 'eyebrow'), element('h3', '実モデル・VRM・WebGPUの確認範囲'));
+    const status = result => result.status === 'available' ? result.data.passed === true ? '通過' : '未通過' : '結果未配信';
+    check(section, 'RTMW3D-X / 足検出モデルの実行', status(real));
+    if (real.data?.passed === true) section.append(element('p', '公開静止画1枚で、出荷するWASMモデルの実出力を復号しています。全身133点の相対深度を扱う経路の確認で、3D精度の評価ではありません。', 'help-text'));
+    check(section, '学習済み点追跡 · Node/WASM', status(wasm));
+    if (wasm.data?.passed === true) {
+      const comparisons = (wasm.data.comparisons || []).filter(row => Number.isFinite(row.coordinateMaxAbsPx));
+      if (comparisons.length) check(section, '公式実装との最大座標差', `${Math.max(...comparisons.map(row => row.coordinateMaxAbsPx)).toPrecision(3)} px`);
+      const times = comparisons.map(row => row.inferenceMs).filter(Number.isFinite);
+      if (times.length) check(section, '同じ公開画像の再帰更新 · WASM実行時間', `${Math.min(...times).toFixed(0)}〜${Math.max(...times).toFixed(0)} ms / frame`);
+      section.append(element('p', '同じ公開画像を異なる時刻で処理し、公式の追跡状態・座標と比較します。この差は変換と実装の一致度であり、実動画の足先誤差ではありません。', 'help-text'));
+    }
+    check(section, 'VRM読込 → 実ボーン → スキン頂点', status(vrm));
+    if (vrm.data?.passed === true) {
+      const checks = vrm.data.checks || [];
+      check(section, '自作VRMでの反映・欠測復帰', `${checks.filter(row => row.passed === true).length} / ${checks.length} 条件`);
+    }
+    check(section, 'ローカルWebSocket → OSC UDP', status(bridge));
+    if (bridge.data?.passed === true && Number.isFinite(bridge.data.udpPacketsReceived)) check(section, 'Actions内の実受信パケット', `${bridge.data.udpPacketsReceived} 件`);
+    section.append(element('p', 'VRMの確認には自作モデルと既知の姿勢を使います。OSCの受信確認はSteamVRやVRChat実機の動作確認とは別です。', 'help-text'));
+    check(section, 'WebGPUの演算互換性', status(gpu));
+    if (gpu.data?.softwareOnly === true) {
+      const difference = gpu.data.worker?.comparison?.coordinateMaxAbsPx;
+      if (Number.isFinite(difference)) check(section, 'WebGPUと公式実装の最大座標差', `${difference.toPrecision(3)} px`);
+      section.append(element('p', 'ActionsのSwiftShader（CPUによるWebGPU実装）で演算とGPUバッファの経路を確認します。実GPUの推論fpsは測っていません。端末の実測速度は上の速度欄で確認してください。', 'help-text'));
+    } else section.append(element('p', '実GPUの推論fpsは未検証です。WebGPUを選択できることだけでは実時間動作を保証しません。', 'help-text'));
+    const runId = wasm.data?.workflowRunId || bridge.data?.runId;
+    if (/^\d+$/.test(String(runId || ''))) {
+      const run = element('a', 'フェーズ3の実行記録 ↗');
+      run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${runId}`; run.target = '_blank'; run.rel = 'noreferrer'; section.append(run);
+    }
+    return section;
   };
   const renderHoldout = (result) => {
     const section = element('section', undefined, 'holdout-results');
@@ -108,9 +144,11 @@ export async function loadEvaluationPanel() {
       } catch (error) { return { path, status: 'unavailable', message: error.name === 'AbortError' ? '読込タイムアウト' : '読込失敗' }; }
       finally { clearTimeout(timer); }
     }));
-    const [main, codec, geometry, panoptic, foot, detector, holdout] = results;
+    const [main, codec, geometry, panoptic, foot, detector, holdout, real, wasm, vrm, bridge, gpu] = results;
     const content = document.createDocumentFragment();
-    content.append(renderHoldout(holdout));
+    content.append(renderPhase3(real, wasm, vrm, bridge, gpu));
+    const historical = element('details'); historical.append(element('summary', '以前のRTMW-l · 固定32画像での精度'));
+    historical.append(element('p', 'この静止画の成績はRTMW-l経路の結果です。現在のRTMW3D-Xや足の点追跡の動画精度へ読み替えません。', 'help-text'), renderHoldout(holdout)); content.append(historical);
     const development = element('details');
     development.append(element('summary', `調整に使った画像の診断${Number.isFinite(main.data?.dataset?.images) ? ` · ${main.data.dataset.images} 画像` : ''}`));
     if (main.status !== 'available') development.append(element('p', main.status === 'pending' ? '評価結果の配信待ち' : `実画像の評価結果を読めません（${main.message}）。`, 'evaluation-summary'));
@@ -264,7 +302,7 @@ export async function loadEvaluationPanel() {
     checks.append(element('p', 'コードの検証通過だけで、実用精度を達成したとは判定しません。実カメラの動画精度と利用者のWebGPU速度は別の測定が必要です。', 'help-text'));
     content.append(checks);
     const links = element('div', undefined, 'evaluation-links');
-    const labels = ['調整画像JSON', '参照比較JSON', '幾何演算JSON', '運動補完JSON', '足モデルJSON', '人物検出JSON', '固定標本JSON'];
+    const labels = ['調整画像JSON', '参照比較JSON', '幾何演算JSON', '運動補完JSON', '足モデルJSON', '人物検出JSON', '固定標本JSON', '実モデルJSON', '点追跡WASM JSON', 'VRM反映JSON', 'OSC実受信JSON', 'WebGPU互換JSON'];
     results.forEach((result, index) => { if (result.status !== 'available') return; const link = element('a', labels[index]); link.href = `./evaluation/${result.path}`; link.target = '_blank'; link.rel = 'noreferrer'; links.append(link); });
     if (/^\d+$/.test(String(main.data?.workflowRunId || ''))) {
       const run = element('a', '調整画像のActions run ↗'); run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${main.data.workflowRunId}`; run.target = '_blank'; run.rel = 'noreferrer'; links.append(run);

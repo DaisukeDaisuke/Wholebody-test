@@ -1,0 +1,54 @@
+name: Public WebGPU causal-tracker compatibility
+on:
+  push:
+    branches: [main, phase3-20261102-4fc7ff60]
+    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'evaluation/package-runtime.mjs', 'evaluation/prepare-tapir-ci.py', 'evaluation/public-fixture-requirements.txt', 'evaluation/fixtures/tapir-public-reference.json', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', 'dist/tapir-models.mjs', 'dist/wasm-loader.mjs', '.github/workflows/phase3-webgpu.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wholebody-webgpu-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  software-adapter-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: evaluation/public-fixture-requirements.txt
+      - name: Install the exact isolated browser dependency without package scripts
+        run: npm install --prefix evaluation/webgpu-deps --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium only inside this disposable Actions runner
+        run: node evaluation/webgpu-deps/node_modules/playwright/cli.js install --with-deps --no-shell chromium
+      - name: Recreate the pinned public reference and fetch immutable published models
+        run: |
+          python -m pip install -r evaluation/public-fixture-requirements.txt
+          python evaluation/prepare-tapir-ci.py --root .cache/webgpu-ci
+      - name: Package the exact candidate ONNX runtime using the same code as the core delivery
+        run: node evaluation/package-runtime.mjs --onnx-only --output .cache/webgpu-ci/runtime/vendor
+      - name: Parse the isolated compatibility fixture
+        run: |
+          node --check evaluation/webgpu-run.mjs
+          node --check evaluation/webgpu-worker.mjs
+          node --check evaluation/webgpu-entry.mjs
+      - name: Run one real recurrent WebGPU update on SwiftShader in a dedicated Worker
+        run: node evaluation/webgpu-run.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-webgpu-${{ github.sha }}
+          path: |
+            evaluation/webgpu-results/
+            evaluation/webgpu-deps/package-lock.json
+            .cache/webgpu-ci/runtime/vendor/runtime-manifest.json
+          if-no-files-found: warn
+          retention-days: 14

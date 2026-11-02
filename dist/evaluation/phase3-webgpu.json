@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "passed": true,
+  "status": "measured",
+  "gitCommit": "985542a1021add7595819689ebd0dbfde66574d3",
+  "workflowRunId": "41389867022",
+  "softwareOnly": true,
+  "physicalGpuMeasured": false,
+  "hardwareFpsMeasured": false,
+  "privateMediaUsed": false,
+  "playwrightVersion": "1.56.1",
+  "runtimeVersion": "1.31.1",
+  "runtimeSource": "Same-commit evaluation/package-runtime.mjs; the core workflow validates this candidate separately.",
+  "publicModelArtifactRunId": "41384892970",
+  "publicModelArtifactGitCommit": "274407d44a7fbdcb8411f9dc78286b1f49409c6d",
+  "flags": [
+    "--enable-gpu",
+    "--enable-unsafe-webgpu",
+    "--enable-unsafe-swiftshader",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--use-vulkan=swiftshader",
+    "--disable-background-networking",
+    "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1"
+  ],
+  "references": [
+    "https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md",
+    "https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/using-gpu-hardware-in-headless-chrome.md",
+    "https://playwright.dev/docs/browsers#chromium-new-headless-mode"
+  ],
+  "console": [
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE request-software-webgpu-adapter"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE load-compressed-wasm"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE create-encoder"
+    },
+    {
+      "type": "error",
+      "text": "\u001b[0;93m2026-11-02 04:42:08.595814 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_12_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
+    },
+    {
+      "type": "error",
+      "text": "\u001b[0;93m2026-11-02 04:42:08.598435 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_11_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE create-query"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE create-step"
+    },
+    {
+      "type": "error",
+      "text": "\u001b[0;93m2026-11-02 04:42:10.461425 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_508_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
+    },
+    {
+      "type": "error",
+      "text": "\u001b[0;93m2026-11-02 04:42:11.936720 [W:onnxruntime:, session_state.cc:1598 VerifyEachNodeIsAssignedToAnEp] Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.\u001b[m"
+    },
+    {
+      "type": "error",
+      "text": "\u001b[0;93m2026-11-02 04:42:11.937294 [W:onnxruntime:, session_state.cc:1600 VerifyEachNodeIsAssignedToAnEp] Rerunning with verbose output on a non-minimal build will show node assignments.\u001b[m"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE seed"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE run-encoder"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE run-query"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE run-step"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE one-recurrent-update"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE run-encoder"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE run-step"
+    },
+    {
+      "type": "log",
+      "text": "WEBGPU_WORKER_STAGE dispose"
+    }
+  ],
+  "blockedExternalRequests": [],
+  "localRequests": 16,
+  "rawWasmRequests": 0,
+  "compressedWasmRequests": 1,
+  "runtime": [
+    {
+      "file": "ort.webgpu.min.mjs",
+      "bytes": 70742,
+      "sha256": "329cd956772397a1aedd668e911195d39afefb182f6fc14aafa4f08ac8d8f379"
+    },
+    {
+      "file": "ort-wasm-simd-threaded.asyncify.mjs",
+      "bytes": 53457,
+      "sha256": "59cf781530e1a16df2a291d78798e3ec1152467edaec402d6f9599d85047c302"
+    },
+    {
+      "file": "ort-wasm-simd-threaded.asyncify.wasm.gz",
+      "bytes": 7131690,
+      "sha256": "0cf5f3068b07255642ccf5e7424293be60c4fff2ca1baa7ec9649bd8f1068090",
+      "encoding": "gzip",
+      "decodedBytes": 28747738,
+      "decodedSha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec"
+    }
+  ],
+  "chromiumVersion": "141.0.7390.37",
+  "worker": {
+    "schemaVersion": 1,
+    "passed": true,
+    "status": "measured",
+    "stage": "complete",
+    "dedicatedWorker": true,
+    "softwareOnly": true,
+    "physicalGpuMeasured": false,
+    "hardwareFpsMeasured": false,
+    "realVideoAccuracyMeasured": false,
+    "privateMediaUsed": false,
+    "purpose": "One public-image recurrent WebGPU compatibility run on SwiftShader; not graphics-card performance or foot accuracy.",
+    "graphOptimizationLevels": {
+      "encoder": "all",
+      "query": "all",
+      "step": "disabled"
+    },
+    "models": [
+      {
+        "id": "encoder",
+        "bytes": 115330894,
+        "sha256": "2f74d4d6d3a052e0baeabf2ec79a8668ed06af8c8bf77150f8373b7e63956519",
+        "createMs": 1404.109999999986,
+        "preferredOutputLocation": {
+          "lowres": "gpu-buffer",
+          "hires": "gpu-buffer"
+        }
+      },
+      {
+        "id": "query",
+        "bytes": 2291,
+        "sha256": "3eabf9ac98fc426cf969c814b61a5f96f062aea656b149ec709d8e33d3b7ad7f",
+        "createMs": 13.709999999962747,
+        "preferredOutputLocation": {
+          "query_lowres": "gpu-buffer",
+          "query_hires": "gpu-buffer"
+        }
+      },
+      {
+        "id": "step",
+        "bytes": 105305753,
+        "sha256": "953d8b48f703e70eb9d7c3b5bb53cf0634de0438bc0df0964fb6961fd5f4cd46",
+        "createMs": 7273.909999999974,
+        "preferredOutputLocation": {
+          "tracks": "cpu",
+          "occlusion": "cpu",
+          "expected_dist": "cpu",
+          "new_causal_state": "gpu-buffer"
+        }
+      }
+    ],
+    "checks": [
+      {
+        "name": "browser-gzip-loader-restores-validated-wasm",
+        "passed": true
+      },
+      {
+        "name": "three-real-webgpu-sessions-and-model-hashes",
+        "passed": true
+      },
+      {
+        "name": "seed-stores-query-and-causal-state-on-gpu",
+        "passed": true
+      },
+      {
+        "name": "gpu-recurrent-update-matches-official-reference",
+        "passed": true
+      },
+      {
+        "name": "dispose-three-sessions",
+        "passed": true
+      }
+    ],
+    "locations": [
+      {
+        "graph": "encoder",
+        "outputs": {
+          "lowres": "gpu-buffer",
+          "hires": "gpu-buffer"
+        }
+      },
+      {
+        "graph": "query",
+        "outputs": {
+          "query_lowres": "gpu-buffer",
+          "query_hires": "gpu-buffer"
+        }
+      },
+      {
+        "graph": "step",
+        "outputs": {
+          "tracks": "cpu",
+          "occlusion": "cpu",
+          "expected_dist": "cpu",
+          "new_causal_state": "gpu-buffer"
+        }
+      },
+      {
+        "graph": "encoder",
+        "outputs": {
+          "lowres": "gpu-buffer",
+          "hires": "gpu-buffer"
+        }
+      },
+      {
+        "graph": "step",
+        "outputs": {
+          "tracks": "cpu",
+          "occlusion": "cpu",
+          "expected_dist": "cpu",
+          "new_causal_state": "gpu-buffer"
+        }
+      }
+    ],
+    "gpuErrors": [],
+    "source": {
+      "exportGitCommit": "274407d44a7fbdcb8411f9dc78286b1f49409c6d",
+      "exportWorkflowRunId": "41384892970",
+      "imageId": 785,
+      "license": "CC-BY-2.0",
+      "sourceImageSha256": "83981537a7baeafbeb9c8cb67b3484dc26433f574b3685d021fa537e277e4726",
+      "kind": "Same public RGB still image at seed and update timestamps."
+    },
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": "",
+      "isFallbackAdapter": true,
+      "features": [
+        "bgra8unorm-storage",
+        "chromium-experimental-timestamp-query-inside-passes",
+        "chromium-experimental-unorm16-texture-formats",
+        "clip-distances",
+        "core-features-and-limits",
+        "depth-clip-control",
+        "depth32float-stencil8",
+        "float32-blendable",
+        "float32-filterable",
+        "indirect-first-instance",
+        "rg11b10ufloat-renderable",
+        "subgroups",
+        "texture-component-swizzle",
+        "texture-compression-astc",
+        "texture-compression-astc-sliced-3d",
+        "texture-compression-bc",
+        "texture-compression-bc-sliced-3d",
+        "texture-compression-etc2",
+        "timestamp-query"
+      ],
+      "limits": {
+        "maxBufferSize": 1073741824,
+        "maxStorageBufferBindingSize": 1073741824,
+        "maxComputeWorkgroupStorageSize": 32768,
+        "maxComputeInvocationsPerWorkgroup": 256
+      }
+    },
+    "wasmTransport": {
+      "file": "ort-wasm-simd-threaded.asyncify.wasm.gz",
+      "encoding": "gzip",
+      "compressedBytes": 7131690,
+      "compressedSha256": "0cf5f3068b07255642ccf5e7424293be60c4fff2ca1baa7ec9649bd8f1068090",
+      "decodedBytes": 28747738,
+      "decodedSha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec",
+      "delivery": {
+        "transport": "gzip",
+        "compressedHashVerified": true,
+        "decodedHashVerified": true,
+        "decodedBytes": 28747738,
+        "decodedSha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec"
+      }
+    },
+    "seed": {
+      "inferenceMs": 103684.195,
+      "queryFeatureLocation": "gpu-buffer",
+      "causalStateLocation": "gpu-buffer"
+    },
+    "comparison": {
+      "coordinateMaxAbsPx": 0.00011444091796875,
+      "logitMaxAbs": 0.00001430511474609375,
+      "confidenceMaxAbs": 5.0718839128549575e-8,
+      "visibilityMismatches": 0,
+      "visibleCoordinatesCompared": 3
+    },
+    "softwareTiming": {
+      "seedInferenceMs": 103684.195,
+      "updateInferenceMs": 96351.04500000004,
+      "encoderMs": 13.150000000023283,
+      "stepMs": 96337.89500000002,
+      "measuredOn": "SwiftShader CPU implementation of WebGPU; shader compilation may be included",
+      "physicalGpuPerformance": false,
+      "hardwareFpsMeasured": false
+    },
+    "releasedSessions": 3,
+    "outsideRequests": 0
+  }
+}
