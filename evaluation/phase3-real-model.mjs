@@ -17,6 +17,7 @@ const source={id:785,url:'https://raw.githubusercontent.com/open-mmlab/mmpose/75
 const imagePath=new URL('public-785.jpg',cache);await acquire(source.url,imagePath,source.sha256);
 const imageSize={width:640,height:425};
 const decoded=spawnSync('ffmpeg',['-v','error','-i',imagePath.pathname,'-frames:v','1','-f','rawvideo','-pix_fmt','rgba','pipe:1'],{maxBuffer:8*1024*1024});
+if(decoded.error)throw decoded.error;
 if(decoded.status!==0)throw new Error(decoded.stderr?.toString()||'Cannot decode public frame');
 if(decoded.stdout.length!==imageSize.width*imageSize.height*4)throw new Error('Unexpected reference dimensions');
 const image={...imageSize,data:new Uint8Array(decoded.stdout.buffer,decoded.stdout.byteOffset,decoded.stdout.length)};
