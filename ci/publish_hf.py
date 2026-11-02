@@ -291,6 +291,7 @@ def publish():
     parser = argparse.ArgumentParser()
     parser.add_argument("--standard-dir", type=Path, default=Path("artifacts/compact59"))
     parser.add_argument("--fast-dir", type=Path, default=Path("artifacts/fast59"))
+    parser.add_argument("--pose3d-dir", type=Path, default=Path("artifacts/pose3d"))
     parser.add_argument("--parts-dir", type=Path, default=Path("artifacts/parts"))
     parser.add_argument("--output", type=Path, default=Path("artifacts/hf"))
     args = parser.parse_args()
@@ -323,9 +324,14 @@ def publish():
         "body/compact59.onnx": checked_model(args.standard_dir, "compact59.onnx", standard),
         "parts/foot-view.onnx": checked_model(args.parts_dir, "foot-view.onnx", foot),
     }
+    pose3d = read_json(args.pose3d_dir, "manifest.json")
+    if pose3d.get("sha256") != "9d89c599319a18fb7d2e28451a883476164543182bafca5f09eb2cf767ed2f3f" or pose3d.get("provenance", {}).get("privateInputsUsed") is not False:
+        raise PublicationError("unexpected_pose3d_source")
+    payloads["body/pose3d.onnx"] = checked_model(args.pose3d_dir, "pose3d.onnx", pose3d)
+    payloads["licenses/POSE3D-APACHE-2.0.txt"] = (args.pose3d_dir / "LICENSE-POSE3D.txt").read_bytes()
     STAGE = "download_pinned_public_face"
     payloads["parts/pfld68.onnx"] = public_download(FACE_URL, FACE_BYTES, FACE_SHA256, keep=True)
-    for report in (standard, fast, parts, standard_report, fast_report, public_parts):
+    for report in (standard, fast, pose3d, parts, standard_report, fast_report, public_parts):
         public_values(report, token)
     payloads["evidence/compact59-metrics.json"] = encode_json(standard_report)
     payloads["evidence/fast59-metrics.json"] = encode_json(fast_report)
@@ -347,6 +353,7 @@ def publish():
         # expose unrelated contents by changing an already-private repository.
         raise PublicationError("existing_target_repository_is_private")
     card = model_card(fast, standard, fast_report, standard_report, public_parts, repo_id)
+    card += "\n## Learned 3D body path\n\n`body/pose3d.onnx` is the pinned 5,557,238-byte OpenCV Zoo MediaPipe Pose model (Apache-2.0), not a model trained in this project. It predicts hip-relative XYZ landmarks. The application estimates relative root travel by perspective fitting; this is not calibrated absolute position. Body inference is independent of the 2D student and detail inference is scheduled at 5 Hz. Model confidence, actual driven-bone coverage, lost intervals and motion retention must be evaluated together. Smaller rotation p95 alone does not establish tracking quality.\n"
     if token in card:
         raise PublicationError("credential_value_in_model_card")
     payloads["README.md"] = card.encode("utf-8")
@@ -371,6 +378,7 @@ def publish():
         verified = public_download(hub_url(name), len(data), expected)
         published_files.append({"path": name, "url": hub_url(name), **verified})
     standard["url"] = hub_url("body/compact59.onnx")
+    pose3d["url"] = hub_url("body/pose3d.onnx")
     standard["evaluation"] = hub_url("evidence/compact59-metrics.json")
     fast["url"] = hub_url("body/fast59.onnx")
     fast["evaluation"] = hub_url("evidence/fast59-metrics.json")
@@ -383,11 +391,11 @@ def publish():
     recommended = "fast" if fast_is_eligible(fast, fast_report) else "standard"
     manifest = {"schemaVersion": 2, "body": fast if recommended == "fast" else standard,
                 "recommendedBody": recommended, "bodies": {"fast": fast, "standard": standard},
-                "parts": parts, "hub": {"repoId": repo_id, "modelRevision": revision,
+                "pose3d": pose3d, "parts": parts, "hub": {"repoId": repo_id, "modelRevision": revision,
                                           "publicAnonymousHashVerified": True}}
     public_values(manifest, token)
     metadata = {"models.json": encode_json(manifest), "configs/fast59.json": encode_json(fast),
-                "configs/compact59.json": encode_json(standard), "configs/parts.json": encode_json(parts)}
+                "configs/compact59.json": encode_json(standard), "configs/pose3d.json": encode_json(pose3d), "configs/parts.json": encode_json(parts)}
     STAGE = "commit_immutable_download_manifest"
     manifest_commit = api.create_commit(
         repo_id=repo_id, repo_type="model", revision="main", parent_commit=revision,

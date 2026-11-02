@@ -150,7 +150,7 @@ export function retargetPose(pose, rig, options = {}) {
     ? torsoFrame(restLeftHip, restRightHip, mid(restLeftHip, restRightHip), mid(restLeftShoulder, restRightShoulder)) : null;
   const hips = get([11, 12]), shoulders = get([5, 6]);
   let hipFrame = null, chestFrame = null, hipDelta = null, chestDelta = null;
-  const torsoJoints = [...hips, ...shoulders], fullTorsoDepth = all(torsoJoints) && observedDepth(torsoJoints);
+  const torsoJoints = [...hips, ...shoulders], fullTorsoDepth = all(torsoJoints) && relativeDepth(torsoJoints);
   if (all(torsoJoints) && restTorso && pose?.stability?.torsoValid !== false) {
     const hipCenter = mid(hips[0].position, hips[1].position), shoulderCenter = mid(shoulders[0].position, shoulders[1].position);
     const torsoLength = norm(sub(shoulderCenter, hipCenter)), hipWidth = norm(sub(hips[0].position, hips[1].position)), shoulderWidth = norm(sub(shoulders[0].position, shoulders[1].position));
@@ -177,9 +177,9 @@ export function retargetPose(pose, rig, options = {}) {
   const eyes = get([1, 2]), ears = get([3, 4]);
   const facePair = all(eyes) ? eyes : all(ears) ? ears : null;
   if (facePair && all(shoulders) && restTorso) {
-    const headFrame = observedDepth([...facePair, ...shoulders]) ? frame(sub(facePair[1].position, facePair[0].position), sub(mid(facePair[0].position, facePair[1].position), mid(shoulders[0].position, shoulders[1].position))) : null;
+    const headFrame = relativeDepth([...facePair, ...shoulders]) ? frame(sub(facePair[1].position, facePair[0].position), sub(mid(facePair[0].position, facePair[1].position), mid(shoulders[0].position, shoulders[1].position))) : null;
     let headDelta = headFrame ? multiplyQuaternion(headFrame.rotation, inverse(restTorso.rotation)) : null;
-    if (!headDelta && !observedDepth([...facePair, ...shoulders])) {
+    if (!headDelta && !relativeDepth([...facePair, ...shoulders])) {
       const line = sub(planePosition(facePair[1]), planePosition(facePair[0]));
       if (norm(line) > EPS) {
         let angle = wrapAngle(Math.atan2(line[1], line[0]) - Math.atan2(restTorso.x[1], restTorso.x[0]));
@@ -323,9 +323,15 @@ export function retargetPose(pose, rig, options = {}) {
   const metric = observationFresh && currentRootObserved && pose?.metric === true && pose?.coordinateFrame === 'world' && pose?.units === 'm' && pose?.root?.valid === true && vec(pose.root.position);
   const rootPosition = metric ? pose.root.position.slice() : null;
   const oldRoot = previous?.root, rootRest = rest.hips?.position || [0, 0, 0];
-  const rootAge = metric ? Math.max(0, now - measuredAt) : Number.isFinite(oldRoot?.lastObservedMs) ? now - oldRoot.lastObservedMs : Infinity;
-  const rootNeutralWeight = metric ? 0 : smoothstep((rootAge - opts.holdMs) / Math.max(1, opts.neutralMs));
-  const desiredRoot = metric ? rootPosition : vec(oldRoot?.lastObservedPosition) ? oldRoot.lastObservedPosition.map((v, i) => v * (1 - rootNeutralWeight) + rootRest[i] * rootNeutralWeight) : rootRest;
+  const preview = observationFresh && pose?.previewRoot?.valid === true && vec(pose.previewRoot.position);
+  const previewOrigin = vec(oldRoot?.previewOrigin) ? oldRoot.previewOrigin : preview ? pose.previewRoot.position.slice() : null;
+  // A fixed first-observation origin keeps backwards motion visible. Never
+  // recenter at every frame or label this monocular estimate as metric tracking.
+  const previewPosition = preview ? add(rootRest, sub(pose.previewRoot.position, previewOrigin)) : null;
+  const rootFresh = metric || preview;
+  const rootAge = rootFresh ? Math.max(0, now - measuredAt) : Number.isFinite(oldRoot?.lastObservedMs) ? now - oldRoot.lastObservedMs : Infinity;
+  const rootNeutralWeight = rootFresh ? 0 : smoothstep((rootAge - opts.holdMs) / Math.max(1, opts.neutralMs));
+  const desiredRoot = metric ? rootPosition : preview ? previewPosition : vec(oldRoot?.lastObservedPosition) ? oldRoot.lastObservedPosition.map((v, i) => v * (1 - rootNeutralWeight) + rootRest[i] * rootNeutralWeight) : rootRest;
   let visualPosition = vec(oldRoot?.visualPosition) ? oldRoot.visualPosition.slice() : rootRest.slice();
   const rootDifference = sub(desiredRoot, visualPosition), rootDistance = norm(rootDifference), rootStep = opts.maxRootSpeed * Math.min(Math.max(dt, 0), 120) / 1000;
   visualPosition = rootDistance > rootStep && rootDistance > EPS ? add(visualPosition, mul(rootDifference, rootStep / rootDistance)) : desiredRoot.slice();
@@ -340,7 +346,7 @@ export function retargetPose(pose, rig, options = {}) {
   if (validNames.some(name => outputBones[name].depthAmbiguous)) warnings.push('footDirectionIsImagePlaneOnly');
   warnings.push('individualToeArticulationUnobserved');
   return { schemaVersion: 1, timestampMs: pose?.timestampMs ?? 0, inputKey, normalizedPose, bones: outputBones, neutralPolicy: { upperArms: 'rig-relative down with outward angle', outwardAngleDeg: opts.relaxedArmAngleDeg, otherBones: 'rest-local rotation', isObservation: false },
-    root: { position: rootPosition, visualPosition, lastObservedPosition: metric ? visualPosition.slice() : oldRoot?.lastObservedPosition || null, lastObservedMs: metric ? measuredAt : oldRoot?.lastObservedMs ?? null, metric, mode: metric ? 'world-estimate' : 'relative-only', distanceStatus: pose?.root?.distanceStatus || 'uncalibrated' },
+    root: { position: rootPosition, visualPosition, previewOrigin, lastObservedPosition: rootFresh ? visualPosition.slice() : oldRoot?.lastObservedPosition || null, lastObservedMs: rootFresh ? measuredAt : oldRoot?.lastObservedMs ?? null, metric, mode: metric ? 'world-estimate' : preview ? 'monocular-relative-motion' : 'relative-only', distanceStatus: preview ? 'estimatedMonocular' : pose?.root?.distanceStatus || 'uncalibrated' },
     trackers: poseToTrackers(pose), footReferenceAngles,
     coverage: { availableBones: order.length, drivenBones: validNames.length, drivenBoneNames: validNames, heldBones: Object.values(outputBones).filter(b => b.trackingState === 'holding').length, returningBones: Object.values(outputBones).filter(b => b.trackingState === 'returning').length, missingBones: order.length - validNames.length }, warnings: [...new Set(warnings)] };
 }

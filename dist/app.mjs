@@ -1,21 +1,24 @@
 import * as ort from './vendor/ort.webgpu.min.mjs';
 import { COCO59, COMPACT_EDGES, cropTransform, rgbaToTensor, decodeSimCC, toCoco133, percentile } from './compact-codec.mjs';
 import { PartModels, faceRoiFrom59, footRoiFrom59 } from './parts.mjs';
-import { estimateMonocularPose, fusePose } from './geometry.mjs';
+import { estimateMonocularPose, estimateLearnedMonocularPose, fusePose } from './geometry.mjs';
 import { validateCalibration } from './calibration.mjs';
 import { BridgeClient } from './bridge-client.mjs';
 import { PoseStabilizer } from './pose-stability.mjs';
+import { createPose3DCrop, pose3dCanvasTransform, pose3dRgbaToTensor, decodePose3D, mergePose3DKeypoints } from './pose3d.mjs';
 
 const $=id=>document.getElementById(id), finite=v=>Number.isFinite(v), clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
 ort.env.wasm.wasmPaths=new URL('./vendor/',import.meta.url).href;
 ort.env.wasm.numThreads=1;
 ort.env.logLevel='warning';
-let manifest=null,body=null,parts=null,running=false,loading=false,generation=0,selected=null,view=null,viewPromise=null;
+let manifest=null,body=null,body3D=null,parts=null,running=false,loading=false,generation=0,selected=null,view=null,viewPromise=null;
 let cameraCalibration=[],neutralFace={},lastFace=null,lastPose=null,sourceCounter=0,frameCounter=0,lastMetricsAt=performance.now();
 let actualBackend='—',lastBodyMs=null,bodyCalls=0,activeBody=null,inFlight=null,sourceSync={};
 const sources=[],timings=[],bodyTimes=[],partTimes=[],readTimes=[];
 const preprocess=document.createElement('canvas');preprocess.width=192;preprocess.height=256;
 const preprocessContext=preprocess.getContext('2d',{willReadFrequently:true});
+const preprocess3D=document.createElement('canvas');preprocess3D.width=preprocess3D.height=256;
+const preprocess3DContext=preprocess3D.getContext('2d',{willReadFrequently:true});
 const bridge=new BridgeClient({onStatus:s=>{$('bridge-status').textContent=({connected:'接続済み。校正データを読み込んでください。',calibrated:'校正済み。新しい有効姿勢を送出します。',stale:'観測が古くなったためトラッカーを無効化しました。',disconnected:'未接続',connecting:'接続中…'}[s.state])||s.reason||(s.udpPacketsSent!=null?`送信 ${s.udpPacketsSent} パケット・有効 ${s.enabledTrackers} 台` : s.state);}});
 function notify(message,error=false){$('notice').textContent=message;$('notice').classList.toggle('error',error);}
 function status(message){$('model-status').textContent=message;}
@@ -39,10 +42,11 @@ async function prepareModels(){
     if(!manifest){
       const response=await fetch('./models.json',{cache:'no-cache'});if(!response.ok)throw new Error('学習済みモデルのマニフェストを取得できません。');manifest=await response.json();
       const choice=$('model-choice'),fast=choice.querySelector('option[value="fast"]');
-      if(manifest.recommendedBody==='standard'){fast.disabled=true;fast.textContent='軽量候補（精度基準未達）';choice.value='standard';}
+      if(manifest.recommendedBody==='standard'){fast.disabled=true;fast.textContent='軽量候補（精度基準未達）';choice.value=manifest.pose3d?'pose3d':'standard';}
       else if(manifest.recommendedBody==='fast')choice.value='fast';
     }
-    const requested=$('mode').value==='wholebody'?$('backend').value:'wasm', spec=manifest.bodies?.[$('model-choice').value]||manifest.body;
+    const learned3D=$('model-choice').value==='pose3d';
+    const requested=$('mode').value==='wholebody'&&!learned3D?$('backend').value:'wasm', spec=manifest.bodies?.[$('model-choice').value]||manifest.body;
     if(actualBackend!==requested||activeBody?.sha256!==spec.sha256){if(body)await body.release();body=null;timings.length=bodyTimes.length=partTimes.length=0;bodyCalls=0;lastBodyMs=null;}
     activeBody=spec;
     actualBackend=requested;
@@ -53,6 +57,11 @@ async function prepareModels(){
       body=await ort.InferenceSession.create(bytes,{executionProviders:[requested],graphOptimizationLevel:'all'});
       const names=spec.outputs.map(x=>x.name);if(!names.every(n=>body.outputNames.includes(n)))throw new Error('モデルの出力名が一致しません。');
       $('model-detail').textContent=`${spec.id} · ${(spec.bytes/1048576).toFixed(2)} MB · 入力${spec.input.shape[3]}×${spec.input.shape[2]} · 59点`;
+    }
+    if($('mode').value==='wholebody'&&learned3D){
+      if(!manifest.pose3d)throw new Error('3D身体モデルが配布されていません。');
+      if(!body3D){status('3D身体モデルを取得しています…');body3D=await ort.InferenceSession.create(await modelBytes(manifest.pose3d.url,manifest.pose3d.sha256),{executionProviders:['wasm'],graphOptimizationLevel:'all'});}
+      $('model-detail').textContent=`3D身体 ${(manifest.pose3d.bytes/1048576).toFixed(2)} MB · 15 Hz上限 · 手の詳細 5 Hz`;
     }
     if(!parts)parts=new PartModels(ort,manifest.parts,{executionProviders:['wasm']});
     const mode=$('mode').value;
@@ -74,12 +83,12 @@ function createSource({file,stream,label}){
   const bar=document.createElement('div');bar.className='source-title';const title=document.createElement('span');title.textContent=`${id} · ${label||file?.name||'カメラ'}`;const close=document.createElement('button');close.textContent='閉じる';bar.append(title,close);
   const media=document.createElement('div');media.className='source-media';const video=document.createElement('video');video.muted=true;video.playsInline=true;video.preload='metadata';const overlay=document.createElement('canvas');media.append(video,overlay);root.append(bar,media);
   const frame=document.createElement('canvas');
-  const source={id,root,video,frame,frameContext:frame.getContext('2d'),overlay,context:overlay.getContext('2d'),stream,roi:null,points:null,observation:null,face:null,feet:{},stabilizer:new PoseStabilizer(),lastFace:-Infinity,lastFoot:-Infinity,lastMediaTime:-Infinity,lastFrameAt:-Infinity,frameCaptureAt:0};
+  const source={id,root,video,frame,frameContext:frame.getContext('2d'),overlay,context:overlay.getContext('2d'),stream,roi:null,points:null,observation:null,face:null,feet:{},stabilizer:new PoseStabilizer(),lastFace:-Infinity,lastFoot:-Infinity,lastDetails:-Infinity,details:null,decoded3D:null,rawKeypoints:null,lastMediaTime:-Infinity,lastFrameAt:-Infinity,frameCaptureAt:0};
   if(file){source.url=URL.createObjectURL(file);video.src=source.url;const controls=document.createElement('div');controls.className='source-video-controls';const play=document.createElement('button');play.className='secondary';play.textContent='再生';const seek=document.createElement('input');seek.type='range';seek.min=0;seek.max=1;seek.step=.01;seek.value=0;seek.setAttribute('aria-label','動画の再生位置');const time=document.createElement('output');time.textContent='0:00';controls.append(play,seek,time);root.append(controls);play.onclick=()=>video.paused?video.play().catch(fail):video.pause();video.addEventListener('play',()=>play.textContent='停止');video.addEventListener('pause',()=>play.textContent='再生');video.addEventListener('loadedmetadata',()=>seek.max=video.duration);video.addEventListener('timeupdate',()=>{seek.value=video.currentTime;time.textContent=`${Math.floor(video.currentTime/60)}:${String(Math.floor(video.currentTime%60)).padStart(2,'0')}`;});seek.oninput=()=>{video.currentTime=Number(seek.value);source.lastMediaTime=-Infinity;source.observation=null;clearPose();};}
   else video.srcObject=stream;
   video.addEventListener('pause',()=>{if(source===selected)view?.setPaused(true);});
   video.addEventListener('play',()=>{if(source===selected)view?.setPaused(false);});
-  video.addEventListener('seeking',()=>{source.stabilizer.reset();source.observation=null;source.lastMediaTime=-Infinity;});
+  video.addEventListener('seeking',()=>{source.stabilizer.reset();source.observation=null;source.lastMediaTime=source.lastDetails=-Infinity;source.details=source.decoded3D=source.rawKeypoints=null;});
   video.addEventListener('loadedmetadata',()=>{overlay.width=video.videoWidth;overlay.height=video.videoHeight;draw(source);if(stream||running)video.play().catch(fail);});
   video.addEventListener('error',()=>fail(new Error('この動画をデコードできません。ブラウザ対応のMP4/WebMを選択してください。')));
   if(video.requestVideoFrameCallback){const mark=(now,meta)=>{source.frameCaptureAt=now;source.presentedMediaTime=meta.mediaTime;if(sources.includes(source))video.requestVideoFrameCallback(mark);};video.requestVideoFrameCallback(mark);}
@@ -111,6 +120,17 @@ async function runBody(source,roi){
   try{output=await body.run({[spec.input.name]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodeSimCC(output.simcc_x.data,output.simcc_y.data,crop,59,spec.simcc_split_ratio,spec.decodeWH||crop.inputWH);}
   finally{input.dispose?.();if(output)Object.values(output).forEach(t=>t.dispose?.());}
 }
+async function runBody3D(source,roi){
+  const size={width:source.video.videoWidth,height:source.video.videoHeight};
+  const anchors=source.rawKeypoints||source.details||[];
+  const crop=createPose3DCrop(roi,anchors,size),ctx=preprocess3DContext;
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,256,256);
+  ctx.setTransform(...pose3dCanvasTransform(crop));ctx.drawImage(source.frame,0,0);ctx.setTransform(1,0,0,1,0,0);
+  const input=new ort.Tensor('float32',pose3dRgbaToTensor(ctx.getImageData(0,0,256,256).data),[1,256,256,3]);
+  const start=performance.now();let output;
+  try{output=await body3D.run({[body3D.inputNames[0]]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodePose3D(output,crop);}
+  finally{input.dispose?.();if(output)Object.values(output).forEach(t=>t.dispose?.());}
+}
 function faceReadout(value){
   if(!value?.valid){resetFaceOnly();return;}
   lastFace=value;const map={'eye-left':value.blinkLeft,'eye-right':value.blinkRight,mouth:value.mouthOpen,cheek:value.cheekWidthChange==null?null:Math.abs(value.cheekWidthChange)*5};
@@ -120,16 +140,17 @@ function faceReadout(value){
 function resetFaceOnly(){for(const id of ['eye-left','eye-right','mouth','cheek']){$(id).value=0;$(id+'-text').textContent='—';}lastFace=null;view?.updateExpressions?.(null);}
 function footReadout(side,value){$(side+'-foot-state').textContent=value?.label||'未観測';$(side+'-foot-score').textContent=value?`${Math.round(value.confidence*100)}% · ${value.valid?'足領域の分類':'不確か'}`:'対象の足領域が必要です';}
 function makeObservation(source,stamp){
-  const keypoints=toCoco133(source.points,activeBody.coco133_indices||COCO59);
-  if(source.face?.valid&&performance.now()-source.lastFace<300){const score=source.faceRoiConfidence||.3;source.face.points.forEach((p,i)=>keypoints[23+i]={id:23+i,x:p.x,y:p.y,score,observable:true,source:'observedFace2D'});keypoints[0]={id:0,x:source.face.nose.x,y:source.face.nose.y,score,observable:true};for(const [id,lo,hi] of [[1,42,48],[2,36,42]]){const ps=source.face.points.slice(lo,hi);keypoints[id]={id,x:ps.reduce((s,p)=>s+p.x,0)/ps.length,y:ps.reduce((s,p)=>s+p.y,0)/ps.length,score,observable:true,derived:true};}}
+  const keypoints=source.rawKeypoints?source.rawKeypoints.map(p=>({...p})):toCoco133(source.points,activeBody.coco133_indices||COCO59);
+  if(source.face?.valid&&performance.now()-source.lastFace<300){const score=source.faceRoiConfidence||.3;source.face.points.forEach((p,i)=>keypoints[23+i]={id:23+i,x:p.x,y:p.y,score,observable:true,source:'observedFace2D'});if(!keypoints[0]?.modelPosition)keypoints[0]={id:0,x:source.face.nose.x,y:source.face.nose.y,score,observable:true};for(const [id,lo,hi] of [[1,42,48],[2,36,42]]){if(keypoints[id]?.modelPosition)continue;const ps=source.face.points.slice(lo,hi);keypoints[id]={id,x:ps.reduce((s,p)=>s+p.x,0)/ps.length,y:ps.reduce((s,p)=>s+p.y,0)/ps.length,score,observable:true,derived:true};}}
   const sync=sourceSync[source.id];
-  return {sourceId:source.id,inputMode:'wholebody',targetVersion:1,timestampMs:stamp+(finite(sync?.offsetMs)?sync.offsetMs:0),imageSize:{width:source.video.videoWidth,height:source.video.videoHeight},keypoints,timeUncertaintyMs:sync?.confirmed===true&&finite(sync.uncertaintyMs)?sync.uncertaintyMs:1000};
+  return {sourceId:source.id,inputMode:'wholebody',targetVersion:$('model-choice').value,timestampMs:stamp+(finite(sync?.offsetMs)?sync.offsetMs:0),imageSize:{width:source.video.videoWidth,height:source.video.videoHeight},keypoints,learned3D:source.decoded3D?{confidence:source.decoded3D.confidence,rootFit:source.decoded3D.rootFit}:null,timeUncertaintyMs:sync?.confirmed===true&&finite(sync.uncertaintyMs)?sync.uncertaintyMs:1000};
 }
 function poseFor(source){
   const o=source.observation,options={bodyHeightM:Number($('height').value),scaleConfirmed:$('height-confirm').checked,minScore:Number($('confidence').value),priorPose:source.stabilizer.priorPose,allowApproximateCalibration:false};
   const all=sources.filter(s=>s.observation&&Math.abs(s.observation.timestampMs-o.timestampMs)<=45).map(s=>s.observation);
-  const pose=cameraCalibration.length>=2?fusePose(all,cameraCalibration,{...options,timestampMs:o.timestampMs}):estimateMonocularPose(o,cameraCalibration.find(c=>c.id===source.id)||null,options);
-  pose.inputMode='wholebody';pose.sourceId=source.id;pose.targetVersion=1;return source.stabilizer.update(pose,{observation:o});
+  const camera=cameraCalibration.find(c=>c.id===source.id)||null;
+  const pose=cameraCalibration.length>=2?fusePose(all,cameraCalibration,{...options,timestampMs:o.timestampMs}):o.learned3D?estimateLearnedMonocularPose(o,camera,options):estimateMonocularPose(o,camera,options);
+  pose.inputMode='wholebody';pose.sourceId=source.id;pose.targetVersion=o.targetVersion;return source.stabilizer.update(pose,{observation:o});
 }
 function usableRoi(candidate,source,minSize){
   if(!candidate||candidate.confidence<.3)return null;
@@ -144,7 +165,17 @@ async function processFrame(source,token){
   const captured=source.frameCaptureAt||start;
   if(source.frame.width!==source.video.videoWidth||source.frame.height!==source.video.videoHeight){source.frame.width=source.video.videoWidth;source.frame.height=source.video.videoHeight;}
   source.frameContext.drawImage(source.video,0,0);
-  if(mode==='wholebody'){source.points=await runBody(source,roi);didInference=true;if(!running||generation!==token||!sources.includes(source))return;}
+  if(mode==='wholebody'){
+    if($('model-choice').value==='pose3d'){
+      // The body has its own model and cannot be blocked by a lost 2D student.
+      if(start-source.lastDetails>=200){const details=await runBody(source,roi);source.details=toCoco133(details,activeBody.coco133_indices||COCO59).map(p=>({...p,observedAtMs:stamp}));source.lastDetails=start;}
+      source.decoded3D=await runBody3D(source,roi);
+      const details=start-source.lastDetails<250?source.details:[];
+      source.rawKeypoints=mergePose3DKeypoints(details||[],source.decoded3D);
+      source.points=COCO59.map((id,index)=>({...source.rawKeypoints[id],id:index}));
+    }else{source.decoded3D=source.rawKeypoints=null;source.points=await runBody(source,roi);}
+    didInference=true;if(!running||generation!==token||!sources.includes(source))return;
+  }
   else{source.points=null;source.observation=null;}
   if((mode==='face'||mode==='wholebody'&&$('face-enabled').checked)&&start-source.lastFace>=100){
     const candidate=usableRoi(mode==='face'?{roi,confidence:1}:faceRoiFrom59(source.points),source,24);
@@ -166,7 +197,7 @@ async function processFrame(source,token){
   if(source===selected){
     faceReadout(performance.now()-source.lastFace<400?source.face:null);
     for(const side of ['left','right'])footReadout(side,performance.now()-source.lastFoot<600?source.feet[side]:null);
-    if(source.observation){lastPose=poseFor(source);view?.updatePose(lastPose);const state=lastPose.stability?.state;$('tracking-state').textContent=({tracking:'追跡中',partial:'見えている部位を追跡',lost:'観測なし'})[state]||'追跡中';$('pose-status').textContent=lastPose.metric?`位置 ${lastPose.root?.distanceStatus} · ${lastPose.diagnostics?.triangulatedJointCount||0} 点を多視点で計測`:state==='lost'?'観測が戻るまで姿勢を自然に戻します。':state==='partial'?'見えている関節を反映中。見失った部位は短く保持して戻します。':'単眼の相対姿勢を反映中。';bridge.sendPose(lastPose,{captureAgeMs:Math.max(0,performance.now()-captured),timeDomain:source.stream?'browser-camera-receipt':'recorded-media'});}
+    if(source.observation){lastPose=poseFor(source);view?.updatePose(lastPose);const state=lastPose.stability?.state;$('tracking-state').textContent=({tracking:'追跡中',partial:'部分追跡',lost:'観測なし'})[state]||'追跡中';$('pose-status').textContent=lastPose.metric?`位置 ${lastPose.root?.distanceStatus} · ${lastPose.diagnostics?.triangulatedJointCount||0} 点を多視点で計測`:lastPose.diagnostics?.method==='learned-xyz-and-perspective-root'?`3D身体 ${lastPose.diagnostics.learned3DJointCount} 点 · 前後移動 ${lastPose.previewRoot?.valid?'推定中':'未取得'} · ${lastPose.stability.acceptedPoints||0} 点受理` :state==='lost'?'観測なし':state==='partial'?'見えている関節を反映中':'2D相対姿勢';bridge.sendPose(lastPose,{captureAgeMs:Math.max(0,performance.now()-captured),timeDomain:source.stream?'browser-camera-receipt':'recorded-media'});}
     else{clearPose();$('pose-status').textContent=mode==='foot'?'足領域の見え方を分類中。絶対位置と足首回転は未観測です。':'顔領域から表情を読み取り中。';}
     $('measure-points').innerHTML=`${source.points?.filter(p=>p.score>=Number($('confidence').value)).length??'—'}<small> / 59</small>`;
   }
@@ -182,14 +213,14 @@ async function loop(token){
     if(source.lastMediaTime===source.video.currentTime){await new Promise(r=>setTimeout(r,8));continue;}
     source.lastMediaTime=source.video.currentTime;source.lastFrameAt=now;
     try{inFlight=processFrame(source,token);await inFlight;}catch(e){stop();fail(e);break;}finally{inFlight=null;}
-    next=now+1000/Number($('target-fps').value);
+    next=now+1000/Math.min($('model-choice').value==='pose3d'?15:60,Number($('target-fps').value));
     if(performance.now()-lastMetricsAt>=1000){const dt=(performance.now()-lastMetricsAt)/1000;$('measure-fps').innerHTML=`${(frameCounter/dt).toFixed(1)}<small> fps</small>`;$('measure-body').innerHTML=`${lastBodyMs?.toFixed(1)??'—'}<small> ms</small>`;$('measure-p95').innerHTML=`${percentile(timings,.95)?.toFixed(1)??'—'}<small> ms</small>`;frameCounter=0;lastMetricsAt=performance.now();}
   }
 }
 async function start(){
   if(!sources.length){notify('動画またはカメラを選択してください。');return;}
   stop();if(inFlight)await inFlight.catch(()=>{});if(!await prepareModels())return;running=true;const token=++generation;$('start').disabled=true;$('stop').disabled=false;$('status-dot').classList.add('on');$('top-status').textContent=`${actualBackend==='webgpu'?'WebGPU':'CPU'} · 推論中`;
-  await initView();view?.setPaused(false);for(const s of sources){s.stabilizer.reset();s.observation=null;s.lastMediaTime=-Infinity;await s.video.play().catch(()=>{});}frameCounter=0;lastMetricsAt=performance.now();notify('');void loop(token);
+  await initView();view?.setPaused(false);for(const s of sources){s.stabilizer.reset();s.observation=null;s.lastMediaTime=s.lastDetails=-Infinity;s.details=s.decoded3D=s.rawKeypoints=null;await s.video.play().catch(()=>{});}frameCounter=0;lastMetricsAt=performance.now();notify('');void loop(token);
 }
 function stop(){running=false;generation++;for(const s of sources)if(!s.stream)s.video.pause();$('start').disabled=loading;$('stop').disabled=true;$('status-dot').classList.remove('on');$('top-status').textContent='一時停止';bridge.stop();}
 async function initView(){if(view)return view;if(viewPromise)return viewPromise;viewPromise=(async()=>{const {createVRMView}=await import('./vrm-view.mjs');view=createVRMView({container:$('avatar-canvas'),onState:s=>$('avatar-status').textContent=s.hasVRM?`${s.fileName} · ${s.appliedBoneCount} ボーン反映`:'VRM未選択',onError:fail});if(lastPose)view.updatePose(lastPose);return view;})();try{return await viewPromise;}catch(e){viewPromise=null;throw e;}}

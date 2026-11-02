@@ -131,6 +131,7 @@ jobs:
           HF_HUB_DISABLE_PROGRESS_BARS: '1'
         run: |
           python -m pip install huggingface_hub==0.36.0
+          python ci/prepare_pose3d.py --output artifacts/pose3d
           python ci/publish_hf.py
       - name: Prepare deployable models and measured results
         run: node ci/package.mjs
@@ -139,7 +140,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install --yes --no-install-recommends ffmpeg
           npm install --ignore-scripts --no-audit --no-fund --prefix .cache/headless onnxruntime-node@1.22.0
-          node ci/headless-video.mjs --output dist/evidence/headless-video.json
+          node ci/headless-pose3d.mjs --output dist/evidence/headless-pose3d.json
       - name: Private video inference when an existing private fetch secret is configured
         env:
           PRIVATE_VIDEO_URL: ${{ secrets.PRIVATE_VIDEO_URL }}
@@ -155,6 +156,7 @@ jobs:
           name: compact-vrc-evaluation-${{ github.sha }}
           path: |
             dist/evidence/headless-video.json
+            dist/evidence/headless-pose3d.json
             artifacts/hf/publication.json
             artifacts/private-video-status.json
           if-no-files-found: warn

@@ -252,11 +252,59 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const useWorld = absoluteAllowed && camera && Array.isArray(camera.Rcw) && Array.isArray(camera.tcw);
   const cameraPositions = rays.map((r, i) => r ? mul(r, depths[i]) : null);
   const transform = p => useWorld ? cameraToWorld(p, camera) : [p[0] - rootCamera[0], -(p[1] - rootCamera[1]), p[2] - rootCamera[2]];
-  const joints = cameraPositions.map((p, id) => p ? { id, position: transform(p), imagePlanePosition: [p[0] - rootCamera[0], -(p[1] - rootCamera[1]), 0], score: clamp(points[id].score) * (modelDepth ? .65 : .4), source: points[id]?.derived && id >= 91 ? 'inferredFinger' : 'inferredMonocular', ageMs: 0, observedAtMs: observation?.timestampMs ?? 0, observable2D: true, modelRelativeZ: modelDepth && Number.isFinite(points[id]?.relativeZ ?? points[id]?.relativeZm), depthAmbiguous: !modelDepth } : missing(id));
+  // Detection confidence is not depth confidence. Multiplying by .4 here
+  // silently discarded accepted image observations at the retarget threshold.
+  const joints = cameraPositions.map((p, id) => p ? { id, position: transform(p), imagePlanePosition: [p[0] - rootCamera[0], -(p[1] - rootCamera[1]), 0], score: clamp(points[id].score), depthConfidence: modelDepth ? .65 : 0, source: points[id]?.derived && id >= 91 ? 'inferredFinger' : 'inferredMonocular', ageMs: 0, observedAtMs: observation?.timestampMs ?? 0, observable2D: true, modelRelativeZ: modelDepth && Number.isFinite(points[id]?.relativeZ ?? points[id]?.relativeZm), depthAmbiguous: !modelDepth } : missing(id));
   const pose = { timestampMs: observation?.timestampMs ?? 0, observationTimestampMs: observation?.timestampMs ?? 0, sourceId: observation?.sourceId, inputMode: observation?.inputMode, targetVersion: observation?.targetVersion, stability: observation?.stability, joints, cameraPositions, metric: absoluteAllowed, coordinateFrame: useWorld ? 'world' : 'root-relative', units: absoluteAllowed ? 'm' : bodyScaleInMetres ? 'm-relative-estimate' : 'body-height', worldCalibrationId: useWorld ? (camera.worldCalibrationId || 'configured-world') : null, diagnostics: { method: modelDepth ? 'model-relative-depth-with-scale-fit' : useDepthFit ? 'ray-constrained-anthropometric-fit' : 'image-plane-relative-pose', intrinsicsCalibrated: hasIntrinsics, scaleConfirmed: knownScale, bodyHeight: height, bodyScaleUnit: bodyScaleInMetres ? 'm' : 'body-height', modelRelativeDepthScale: bodyScaleInMetres ? 1 : 1 / 1.7, depthAnchored: explicitDepth, depthAnchorSource: explicitDepth ? 'providedCurrentMeasurement' : depthFit.priorOnly ? 'temporalPrior' : 'currentBoneFit', depthFitBoneCount: depthFit.boneCount, depthFitLoss: depthFit.fitLoss ?? null, depthAmbiguous: !modelDepth, monocularOrientationAmbiguous: true, scaleCueCount: depthGuesses.length, calibratedWorld: camera?.calibrated === true, observedJointCount: cameraPositions.filter(Boolean).length } };
   finishPose(pose);
   if (!absoluteAllowed) pose.root = { ...pose.root, position: null, valid: false, metric: false, distanceStatus: 'uncalibrated' };
   return pose;
+}
+
+/** Use a learned XYZ body directly. Preserve the separate 2D detail path;
+ * uncalibrated monocular root translation is a visual estimate, never a
+ * calibrated physical tracker. Neither body confidence nor XYZ is flattened. */
+export function estimateLearnedMonocularPose(observation, suppliedCamera = null, options = {}) {
+  const pose = estimateMonocularPose(observation, suppliedCamera, options);
+  const points = observation?.keypoints || [], threshold = options.minScore ?? .25;
+  for (let id = 0; id < pose.joints.length; id++) {
+    const point = points[id];
+    if (!finite3(point?.modelPosition) || point.observable === false || !(point.score >= threshold)) continue;
+    const [x, y, z] = point.modelPosition;
+    pose.joints[id] = { id, position: [x, -y, -z], imagePlanePosition: [x, -y, 0], score: clamp(point.score),
+      depthConfidence: point.depthConfidence ?? point.score, source: 'inferredMonocular', modelRelativeZ: true,
+      depthAmbiguous: false, ageMs: 0, observable2D: true, observedAtMs: observation.timestampMs };
+  }
+  // Detail landmarks retain their observed image-plane displacement, anchored
+  // to the newly estimated wrist. Their finger Z remains explicitly unknown.
+  for (const [wrist, base] of [[9, 91], [10, 112]]) {
+    const anchor = pose.joints[wrist], imageAnchor = points[wrist];
+    if (!finite3(anchor?.position) || !imageAnchor) continue;
+    const scale = observation.learned3D?.rootFit?.pixelsPerMetre;
+    const pixelsPerMetre = Number.isFinite(scale) && scale > 1 ? scale :
+      Math.max(observation.imageSize.width, observation.imageSize.height) / Math.max(1, observation.learned3D?.rootFit?.positionCamera?.[2] || 3);
+    for (let id = base; id < base + 21; id++) {
+      const p = points[id];
+      if (!visible(p, threshold) || p.observable === false) continue;
+      pose.joints[id] = { id, position: [anchor.position[0] + (p.x - imageAnchor.x) / pixelsPerMetre,
+        anchor.position[1] - (p.y - imageAnchor.y) / pixelsPerMetre, anchor.position[2]],
+        score: clamp(p.score), source: p.derived ? 'inferredFinger' : 'inferredMonocular',
+        imagePlanePosition: [anchor.position[0] + (p.x - imageAnchor.x) / pixelsPerMetre, anchor.position[1] - (p.y - imageAnchor.y) / pixelsPerMetre, 0],
+        modelRelativeZ: false, depthAmbiguous: true, observable2D: true, observedAtMs: p.observedAtMs ?? observation.timestampMs,
+        ageMs: Math.max(0, observation.timestampMs - (p.observedAtMs ?? observation.timestampMs)) };
+    }
+  }
+  pose.metric = false; pose.coordinateFrame = 'root-relative'; pose.units = 'm-relative-estimate'; pose.worldCalibrationId = null;
+  const fit = observation.learned3D?.rootFit;
+  const valid = fit?.valid === true && finite3(fit.positionCamera);
+  pose.previewRoot = { valid, position: valid ? [fit.positionCamera[0], -fit.positionCamera[1], -fit.positionCamera[2]] : null,
+    metric: false, source: 'learnedMonocularPerspective', observedAtMs: observation.timestampMs,
+    reprojectionRmsPx: fit?.reprojectionRmsPx ?? null, calibratedIntrinsics: fit?.calibratedIntrinsics === true };
+  pose.diagnostics = { ...pose.diagnostics, method: 'learned-xyz-and-perspective-root', depthAmbiguous: false,
+    monocularOrientationAmbiguous: false, bodyHeight: options.bodyHeightM || 1.7,
+    learned3DJointCount: pose.joints.filter(j => j.modelRelativeZ).length,
+    rootTranslationEstimated: valid, absoluteDistanceGroundTruth: false };
+  return refreshPoseMetadata(pose);
 }
 
 /** Fuse time-aligned observations. An absent timestamp uncertainty is not zero. */

@@ -62,7 +62,9 @@ export class PoseStabilizer {
       const threshold = opts.minScore + (previous?.tracked ? 0 : opts.enterMargin);
       if (p.score < threshold) { mark(id, 'lowConfidence'); continue; }
       if (!imageValid || x < opts.borderPixels || y < opts.borderPixels || x > width - 1 - opts.borderPixels || y > height - 1 - opts.borderPixels) { mark(id, 'outsideImage'); continue; }
-      points[id] = { ...p, x, y, observable: true, observedAtMs: time, rawScore: p.score };
+      const observedAtMs = finite(p.observedAtMs) && p.observedAtMs <= time ? p.observedAtMs : time;
+      if (time - observedAtMs > 250) { mark(id, 'staleDetail'); continue; }
+      points[id] = { ...p, x, y, observable: true, observedAtMs, rawScore: p.score };
     }
     const current = id => points[id]?.observable !== false && point(points[id]) && points[id].score > 0;
     const initialScale = torsoScale(points);
@@ -74,7 +76,8 @@ export class PoseStabilizer {
       const torso = distance(shoulder, hip), sw = distance(xy(points[5]), xy(points[6])), hw = distance(xy(points[11]), xy(points[12]));
       const left = distance(xy(points[5]), xy(points[11])), right = distance(xy(points[6]), xy(points[12]));
       torsoValid = torso > Math.max(8, Math.min(width, height) * .035) && sw > 3 && hw > 3 && sw / torso < 2.4 && hw / torso < 1.7 && Math.max(left, right) / Math.max(1, Math.min(left, right)) < 2.8;
-      if (!torsoValid) for (const id of TORSO) mark(id, 'degenerateTorso');
+      // A dubious torso frame cannot erase an independently observed shoulder
+      // or hip (and all downstream limbs). Record orientation quality separately.
     }
     // The projected length may shrink during foreshortening; only collapse and
     // impossible extension are rejected. A learned minimum would reject turns.
@@ -145,7 +148,7 @@ export class PoseStabilizer {
       const rawPosition = j.position.slice();
       j.position = old ? mix(old.position, rawPosition, alpha) : rawPosition;
       if (vector(j.imagePlanePosition) && vector(old?.imagePlanePosition)) j.imagePlanePosition = mix(old.imagePlanePosition, j.imagePlanePosition, alpha);
-      j.observedAtMs = measuredAt; j.ageMs = Math.max(0, time - measuredAt); j.observable2D = true;
+      j.observedAtMs = finite(j.observedAtMs) ? Math.min(measuredAt, j.observedAtMs) : measuredAt; j.ageMs = Math.max(0, time - j.observedAtMs); j.observable2D = true;
       this.jointStates[id] = { rawPosition, position: j.position.slice(), imagePlanePosition: j.imagePlanePosition?.slice() || null, time };
     }
     for (const [a, b, ratio] of BODY_SEGMENTS) {
@@ -164,7 +167,8 @@ export class PoseStabilizer {
     const measuredRoot = [11, 12].every(id => ['measuredMultiView', 'estimatedMultiView'].includes(pose.joints[id]?.source));
     const anchoredDepth = pose.diagnostics?.depthAnchorSource === 'providedCurrentMeasurement';
     if (!torsoValid || (!measuredRoot && !anchoredDepth)) pose.root = { ...pose.root, valid: false, position: null, reason: !torsoValid ? 'torsoUnobserved' : 'monocularRootAmbiguous' };
-    pose.stability = { ...observation?.stability, observationTimestampMs: measuredAt, torsoValid, rejected3D, state: pose.joints.some(j => vector(j.position)) ? torsoValid ? 'tracking' : 'partial' : 'lost', monocularRootSuppressed: !measuredRoot && !anchoredDepth };
+    if (pose.previewRoot?.valid && ![11, 12].every(id => vector(pose.joints[id]?.position))) pose.previewRoot = { ...pose.previewRoot, valid: false, reason: 'hipsUnobserved' };
+    pose.stability = { ...observation?.stability, observationTimestampMs: measuredAt, torsoValid, rejected3D, state: pose.joints.some(j => vector(j.position)) ? torsoValid ? 'tracking' : 'partial' : 'lost', monocularRootSuppressed: !measuredRoot && !anchoredDepth, previewRootEstimated: pose.previewRoot?.valid === true };
     pose.diagnostics = { ...pose.diagnostics, stability: pose.stability, observedJointCount: pose.joints.filter(j => vector(j.position)).length };
     this.lastPose = pose; this.lastPoseTime = time;
     return pose;

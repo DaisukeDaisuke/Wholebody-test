@@ -481,5 +481,8 @@ async function main(options) {
   finally { console.warn = previousWarn; for (const session of sessions) try { await session.release(); } catch {} await rm(workspace, { recursive: true, force: true }); }
 }
 
-try { await main(argumentsFor(process.argv.slice(2))); }
-catch (error) { console.error(JSON.stringify({ status: 'failed', stage: error.evaluationStage || 'initialization', errorCode: error.safeCode || 'headlessEvaluationFailed', privatePathsLogged: false, mediaOutput: false })); process.exitCode = 1; }
+export { PUBLIC_VIDEO, PUBLIC_VRM, REFERENCE_133, modelBytes, publicFixture, probeVideo, decodedFrames, rgbCropTensor, fetchPublic };
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try { await main(argumentsFor(process.argv.slice(2))); }
+  catch (error) { console.error(JSON.stringify({ status: 'failed', stage: error.evaluationStage || 'initialization', errorCode: error.safeCode || 'headlessEvaluationFailed', privatePathsLogged: false, mediaOutput: false })); process.exitCode = 1; }
+}
