@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { TapirTracker } from '../dist/tapir-tracker.mjs';
+import { decodeWasmPayload } from '../dist/wasm-loader.mjs';
 
 if (process.env.GITHUB_ACTIONS !== 'true') throw new Error('Run the shipped-tracker integration in GitHub Actions only.');
 const argument = (name, fallback) => { const index = process.argv.indexOf(name); return index < 0 ? fallback : process.argv[index + 1]; };
@@ -48,7 +49,13 @@ try {
   stage('runtime-import');
   const ort = await import(new URL('ort.webgpu.min.mjs', vendor).href);
   ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = vendor.href;
-  ort.env.wasm.wasmBinary = new Uint8Array(await readFile(new URL('ort-wasm-simd-threaded.asyncify.wasm', vendor)));
+  const runtimeManifest = JSON.parse(await readFile(new URL('runtime-manifest.json', vendor), 'utf8'));
+  const wasmRecord = runtimeManifest.records.find(record => record.file === 'ort-wasm-simd-threaded.asyncify.wasm.gz');
+  requireCondition(runtimeManifest.ortWebVersion === '1.31.1' && wasmRecord?.encoding === 'gzip', 'Use the shipped gzip runtime for the actual tracker integration.');
+  ort.env.wasm.wasmBinary = await decodeWasmPayload(new Uint8Array(await readFile(new URL(wasmRecord.file, vendor))), wasmRecord);
+  report.runtime = { ortWebVersion: runtimeManifest.ortWebVersion, file: wasmRecord.file, encoding: wasmRecord.encoding,
+    compressedBytes: wasmRecord.bytes, compressedSha256: wasmRecord.sha256, decodedBytes: wasmRecord.decodedBytes, decodedSha256: wasmRecord.decodedSha256 };
+  report.checks.push({ name: 'shipped-gzip-wasm-restores-verified-runtime-bytes', passed: true });
   ort.env.logLevel = 'warning';
   globalThis.fetch = async () => { networkAttempts++; throw new Error('Network requests are disabled during the public tracker integration.'); };
   let createIndex = 0;

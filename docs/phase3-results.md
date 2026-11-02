@@ -3,6 +3,7 @@
 アプリ本体の公開入力での実推論は[Actions run 41386321154](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41386321154)で通過した。ソースは `d57985ece9f0556c1cbf8b9ad4deeae4e9643515`。Sitesの `dist/delivery.json` は配布物の由来を記録する。以後のrunのJSONは配布アプリのActions実測欄へ同梱する。
 BootsTAPIRは[変換run 41384892970](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41384892970)で3つのONNXへ変換した。Google公式実装との参照比較と固定画像の前後処理比較を通過した重みを、[公開run 41385853154](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41385853154)から[Foot-Point-Tracker-onnx](https://huggingface.co/RabbitDaisuke/Foot-Point-Tracker-onnx)へ公開した。ライセンスはApache-2.0。
 manifestの固定revisionは `ac66a7e5df280cb9986a417de79bc2c1b997c233`、重みの固定revisionは `4751f96d5413e48c05e63da133a5b4b1e6074c12`。モデルはencoder 115,330,894 bytes、query 2,291 bytes、step 105,305,753 bytes。アプリは各ファイルのSHA-256を検査する。
+Sitesの1ファイル25 MiB上限に合わせ、28,747,738 bytesのORT 1.31.1 Asyncify WASMはgzipで配布する。圧縮状態で届いた場合は圧縮ファイルと復元後のbytes・SHA-256を照合し、HTTP層ですでに展開された場合も元WASMのbytes・SHA-256を照合する。復元した同一WASMを `env.wasm.wasmBinary` に渡すため、モデル・演算・数値精度は変えない。Sites版とローカル配布版は同じ形式を使う。
 ## 実モデルと変換の確認
 RTMW3D-XとFOCUSは公開のCOCO画像785を実際にWASMで処理した。全身133点・相対深度・足候補を出荷する復号処理へ通した。人物枠は以前のYOLOX出力で、正解BBoxではない。この単一画像のデータ経路確認から、全身3Dの精度や足候補の正答率は主張しない。
 BootsTAPIRの出荷コードは[run 41385890985](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41385890985)で、実ONNX Runtime Web/WASMの3グラフを使って初期化・再帰更新・2入力の状態分離・reset・disposeを実行した。公開静止画の同じRGBを時刻だけ変えて入力し、公式参照との座標最大差は `0.0000763 px`、可視判定の不一致は0だった。これは変換・実装の一致度で、実動画の位置誤差ではない。
@@ -28,5 +29,6 @@ BootsTAPIRの出荷コードは[run 41385890985](https://github.com/DaisukeDaisu
 - [Google TAPnet / BootsTAPIR](https://github.com/google-deepmind/tapnet)
 - [Google公式PyTorch重み](https://huggingface.co/google/tapnet)
 - [ONNX Runtime WebGPUのGPUバッファ](https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html)
+- [ONNX RuntimeのWASMバッファ指定](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebAssemblyFlags.html#wasmbinary)
 - [ORT WebGPUの5次元Einsum修正](https://github.com/microsoft/onnxruntime/pull/27779)
 - [three-vrm API](https://pixiv.github.io/three-vrm/docs/)

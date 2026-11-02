@@ -1,5 +1,6 @@
 /** Only public fixed Actions inputs are reachable from this isolated Worker. */
 import { TapirTracker } from '/dist/tapir-tracker.mjs';
+import { loadWasmBinary } from '/dist/wasm-loader.mjs';
 import * as ort from '/vendor/ort.webgpu.min.mjs';
 
 const requireCondition = (condition, message) => { if (!condition) throw new Error(message); };
@@ -51,7 +52,14 @@ self.addEventListener('message', async event => {
       isFallbackAdapter: adapter.isFallbackAdapter ?? info.isFallbackAdapter ?? null,
       features: Array.from(adapter.features).sort(), limits: Object.fromEntries(['maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup'].map(key => [key, adapter.limits[key]])) };
     requireCondition(/swiftshader/i.test([info.architecture, info.description, info.device].join(' ')), 'This compatibility check requires the explicitly selected SwiftShader adapter.');
-    ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = new URL('/vendor/', self.location.href).href;
+    stage('load-compressed-wasm');
+    const wasm = await loadWasmBinary(new URL('/vendor/', self.location.href));
+    requireCondition(wasm.record.encoding === 'gzip' && wasm.record.decodedBytes === 28747738 && wasm.record.decodedSha256 === 'ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec', 'The browser restored a different runtime from the validated bytes.');
+    requireCondition(wasm.delivery?.compressedHashVerified === true && wasm.delivery?.decodedHashVerified === true, 'The isolated compressed asset did not pass both transport and decoded-byte checks.');
+    report.wasmTransport = { file: wasm.record.file, encoding: wasm.record.encoding, compressedBytes: wasm.record.bytes,
+      compressedSha256: wasm.record.sha256, decodedBytes: wasm.binary.byteLength, decodedSha256: wasm.record.decodedSha256, delivery: wasm.delivery };
+    report.checks.push({ name: 'browser-gzip-loader-restores-validated-wasm', passed: true });
+    ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = new URL('/vendor/', self.location.href).href; ort.env.wasm.wasmBinary = wasm.binary;
     ort.env.webgpu.adapter = adapter; ort.env.logLevel = 'warning';
     let index = 0;
     const tracedOrt = { Tensor: ort.Tensor, InferenceSession: { create: async (bytes, options) => {

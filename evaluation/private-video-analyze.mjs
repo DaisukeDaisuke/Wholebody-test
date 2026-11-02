@@ -12,6 +12,7 @@ import {FootTracker,FOOT_TRACK_POLICY} from '../dist/foot-track.mjs';
 import {TapirTracker,seedFootSquareRoi,TAPIR_SEED_ROI_POLICY} from '../dist/tapir-tracker.mjs';
 import {footTransform,footTensor,decodeFootCandidates} from '../dist/foot-codec.mjs';
 import {MODEL_SPECS} from '../dist/models.mjs';
+import {decodeWasmPayload} from '../dist/wasm-loader.mjs';
 
 const args={};for(let i=2;i<process.argv.length;i++){
   const key=process.argv[i];if(!key.startsWith('--'))throw new Error('Use named command-line arguments.');
@@ -42,25 +43,33 @@ if(!args.flowOnly||args['tapir-manifest']){
   let runtimeManifest=null,runtimeManifestHash=null;
   try{const raw=await readFile(resolve(runtime,'runtime-manifest.json'));runtimeManifest=JSON.parse(raw);runtimeManifestHash=createHash('sha256').update(raw).digest('hex');}
   catch(error){if(error.code!=='ENOENT')throw error;}
-  let wasmFile='ort-wasm-simd-threaded.jsep.wasm',wasmBytes;
+  let wasmFile='ort-wasm-simd-threaded.jsep.wasm',wasmBytes,wasmDelivery;
   if(runtimeManifest){
     if(runtimeManifest.schemaVersion!==1||!Array.isArray(runtimeManifest.records))throw new Error('Unsupported local runtime manifest.');
-    const candidates=runtimeManifest.records.filter(record=>/^ort-wasm-simd-threaded\.(jsep|asyncify)\.wasm$/.test(record.file));
+    const candidates=runtimeManifest.records.filter(record=>/^ort-wasm-simd-threaded\.(jsep|asyncify)\.wasm(?:\.gz)?$/.test(record.file));
     if(candidates.length!==1)throw new Error('The runtime manifest must select exactly one JSEP or Asyncify WASM binary.');
-    wasmFile=candidates[0].file;
+    const wasmRecord=candidates[0];
+    wasmFile=wasmRecord.encoding==='gzip'?wasmRecord.decodedFile:wasmRecord.file;
+    if(!/^ort-wasm-simd-threaded\.(jsep|asyncify)\.wasm$/.test(wasmFile)||wasmRecord.file!==(wasmRecord.encoding==='gzip'?wasmFile+'.gz':wasmFile))throw new Error('Unexpected encoded runtime filename.');
     // Verify the JavaScript bundle, its paired loader, and the exact WASM binary
     // before executing local runtime code. Do not combine different ORT builds.
-    for(const file of ['ort.webgpu.min.mjs',wasmFile.replace(/\.wasm$/,'.mjs'),wasmFile]){
+    for(const file of ['ort.webgpu.min.mjs',wasmFile.replace(/\.wasm$/,'.mjs')]){
       const matches=runtimeManifest.records.filter(record=>record.file===file);
       if(matches.length!==1||!/^[a-f0-9]{64}$/i.test(matches[0].sha256||''))throw new Error('A unique runtime checksum is required for '+file);
       const bytes=new Uint8Array(await readFile(resolve(runtime,file))),record=matches[0];
       if(record.bytes!==bytes.byteLength||createHash('sha256').update(bytes).digest('hex')!==record.sha256.toLowerCase())throw new Error('Local runtime checksum mismatch: '+file);
-      if(file===wasmFile)wasmBytes=bytes;
     }
+    const payload=new Uint8Array(await readFile(resolve(runtime,wasmRecord.file))),payloadHash=createHash('sha256').update(payload).digest('hex');
+    if(wasmRecord.bytes!==payload.byteLength||payloadHash!==wasmRecord.sha256)throw new Error('Local runtime payload checksum mismatch: '+wasmRecord.file);
+    // Use the same transport and decoded-byte checks as the shipped browser.
+    // Decompression changes storage only; the exact original WASM is retained.
+    wasmBytes=await decodeWasmPayload(payload,wasmRecord);
+    wasmDelivery={file:wasmRecord.file,bytes:payload.byteLength,sha256:payloadHash,encoding:wasmRecord.encoding||'identity',payloadHashVerified:true,decodedHashVerified:true};
   }else{
     // Compatibility for the explicitly supplied legacy local 1.22 package.
     // New Asyncify packages require a manifest rather than guessing filenames.
     wasmBytes=new Uint8Array(await readFile(resolve(runtime,wasmFile)));
+    wasmDelivery={file:wasmFile,bytes:wasmBytes.byteLength,sha256:createHash('sha256').update(wasmBytes).digest('hex'),encoding:'identity',payloadHashVerified:false,decodedHashVerified:false};
   }
   globalThis.fetch=async()=>{throw new Error('Network is disabled during private video analysis.');};
   ort=await import(pathToFileURL(resolve(runtime,'ort.webgpu.min.mjs')).href);
@@ -69,7 +78,7 @@ if(!args.flowOnly||args['tapir-manifest']){
   if(!runtimeManifest&&actualVersion!=='1.22.0')throw new Error('A runtime manifest is required for packages other than the legacy 1.22.0 JSEP runtime.');
   ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths=pathToFileURL(runtime+sep).href;
   ort.env.wasm.wasmBinary=wasmBytes;
-  runtimeInfo={ortWebVersion:actualVersion,wasmFile,wasmSha256:createHash('sha256').update(wasmBytes).digest('hex'),manifestSha256:runtimeManifestHash,manifestIntegrityChecked:!!runtimeManifest};
+  runtimeInfo={ortWebVersion:actualVersion,wasmFile,wasmBytes:wasmBytes.byteLength,wasmSha256:createHash('sha256').update(wasmBytes).digest('hex'),wasmDelivery,manifestSha256:runtimeManifestHash,manifestIntegrityChecked:!!runtimeManifest};
   if(!args.flowOnly){
     if(!args.model)throw new Error('Provide a local --model for the FOCUS comparison, or use --flow-only.');
     const model=new Uint8Array(await readFile(resolve(args.model)));modelHash=createHash('sha256').update(model).digest('hex');

@@ -2,7 +2,7 @@ name: Public WebGPU causal-tracker compatibility
 on:
   push:
     branches: [main, phase3-20261102-4fc7ff60]
-    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'evaluation/package-runtime.mjs', 'evaluation/prepare-tapir-ci.py', 'evaluation/public-fixture-requirements.txt', 'evaluation/fixtures/tapir-public-reference.json', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', 'dist/tapir-models.mjs', '.github/workflows/phase3-webgpu.yml']
+    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'evaluation/package-runtime.mjs', 'evaluation/prepare-tapir-ci.py', 'evaluation/public-fixture-requirements.txt', 'evaluation/fixtures/tapir-public-reference.json', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', 'dist/tapir-models.mjs', 'dist/wasm-loader.mjs', '.github/workflows/phase3-webgpu.yml']
   workflow_dispatch:
 permissions:
   contents: read

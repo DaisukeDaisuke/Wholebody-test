@@ -25,22 +25,25 @@ const report = { schemaVersion: 1, passed: false, status: 'started', gitCommit: 
     '--disable-background-networking', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'],
   references: ['https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md',
     'https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/using-gpu-hardware-in-headless-chrome.md', 'https://playwright.dev/docs/browsers#chromium-new-headless-mode'],
-  console: [], blockedExternalRequests: [], localRequests: 0 };
+  console: [], blockedExternalRequests: [], localRequests: 0, rawWasmRequests: 0, compressedWasmRequests: 0 };
 let browser = null, server = null, caught = null;
 try {
   requireCondition(report.playwrightVersion === '1.56.1', 'The Playwright version differs from the declared dependency.');
   const runtimeManifest = JSON.parse(await readFile(join(runtime, 'runtime-manifest.json'), 'utf8'));
   requireCondition(runtimeManifest.ortWebVersion === report.runtimeVersion && runtimeManifest.gitCommit === process.env.GITHUB_SHA, 'The WebGPU runtime was not packaged by this candidate commit.');
-  const runtimeFiles = ['ort.webgpu.min.mjs', 'ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm'];
+  const runtimeFiles = ['ort.webgpu.min.mjs', 'ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm.gz'];
   report.runtime = [];
   for (const name of runtimeFiles) {
     const record = runtimeManifest.records.find(value => value.file === name), bytes = await readFile(join(runtime, name));
-    requireCondition(record?.url === `https://cdn.jsdelivr.net/npm/onnxruntime-web@${report.runtimeVersion}/dist/${name}` && bytes.byteLength === record.bytes && sha256(bytes) === record.sha256, 'Candidate ORT runtime hash mismatch: ' + name);
-    report.runtime.push({ file: name, bytes: record.bytes, sha256: record.sha256 });
+    const upstreamFile = name.endsWith('.gz') ? 'ort-wasm-simd-threaded.asyncify.wasm' : name;
+    requireCondition(record?.url === `https://cdn.jsdelivr.net/npm/onnxruntime-web@${report.runtimeVersion}/dist/${upstreamFile}` && bytes.byteLength === record.bytes && sha256(bytes) === record.sha256 && bytes.byteLength <= 26214400, 'Candidate ORT runtime hash or static-size mismatch: ' + name);
+    if(name.endsWith('.gz')) requireCondition(record.encoding === 'gzip' && record.decodedFile === upstreamFile && record.decodedBytes === 28747738 && record.decodedSha256 === 'ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec', 'The compressed payload does not identify the already validated WASM.');
+    report.runtime.push({ file: name, bytes: record.bytes, sha256: record.sha256, encoding: record.encoding, decodedBytes: record.decodedBytes, decodedSha256: record.decodedSha256 });
   }
   const routes = new Map([
     ['/entry.mjs', join(root, 'evaluation/webgpu-entry.mjs')], ['/worker.mjs', join(root, 'evaluation/webgpu-worker.mjs')],
     ['/dist/tapir-tracker.mjs', join(root, 'dist/tapir-tracker.mjs')], ['/dist/tapir-codec.mjs', join(root, 'dist/tapir-codec.mjs')],
+    ['/dist/wasm-loader.mjs', join(root, 'dist/wasm-loader.mjs')], ['/vendor/runtime-manifest.json', join(runtime, 'runtime-manifest.json')],
     ['/models/tapir-models.json', join(models, 'tapir-models.json')], ['/fixtures/fixture.json', join(fixtures, 'fixture.json')], ['/fixtures/public-rgb.u8', join(fixtures, 'public-rgb.u8')],
     ...runtimeFiles.map(name => ['/vendor/' + name, join(runtime, name)]),
     ...['encoder', 'query', 'step'].map(id => { const name = `causal-bootstapir-${id}-256-q3-fp32.onnx`; return ['/models/' + name, join(models, name)]; })
@@ -53,6 +56,8 @@ try {
       response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
       if (request.method !== 'GET' || request.headers.host !== `127.0.0.1:${server.address().port}`) { response.writeHead(403); response.end(); return; }
       report.localRequests++;
+      if(url.pathname.endsWith('.wasm')) report.rawWasmRequests++;
+      if(url.pathname.endsWith('.wasm.gz')) report.compressedWasmRequests++;
       if (url.pathname === '/') { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end('<!doctype html><meta charset="utf-8"><title>Public WebGPU compatibility</title><script type="module" src="/entry.mjs"></script>'); return; }
       const path = routes.get(url.pathname);
       if (!path) { response.writeHead(404); response.end(); return; }
@@ -83,7 +88,7 @@ try {
     new Promise((_, reject) => { const timeout = setTimeout(() => reject(new Error('SwiftShader compatibility run exceeded 12 minutes.')), 12 * 60_000); timeout.unref(); })
   ]);
   report.worker = outcome;
-  requireCondition(outcome?.passed === true && outcome.softwareOnly === true && outcome.physicalGpuMeasured === false && report.blockedExternalRequests.length === 0, 'The isolated WebGPU compatibility run did not pass: ' + (outcome?.error?.message || outcome?.stage || 'no result'));
+  requireCondition(outcome?.passed === true && outcome.softwareOnly === true && outcome.physicalGpuMeasured === false && report.blockedExternalRequests.length === 0 && report.rawWasmRequests === 0 && report.compressedWasmRequests > 0, 'The isolated WebGPU compatibility run did not pass: ' + (outcome?.error?.message || outcome?.stage || 'no result'));
   report.passed = true; report.status = 'measured';
 } catch (error) {
   caught = error; report.status = 'failed'; report.error = { type: error?.name || typeof error, message: String(error?.message || error), stack: error?.stack || null };

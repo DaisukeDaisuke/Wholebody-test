@@ -5,20 +5,21 @@ import {footTransform,footTensor,decodeFootCandidates,associateFeet,applyFootAss
 import {FootTracker} from './foot-track.mjs';
 import {TapirTracker,seedFootSquareRoi,TAPIR_SEED_ROI_POLICY} from './tapir-tracker.mjs';
 import {TAPIR_REPOSITORY,TAPIR_MANIFEST_URL} from './tapir-models.mjs';
+import {loadWasmBinary} from './wasm-loader.mjs';
 export {BODY_MODELS} from './models.mjs';
 export {BODY_EDGES,HAND_EDGES,FOOT_EDGES} from './pose-codec.mjs';
 
-const ORT_BASE='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
 const CACHE_NAME='wholebody-phase2-models-v1';
 let runtimePromise;
-async function loadRuntime(offline) {
+async function loadRuntime(offline,signal) {
   if (!runtimePromise) runtimePromise=(async()=>{
-    let ort;
-    try {ort=await import('./vendor/ort.webgpu.min.mjs');ort.env.wasm.wasmPaths=new URL('./vendor/',import.meta.url).href;}
-    catch(error) {if(offline&&!navigator.serviceWorker?.controller)throw new Error('先にオンラインでオフライン準備を行ってください。');ort=await import(ORT_BASE+'ort.webgpu.min.mjs');ort.env.wasm.wasmPaths=ORT_BASE;}
+    const vendor=new URL('./vendor/',import.meta.url),wasm=await loadWasmBinary(vendor,{offline,signal});
+    const ort=await import('./vendor/ort.webgpu.min.mjs');
+    ort.env.wasm.wasmPaths=vendor.href;
+    ort.env.wasm.wasmBinary=wasm.binary;
     ort.env.wasm.numThreads=1;
     ort.env.wasm.proxy=false;
-    return ort;
+    return {ort,delivery:{...wasm.delivery,ortWebVersion:wasm.manifest.ortWebVersion}};
   })().catch(e=>{runtimePromise=null;throw e;});
   return runtimePromise;
 }
@@ -61,7 +62,8 @@ export class PoseEngine {
     if(!['bootstapir','image-flow'].includes(footTrackingMethod))throw new Error('足の追跡方式を選択してください。');
     this.footTrackingMethod=footTrackingMethod;
     if(backend==='webgpu'&&!navigator.gpu)throw new Error('この推論画面にはWebGPU対応のPCブラウザが必要です。WASMは比較用として明示的に選択できます。');
-    this.notify('runtime',null,'推論ランタイムを読み込み');this.ort=await loadRuntime(offline);
+    this.notify('runtime',null,'推論ランタイムを読み込み');
+    const runtime=await loadRuntime(offline,this.abort.signal);this.ort=runtime.ort;this.runtimeDelivery=runtime.delivery;
     if(bodyEnabled)await this.loadModel(bodyModel);
     if(bodyEnabled&&personDetection)await this.loadModel('person-yolox-tiny-416');
     if(bodyEnabled&&handRefinement)await this.loadModel('hand5');
@@ -218,7 +220,7 @@ export class PoseEngine {
       bbox:trackingBox||[0,0,image.width,image.height],...result,diagnostics:{...result.diagnostics,manualSeedApplied,regionPolicy},inputMode:'feet',refinements:[],
       personDetection:{enabled:false,detected:null,selection:'foot-only',selectedBox:trackingBox,candidateCount:0},
       modelId,modelHash:learned?null:spec.actualHash,modelHashes:learned?Object.fromEntries(this.tapirMaster.manifest.models.map(model=>[model.id,model.sha256])):null,
-      backend:this.backend,footTrackingMethod:this.footTrackingMethod,scoreKind:learned?'uncalibratedLearnedVisibility':'uncalibratedModelAndFlowQuality',
+      backend:this.backend,runtimeDelivery:this.runtimeDelivery,footTrackingMethod:this.footTrackingMethod,scoreKind:learned?'uncalibratedLearnedVisibility':'uncalibratedModelAndFlowQuality',
       timings:{...this.frameTiming,detectorMs:0,bodyMs:0,handsMs:0,feetMs:performance.now()-started,neuralFrame:this.frameTiming.modelRuns>0,totalMs:performance.now()-started}};
   }
   trackedBox(sourceId,width,height,roi,timestampMs){
@@ -247,7 +249,7 @@ export class PoseEngine {
       const image=this.readFrame(source);this.frameTiming.preprocessMs=performance.now()-started;
       if(mode==='feet')return await this.estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed,frameMediaTimeMs},started);
       const detectorStart=performance.now(),{bbox,personDetection}=await this.selectPersonBox(sourceId,image,roi,timestampMs),detectorMs=performance.now()-detectorStart;
-      if(!bbox)return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox:[0,0,image.width,image.height],keypoints:Array.from({length:133},(_,id)=>({id,x:0,y:0,score:0,rawScore:0,observable:false,source:'missing'})),refinements:[],personDetection,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{...this.frameTiming,neuralFrame:this.frameTiming.modelRuns>0,detectorMs,bodyMs:0,handsMs:0,feetMs:0,totalMs:performance.now()-started},depthKind:'none'};
+      if(!bbox)return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox:[0,0,image.width,image.height],keypoints:Array.from({length:133},(_,id)=>({id,x:0,y:0,score:0,rawScore:0,observable:false,source:'missing'})),refinements:[],personDetection,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,runtimeDelivery:this.runtimeDelivery,timings:{...this.frameTiming,neuralFrame:this.frameTiming.modelRuns>0,detectorMs,bodyMs:0,handsMs:0,feetMs:0,totalMs:performance.now()-started},depthKind:'none'};
       const bodyStart=performance.now();
       const points=await this.run(this.bodyId,image,bbox),bodyMs=performance.now()-bodyStart;
       const handsStart=performance.now(),refinements=[];
@@ -265,7 +267,7 @@ export class PoseEngine {
       for(const point of points){point.observable=point.observable&&point.x>=0&&point.y>=0&&point.x<image.width&&point.y<image.height;}
       this.updateTracker(sourceId,points,image,timestampMs);
       if(this.trackers.has(sourceId))this.trackers.get(sourceId).candidateCount=personDetection.candidateCount;
-      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,footRefinements,personDetection,inputMode:'wholebody',scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{...this.frameTiming,neuralFrame:true,detectorMs,bodyMs,handsMs,feetMs,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
+      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,footRefinements,personDetection,inputMode:'wholebody',scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,runtimeDelivery:this.runtimeDelivery,timings:{...this.frameTiming,neuralFrame:true,detectorMs,bodyMs,handsMs,feetMs,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
     }finally{this.busy=false;}
   }
   async dispose(){this.abort.abort();for(const tracker of this.footTrackers.values())tracker.reset();await this.tapirMaster?.dispose();this.tapirMaster=null;for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();this.footTrackers.clear();this.seedVersions.clear();this.footDetectionTimes.clear();this.manualFootSources.clear();}

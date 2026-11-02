@@ -55,7 +55,7 @@ CPUでのモデル実行時間はGPUやWebGPUの速度ではない。小標本�
 BootsTAPIRの3グラフは[Foot-Point-Tracker-onnx](https://huggingface.co/RabbitDaisuke/Foot-Point-Tracker-onnx)へActionsから公開する。Google公式コードと元重みはApache-2.0で、アプリはmanifest・重みのrevisionとSHA-256を固定する。初期3点の意味付け、再帰状態、公式参照との比較は[フェーズ3の測定範囲](docs/phase3-results.md)に記載する。
 Actionsが公式ONNXを無変換で取得し、SHA-256と入出力仕様を記録する。Hugging FaceのRabbitDaisuke/Wholebody-Refinement-onnxへアップロードするには、対象リポジトリへのwrite権限を持つHF_TOKENをGitHub Actionsのsecretに設定する。HUGGINGFACE_TOKEN、HUGGINGFACE_HUB_TOKENにも対応する。
 人物検出器は同じApache-2.0リポジトリの`person/`へ配置する。FOCUSは元の学習済み重みを検証してONNXへ変換し、AGPL-3.0の`RabbitDaisuke/Foot-Refinement-onnx`へ配置する。変換jobにはアップロードtokenを渡さず、公開jobを分ける。アプリは公開済みrevisionとSHA-256を固定し、取得時に整合性を検査する。
-重みはHugging Faceへ配置する。足の変換結果を公開jobへ渡す一時成果物、実測結果、静的アプリのActions保存期限は7日とする。配布アプリの評価JSONと再現用コードはリポジトリとSites版に保存する。
+重みはHugging Faceへ配置する。フェーズ2のActions一時成果物は7日、フェーズ3の実測結果・静的アプリ・ローカル配布ZIPは14日保存する。配布アプリの評価JSONと再現用コードはリポジトリとSites版に保存する。
 ## 出典とライセンス
 アプリのオリジナルコードは既存リポジトリのUnlicenseに従う。MMPoseのモデルとコードはApache-2.0、FOCUSの学習済みYOLO由来モデルはAGPL-3.0、ONNX RuntimeはMIT。評価画像は各画像のライセンスに従い、公開する加工画像はCC BYの画像だけに限定する。
 モデルと技術の一次資料はdocs/model-research.mdに記載する。
