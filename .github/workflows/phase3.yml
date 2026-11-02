@@ -1,0 +1,61 @@
+name: Phase 3 real inference, VRM and local tracker bridge
+on:
+  push:
+    branches: [main, phase3-20261102-4fc7ff60]
+    paths: ['dist/**', 'server/**', 'build/**', 'evaluation/**', '.github/workflows/phase3.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wholebody-phase3-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  real-inference-and-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned runtime bundler without install scripts
+        run: npm install --prefix build --ignore-scripts --no-audit --no-fund
+      - name: Install pinned local bridge dependencies without install scripts
+        run: npm ci --prefix server --ignore-scripts --no-audit --no-fund
+      - name: Bundle VRM runtime and vendor ONNX Web WASM
+        run: node evaluation/package-runtime.mjs
+      - name: Parse the shipped modules
+        run: |
+          for file in dist/*.mjs dist/sw.js server/*.mjs evaluation/*.mjs; do node --check "$file"; done
+      - name: Exercise actual OSC packets, stale tracking and VRM retargeting
+        run: node server/bridge-ci.mjs --out evaluation/results/phase3-bridge-report.json
+      - name: Load a self-contained VRM and apply observed-pose bone rotations
+        run: node evaluation/vrm-ci.mjs
+      - name: Run the actual pinned RTMW3D-X and FOCUS models on a public reference image
+        run: node evaluation/phase3-real-model.mjs
+      - name: Prepare a local Node.js application package
+        run: |
+          mkdir -p release
+          zip -qr release/wholebody-phase3-local.zip dist server docs/phase3-usage.md docs/phase3-bridge.md LICENSE -x '*/.cache/*' '*.mp4' '*.mov' '*.vrm'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-results-${{ github.sha }}
+          path: |
+            evaluation/results/phase3-*.json
+            server/bridge-ci-report.json
+            build/package-lock.json
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wholebody-phase3-site-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wholebody-phase3-local-${{ github.sha }}
+          path: release/
+          retention-days: 14

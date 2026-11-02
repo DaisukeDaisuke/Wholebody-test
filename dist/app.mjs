@@ -122,26 +122,27 @@ async function initReceiver() {
   $('app-loading').hidden = true;
   $('receiver-app').hidden = false;
   const state = {
-    engine: null, engineModule: null, geometry: null, calibrationModule: null, tracker: null,
+    engine: null, engineModule: null, geometry: null, calibrationModule: null, retarget: null, tracker: null, avatar: null, bridge: null,
     running: false, loading: false, processing: false, generation: 0,
     initializing: true, preparingOffline: false, modeChanging: false, loadCanceled: false,
     sources: new Map(), observations: new Map(), cameras: [], fused: null,
-    records: [], totalFrames: 0, recentTimes: [], latencies: [], lastObservationAt: 0,
+    records: [], totalFrames: 0, recentTimes: [], neuralTimes: [], stageTimes: [], latencies: [], lastObservationAt: 0,
     lastFusedTimestamp: 0, lastMissingTick: 0, latestPoseTimeDomain: null, latestPoseUpdatedAtMs: null, sceneDirty: true,
-    selectedModel: null, backend: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
+    selectedModel: null, backend: null, loadedModes: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
     view: { yaw: .33, pitch: .17, zoom: 1, center: [0, 0, 0], extent: 1, initialized: false, metric: false }
   };
   let modulesPromise;
   const ensureModules = () => {
-    if (!modulesPromise) modulesPromise = Promise.all([import('./inference.mjs'), import('./geometry.mjs'), import('./calibration.mjs')]).then(([engineModule, geometry, calibrationModule]) => {
+    if (!modulesPromise) modulesPromise = Promise.all([import('./engine-client.mjs'), import('./geometry.mjs'), import('./calibration.mjs'), import('./retarget.mjs')]).then(([engineModule, geometry, calibrationModule, retarget]) => {
       state.engineModule = engineModule; state.geometry = geometry; state.calibrationModule = calibrationModule;
+      state.retarget = retarget;
       state.tracker = new geometry.TemporalPoseTracker(trackerOptions());
       const previous = $('model-select').value;
       const models = Array.isArray(engineModule.BODY_MODELS) ? engineModule.BODY_MODELS : Object.entries(engineModule.BODY_MODELS).map(([id, value]) => ({ id, ...value }));
       $('model-select').replaceChildren(...models.map((model) => {
         const option = document.createElement('option'); option.value = model.id; option.textContent = model.label || model.id; return option;
       }));
-      $('model-select').value = models.some((m) => m.id === previous) ? previous : models.some((m) => m.id === 'rtmw-l') ? 'rtmw-l' : models[0]?.id || '';
+      $('model-select').value = models.some((m) => m.id === previous) ? previous : models.some((m) => m.id === 'rtmw3d-x') ? 'rtmw3d-x' : models[0]?.id || '';
     }).catch((error) => { modulesPromise = null; throw error; });
     return modulesPromise;
   };
@@ -162,6 +163,7 @@ async function initReceiver() {
     $('person-detection').disabled = operation || state.running || state.processing;
     $('foot-refinement').disabled = operation || state.running || state.processing;
     $('hand-refinement').disabled = operation;
+    for(const source of state.sources.values())$(`source-${source.id}-mode`).disabled=operation||state.running||state.processing;
   }
   async function waitForInferenceIdle() {
     const started = performance.now();
@@ -193,8 +195,19 @@ async function initReceiver() {
       kind: null, epoch: 0, stream: null, peer: null, url: null, filename: null, fileIdentity: null,
       pending: null, pool: [], requestId: null, requestKind: null, roi: null, roiStart: null, draftRoi: null, targetVersion: 0, selection: null,
       boardPoints: [], frameCount: 0, lastCaptureTime: null, frameIntervals: [], lastPresentationAt: 0,
-      lastMediaTime: null, lastVideoMediaTimeMs: null, videoFrameIntervals: [], lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false };
+      lastMediaTime: null, lastVideoMediaTimeMs: null, videoFrameIntervals: [], presentedTimes: [], footSeed: null, footSeedPoints: [], seedSequence: 0,
+      lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false };
     state.sources.set(id, source);
+    const updateMode=()=>{$(`source-${id}-foot-controls`).hidden=$(`source-${id}-mode`).value!=='feet';};
+    $(`source-${id}-mode`).onchange=()=>{source.footSeed=null;updateMode();targetChanged(source);updateTargetState(source);};
+    updateMode();
+    $(`source-${id}-foot-seed`).onclick=()=>{
+      if(!source.video.videoWidth)return toast('先に映像を選択してください。',true);
+      if($(`source-${id}-mode`).value!=='feet')return toast('入力方式を「足だけ」に切り替えてください。',true);
+      source.video.pause();source.pending=null;source.selection='foot';source.footSeedPoints=[];source.screen.classList.add('picking');
+      $(`source-${id}-foot-seed-state`).textContent='停止した映像で、母趾の先 → 小趾の先 → 踵の中心をクリック';
+      drawOverlay(source);
+    };
     $(`source-${id}-file`).onchange = safe(async (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -262,6 +275,7 @@ async function initReceiver() {
     if (source.url) URL.revokeObjectURL(source.url);
     source.url = null; source.kind = null; source.pending = null; source.pool = []; source.lastObservation = null;
     source.roi = null; source.selection = null; source.roiStart = null; source.draftRoi = null; source.targetVersion = 0; source.boardPoints = [];
+    source.footSeed=null;source.footSeedPoints=[];source.presentedTimes=[];
     source.frameCount = 0; source.lastCaptureTime = null; source.frameIntervals = []; source.lastMediaTime = null;
     source.lastVideoMediaTimeMs = null; source.videoFrameIntervals = [];
     source.clock = null; source.audit = null; source.inviteLink = null; source.failed = false;
@@ -363,7 +377,8 @@ async function initReceiver() {
         source.lastVideoMediaTimeMs = source.video.seeking ? null : mediaMs;
       }
       if (metadata || source.lastMediaTime !== frame.mediaTime) {
-        source.lastPresentationAt = now; source.frameCount++;
+        source.lastPresentationAt = now; source.frameCount++;source.presentedTimes.push(now);
+        while(source.presentedTimes[0]<now-3000)source.presentedTimes.shift();
         source.lastMediaTime = frame.mediaTime;
         if (state.running) captureFrame(source, now, frame);
       }
@@ -406,7 +421,7 @@ async function initReceiver() {
 
   function captureFrame(source, now, metadata) {
     const { videoWidth: width, videoHeight: height, readyState } = source.video;
-    if (!width || !height || readyState < 2 || source.failed || source.selection === 'board') return;
+    if (!width || !height || readyState < 2 || source.failed || ['board','foot'].includes(source.selection)) return;
     let canvas = source.pending?.canvas || source.pool.pop();
     if (!canvas) canvas = document.createElement('canvas');
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
@@ -431,7 +446,8 @@ async function initReceiver() {
         if (!state.running || generation !== state.generation || source.epoch !== frame.epoch) continue;
         const targetVersion = source.targetVersion;
         const result = await state.engine.estimate(frame.canvas, { sourceId: source.id, timestampMs: frame.timestampMs,
-          roi: source.roi?.slice() || null, handRefinement: $('hand-refinement').checked, footRefinement: $('foot-refinement').checked });
+          roi: source.roi?.slice() || null, mode:$(`source-${source.id}-mode`).value,footSeed:source.footSeed,
+          handRefinement: $('hand-refinement').checked, footRefinement: $('foot-refinement').checked });
         if (generation !== state.generation || source.epoch !== frame.epoch) { state.engine.resetSource?.(source.id); continue; }
         if (source.targetVersion !== targetVersion) { state.engine.resetSource?.(source.id); continue; }
         if (result.personDetection?.targetReset === true) {
@@ -442,7 +458,7 @@ async function initReceiver() {
           $('coordinate-state').textContent = '相対ポーズ · 更新待ち';
         }
         const finishedAtMs = performance.now();
-        const observation = { ...result, sourceId: source.id, timestampMs: frame.timestampMs, timeUncertaintyMs: frame.timeUncertaintyMs,
+        const observation = { ...result, sourceId: source.id,targetVersion, timestampMs: frame.timestampMs, timeUncertaintyMs: frame.timeUncertaintyMs,
           timeDomain: frame.timeDomain, timeSource: frame.timeSource, uncertaintyBasis: frame.uncertaintyBasis,
           frameId: frame.frameId, mediaTimeMs: frame.mediaTimeMs, captureReceivedAtMs: frame.capturedAtMs,
           receiveTimeMs: frame.receiveTimeMs, rtpTimestamp: frame.rtpTimestamp, inferredAtMs: finishedAtMs,
@@ -452,7 +468,9 @@ async function initReceiver() {
         updateTargetState(source);
         state.totalFrames++; state.recentTimes.push(finishedAtMs);
         while (state.recentTimes[0] < finishedAtMs - 3000) state.recentTimes.shift();
-        if (Number.isFinite(result.timings?.totalMs)) state.latencies.push(result.timings.totalMs);
+        if(result.timings?.neuralFrame){state.neuralTimes.push(finishedAtMs);while(state.neuralTimes[0]<finishedAtMs-3000)state.neuralTimes.shift();}
+        state.stageTimes.push(result.timings||{});if(state.stageTimes.length>90)state.stageTimes.shift();
+        if (Number.isFinite(observation.localPipelineLatencyMs)) state.latencies.push(observation.localPipelineLatencyMs);
         if (state.latencies.length > 300) state.latencies.shift();
         state.lastObservationAt = finishedAtMs;
         drawOverlay(source);
@@ -493,12 +511,42 @@ async function initReceiver() {
     let candidates = Array.from(state.observations.values()).filter((item) => item.timeDomain === observation.timeDomain && Math.abs(item.timestampMs - observation.timestampMs) <= Math.max(150, tolerance * 3));
     const a = state.sources.get('a'); const b = state.sources.get('b');
     if (observation.timeDomain === 'media' && (!$('video-sync-confirmed').checked || (a.fileIdentity && a.fileIdentity === b.fileIdentity))) candidates = [observation];
-    const fused = state.geometry.fusePose(candidates, state.cameras, { ...fusionOptions(), timestampMs: observation.timestampMs });
-    state.fused = state.tracker.update(fused, observation.timestampMs);
+    const hasBody=candidates.some(item=>item.inputMode!=='feet');
+    if(!hasBody){
+      const fused=state.geometry.fusePose(candidates,state.cameras,{...fusionOptions(),timestampMs:observation.timestampMs});
+      state.fused=fused.diagnostics?.triangulatedJointCount>0?state.tracker.update(fused,observation.timestampMs):state.retarget.footObservationToPose(observation);
+    }else{
+      const fused = state.geometry.fusePose(candidates, state.cameras, { ...fusionOptions(), timestampMs: observation.timestampMs });
+      state.fused = state.tracker.update(fused, observation.timestampMs);
+    }
     state.latestPoseTimeDomain = observation.timeDomain; state.latestPoseUpdatedAtMs = performance.now();
     state.lastFusedTimestamp = observation.timestampMs;
     state.sceneDirty = true;
     updatePoseReadout();
+    publishPose();
+  }
+  function publishPose(){
+    state.avatar?.updatePose(state.fused,{sourceMode:'live'});
+    if(state.fused){
+      const now=performance.now();
+      state.bridge?.sendPose(state.fused,{captureAgeMs:state.latestPoseTimeDomain==='capture'?Math.max(0,now-state.fused.timestampMs):Math.max(0,now-(state.latestPoseUpdatedAtMs||now)),timeDomain:state.latestPoseTimeDomain||'unknown'});
+    }else state.bridge?.stop();
+  }
+  async function initPhase3Controls(){
+    const results=await Promise.allSettled([
+      import('./phase3-ui.mjs').then(async({createPhase3UI})=>{
+        state.avatar=await createPhase3UI({onError:error=>toast(error.message||String(error),true)});
+        if(state.fused)state.avatar.updatePose(state.fused,{sourceMode:'live'});
+      }).catch(error=>{$('vrm-status').textContent='VRM表示を初期化できません：'+(error.message||String(error));for(const id of ['vrm-file','vrm-demo-start'])if($(id))$(id).disabled=true;throw error;}),
+      import('./bridge-client.mjs').then(({BridgeClient})=>{
+        state.bridge=new BridgeClient({onStatus:status=>{$('bridge-status').textContent=typeof status==='string'?status:status.message||status.state||JSON.stringify(status);$('bridge-disconnect').disabled=!state.bridge?.connected;}});
+        $('bridge-connect').onclick=safe(()=>state.bridge.connect({url:$('bridge-url').value.trim(),token:$('bridge-token').value.trim()}));
+        $('bridge-disconnect').onclick=()=>state.bridge.disconnect();
+        $('bridge-calibrate').onclick=()=>$('bridge-calibration-file').click();
+        $('bridge-calibration-file').onchange=safe(async event=>{const config=await readJson(event.target.files?.[0]);await state.bridge.calibrate(config);toast('SteamVR座標校正をブリッジへ送信しました。');});
+      })
+    ]);
+    for(const result of results)if(result.status==='rejected')toast(result.reason?.message||String(result.reason),true);
   }
 
   function currentEdges() {
@@ -553,6 +601,10 @@ async function initReceiver() {
       ctx.beginPath(); source.boardPoints.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
       if (source.boardPoints.length === 4) ctx.closePath(); ctx.stroke();
     }
+    if(source.selection==='foot'){
+      ctx.fillStyle='#f6ce88';ctx.font=`${16*scale}px sans-serif`;
+      source.footSeedPoints.forEach(([x,y],i)=>{ctx.beginPath();ctx.arc(x,y,6*scale,0,Math.PI*2);ctx.fill();ctx.fillText(String(i+1),x+9*scale,y-9*scale);});
+    }
   }
 
   function sourcePoint(source, event) {
@@ -566,6 +618,7 @@ async function initReceiver() {
     const detection = source.lastObservation?.personDetection;
     let message;
     if (!ready) message = '映像を選んでから人物を指定';
+    else if ($(`source-${source.id}-mode`).value==='feet') message=source.lastObservation?.footTracks?.length?'足の画像追跡 · 全身・奥行きは未観測':'足だけを追跡 · 未検出なら3点を指定';
     else if (source.selection === 'roi') message = '追う人の範囲をドラッグ';
     else if (source.roi) message = '手動指定：この枠の人物を追跡';
     else if (!$('person-detection').checked || detection?.selection === 'full-frame') message = '未指定：全画面から推定';
@@ -576,7 +629,7 @@ async function initReceiver() {
     else message = '未指定：最大の人物を自動選択';
     label.textContent = `${prefix}：${message}`;
     label.classList.toggle('target-selected', Boolean(source.roi));
-    $(`source-${source.id}-roi`).textContent = source.selection === 'roi' ? '選択をやめる' : source.roi ? '人物を選び直す' : '人物を囲んで選ぶ';
+    $(`source-${source.id}-roi`).textContent = source.selection === 'roi' ? '選択をやめる' : $(`source-${source.id}-mode`).value==='feet'?'足の範囲を囲む':source.roi ? '人物を選び直す' : '人物を囲んで選ぶ';
     $(`source-${source.id}-roi`).disabled = !ready;
     $(`source-${source.id}-reset-roi`).disabled = !ready;
   }
@@ -587,6 +640,7 @@ async function initReceiver() {
     state.observations.delete(source.id);
     state.tracker?.reset();
     state.fused = null; state.sceneDirty = true; state.view.initialized = false;
+    publishPose();
     $('scene-empty').hidden = false; $('root-status').textContent = '新しい追跡対象の推論待ち';
     $('coordinate-state').textContent = '相対ポーズ · 待機中';
     for (const axis of ['x', 'y', 'z']) $(`root-${axis}`).textContent = '—';
@@ -596,6 +650,16 @@ async function initReceiver() {
     if (!source.selection || !source.video.videoWidth) return;
     event.preventDefault();
     const point = sourcePoint(source, event);
+    if(source.selection==='foot'){
+      source.footSeedPoints.push(point);
+      if(source.footSeedPoints.length===3){
+        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice())};
+        source.selection=null;source.screen.classList.remove('picking');
+        targetChanged(source);
+        $(`source-${source.id}-foot-seed-state`).textContent='3点を記録しました。推論開始後に動画を再生すると画像追跡します。';
+      }else $(`source-${source.id}-foot-seed-state`).textContent=`${source.footSeedPoints.length}/3点 · 次は${source.footSeedPoints.length===1?'小趾の先':'踵の中心'}`;
+      drawOverlay(source);return;
+    }
     if (source.selection === 'board') {
       if (source.boardPoints.length < 4) source.boardPoints.push(point);
       $('board-state').textContent = `${source.id.toUpperCase()}：${source.boardPoints.length} / 4 点を選択`;
@@ -652,7 +716,7 @@ async function initReceiver() {
     const valid = pose.root?.valid && pose.metric && finitePosition(pose.root.position);
     for (const [axis, i] of [['x', 0], ['y', 1], ['z', 2]]) $(`root-${axis}`).textContent = valid ? `${pose.root.position[i].toFixed(3)} m` : '—';
     const source = pose.root?.source || pose.root?.distanceStatus || 'uncalibrated';
-    $('root-status').textContent = valid ? SOURCE_LABELS[source] || source : '絶対位置は未校正 · 骨盤を基準に相対表示';
+    $('root-status').textContent = pose.coordinateFrame==='image-plane'?'足の画像平面内の動き · 奥行きと全身は未観測':valid ? SOURCE_LABELS[source] || source : '絶対位置は未校正 · 骨盤を基準に相対表示';
     $('coordinate-state').textContent = pose.metric ? `空間座標 [m] · ${SOURCE_LABELS[source] || '推定'}` : '相対ポーズ · 絶対距離は未校正';
     $('scene-empty').hidden = pose.joints.some((joint) => finitePosition(joint.position));
     if (!state.view.initialized || state.view.metric !== Boolean(pose.metric)) initializeView();
@@ -706,13 +770,13 @@ async function initReceiver() {
     state.fused = null; state.sceneDirty = true; state.view.initialized = false; state.lastObservationAt = 0;
     state.latestPoseTimeDomain = null; state.latestPoseUpdatedAtMs = null;
     for (const source of state.sources.values()) {
-      source.pending = null; source.lastObservation = null; state.engine?.resetSource?.(source.id);
+      source.pending = null; source.lastObservation = null;source.footSeed=null;source.footSeedPoints=[]; state.engine?.resetSource?.(source.id);
       updateTargetState(source); drawOverlay(source);
       if (state.running && source.kind === 'video' && source.video.paused) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
     }
     for (const axis of ['x', 'y', 'z']) $(`root-${axis}`).textContent = '—';
     $('scene-empty').hidden = false; $('root-status').textContent = '新しい設定を反映した推論待ち';
-    $('coordinate-state').textContent = '相対ポーズ · 待機中'; updateSyncState();
+    $('coordinate-state').textContent = '相対ポーズ · 待機中';publishPose(); updateSyncState();
   }
 
   function initializeView() {
@@ -783,10 +847,16 @@ async function initReceiver() {
   }
 
   function updateMetrics() {
-    const now = performance.now(), recent = state.recentTimes.filter((time) => time > now - 3000);
+    const now = performance.now(), recent = state.neuralTimes.filter((time) => time > now - 3000);
     const elapsed = recent.length > 1 ? (recent[recent.length - 1] - recent[0]) / 1000 : 0;
     const fps = elapsed > .1 ? (recent.length - 1) / elapsed : null;
     $('inference-fps').replaceChildren(document.createTextNode(fps === null || now - state.lastObservationAt > 1500 ? '—' : fps.toFixed(1)), Object.assign(document.createElement('small'), { textContent: ' fps' }));
+    const rate=times=>{const recent=times.filter(t=>t>now-3000);return recent.length>1?(recent.length-1)*1000/(recent.at(-1)-recent[0]):null;};
+    const trackingRate=rate(state.recentTimes);
+    if($('tracking-fps'))$('tracking-fps').textContent=trackingRate===null?'—':trackingRate.toFixed(1)+' fps';
+    if($('capture-fps-readout'))$('capture-fps-readout').textContent=Array.from(state.sources.values()).filter(s=>s.kind).map(s=>`${s.id.toUpperCase()} ${rate(s.presentedTimes)?.toFixed(1)||'—'} fps`).join(' / ')||'—';
+    if($('preprocess-ms'))$('preprocess-ms').textContent=(median(state.stageTimes.map(t=>t.preprocessMs))?.toFixed(1)||'—')+' ms';
+    if($('model-ms'))$('model-ms').textContent=(median(state.stageTimes.filter(t=>t.modelRuns>0).map(t=>t.modelMs))?.toFixed(1)||'—')+' ms';
     const sorted = [...state.latencies].sort((a, b) => a - b), p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * .95) - 1)] : null;
     $('latency-p95').replaceChildren(document.createTextNode(p95 === null ? '—' : p95.toFixed(1)), Object.assign(document.createElement('small'), { textContent: ' ms' }));
     const joints = state.fused?.joints || [];
@@ -902,7 +972,10 @@ async function initReceiver() {
       await ensureModules();
       if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
       const bodyModel = $('model-select').value, backend = $('backend-select').value, personDetection = $('person-detection').checked, footRefinement = $('foot-refinement').checked;
-      if (!state.engine || bodyModel !== state.selectedModel || backend !== state.backend || state.loadedOffline !== state.offline || state.loadedPersonDetection !== personDetection || state.loadedFootRefinement !== footRefinement) {
+      const activeSources=Array.from(state.sources.values()).filter(source=>source.kind);
+      if(!activeSources.length)throw new Error('入力AまたはBに動画かカメラを選んでください。');
+      const modes=activeSources.map(source=>$(`source-${source.id}-mode`).value),bodyEnabled=modes.includes('wholebody'),footTrackingEnabled=modes.includes('feet'),modeKey=JSON.stringify([bodyEnabled,footTrackingEnabled]);
+      if (!state.engine || bodyModel !== state.selectedModel || backend !== state.backend || state.loadedModes!==modeKey || state.loadedOffline !== state.offline || state.loadedPersonDetection !== personDetection || state.loadedFootRefinement !== footRefinement) {
         await state.engine?.dispose?.();
         if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
         state.engine = new state.engineModule.PoseEngine({ onProgress: ({ stage, progress, message }) => {
@@ -911,12 +984,12 @@ async function initReceiver() {
           $('load-progress').hidden = !Number.isFinite(progress);
           if (Number.isFinite(progress)) $('load-progress').value = clamp(progress > 1 ? progress / 100 : progress, 0, 1);
         } });
-        await state.engine.load({ bodyModel, handRefinement: $('hand-refinement').checked, personDetection, footRefinement, backend, offline: state.offline });
+        await state.engine.load({ bodyModel,bodyEnabled,footTrackingEnabled, handRefinement: $('hand-refinement').checked, personDetection, footRefinement, backend, offline: state.offline });
         if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
-        state.selectedModel = bodyModel; state.backend = backend; state.loadedOffline = state.offline; state.loadedPersonDetection = personDetection; state.loadedFootRefinement = footRefinement;
+        state.selectedModel = bodyModel;state.loadedModes=modeKey; state.backend = backend; state.loadedOffline = state.offline; state.loadedPersonDetection = personDetection; state.loadedFootRefinement = footRefinement;
       }
       state.tracker = new state.geometry.TemporalPoseTracker(trackerOptions());
-      state.observations.clear(); state.latencies = []; state.recentTimes = []; state.running = true;
+      state.observations.clear(); state.latencies = []; state.recentTimes = [];state.neuralTimes=[];state.stageTimes=[]; state.running = true;
       $('load-progress').hidden = true; $('stop-inference').disabled = false;
       $('start-inference').textContent = '推論を再開';
       engineStatus('running', '推論中', '観測を更新しています。モデルは入力A・Bで共有します。');
@@ -940,6 +1013,7 @@ async function initReceiver() {
       updateOperationControls(); return;
     }
     state.running = false; state.generation++;
+    state.bridge?.stop();
     updateOperationControls();
     engineStatus('idle', '停止中', '映像は保持しています。推論を再開できます。');
   };
@@ -1023,7 +1097,7 @@ async function initReceiver() {
   $('export-session').onclick = () => {
     const { priorPose, ...options } = fusionOptions();
     downloadJson(`wholebody-session-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
-      schemaVersion: 1, application: 'Wholebody Studio / Phase 2', exportedAt: new Date().toISOString(), startedAt: state.startedAt,
+      schemaVersion: 1, application: 'Wholebody Studio / Phase 3', exportedAt: new Date().toISOString(), startedAt: state.startedAt,
       model: state.selectedModel, backend: state.backend, handRefinement: $('hand-refinement').checked, personDetection: state.loadedPersonDetection, footRefinement: state.loadedFootRefinement, offline: state.offline, networkAudit: state.networkAudit,
       cameras: state.cameras, options, trackerOptions: trackerOptions(), totalFrames: state.totalFrames,
       latestPose: state.fused, latestPoseTimestampMs: state.fused?.timestampMs ?? null,
@@ -1036,7 +1110,7 @@ async function initReceiver() {
       records: state.records
     });
   };
-  $('reset-3d-view').onclick = initializeView;
+  $('reset-3d-view').onclick = ()=>{initializeView();state.avatar?.resetView();};
   const scene = $('scene-canvas'); let drag = null;
   scene.addEventListener('pointerdown', (event) => { drag = [event.clientX, event.clientY, state.view.yaw, state.view.pitch]; scene.setPointerCapture(event.pointerId); });
   scene.addEventListener('pointermove', (event) => { if (!drag) return; state.view.yaw = drag[2] + (event.clientX - drag[0]) * .007; state.view.pitch = clamp(drag[3] + (event.clientY - drag[1]) * .007, -1.35, 1.35); state.sceneDirty = true; });
@@ -1050,9 +1124,9 @@ async function initReceiver() {
       if (live) {
         const missing = { ...state.fused, joints: state.fused.joints.map((joint) => ({ id: joint.id, position: null, score: 0, source: 'missing' })),
           diagnostics: { ...state.fused.diagnostics, reason: 'noNewFrames', synchronizedSources: [], triangulatedJointCount: 0 } };
-        state.fused = state.tracker.update(missing, state.lastFusedTimestamp + now - state.lastObservationAt);
+        state.fused = state.fused.coordinateFrame==='image-plane'?{...missing,footHints:{},root:{valid:false},metric:false}:state.tracker.update(missing, state.lastFusedTimestamp + now - state.lastObservationAt);
         state.latestPoseUpdatedAtMs = now;
-        state.lastMissingTick = now; state.sceneDirty = true; updatePoseReadout();
+        state.lastMissingTick = now; state.sceneDirty = true; updatePoseReadout();publishPose();
       }
     }
     if (state.sceneDirty) { drawScene(); state.sceneDirty = false; }
@@ -1062,7 +1136,7 @@ async function initReceiver() {
   requestAnimationFrame(animate);
   refreshDevices().catch(() => {});
   navigator.mediaDevices?.addEventListener?.('devicechange', () => refreshDevices().catch(() => {}));
-  addEventListener('pagehide', () => { state.running = false; for (const source of state.sources.values()) { source.peer?.close(); source.stream?.getTracks().forEach((track) => track.stop()); if (source.url) URL.revokeObjectURL(source.url); } });
+  addEventListener('pagehide', () => { state.running = false;state.avatar?.dispose();state.bridge?.disconnect();state.engine?.dispose().catch(()=>{}); for (const source of state.sources.values()) { source.peer?.close(); source.stream?.getTracks().forEach((track) => track.stop()); if (source.url) URL.revokeObjectURL(source.url); } });
   updateOperationControls();
   try {
     const offline = await import('./offline.mjs');
@@ -1074,4 +1148,5 @@ async function initReceiver() {
     $('offline-state').textContent = `保存済みの通信設定を確認できません：${error.message || error}`;
   } finally { state.initializing = false; updateOperationControls(); }
   ensureModules().catch((error) => engineStatus('error', '初期化失敗', error.message || String(error)));
+  initPhase3Controls();
 }

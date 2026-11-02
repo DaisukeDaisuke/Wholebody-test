@@ -10,3 +10,14 @@ node_modules/
 *.zip
 .env
 dist/vendor/
+# Local user media and derived private analysis never belong in a publication.
+private*/
+upload/
+*.mp4
+*.mov
+*.m4v
+*.webm
+*.vrm
+*.wav
+*.raw
+*.rgba
