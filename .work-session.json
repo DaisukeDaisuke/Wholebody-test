@@ -1,0 +1,12 @@
+{
+  "id": "732e048e-dba4-468e-bdd2-6026afc8218d",
+  "purpose": "映像からの手指・足・遮蔽全身推定、フェーズ2までのPoC",
+  "repository": "DaisukeDaisuke/Wholebody-test",
+  "root": "/workspace/scratch/e60dfe5296e9/wholebody-phase2",
+  "owners": {
+    "root": "UI・全身推論・WebRTC・統合・GitHub/Sites公開",
+    "model_research": "手の拡大推論・モデル調査",
+    "occlusion_core": "3D幾何・遮蔽時間推定",
+    "evaluation_actions": "実画像精度のGitHub Actions評価"
+  }
+}

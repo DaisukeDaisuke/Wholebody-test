@@ -1,0 +1,1634 @@
+{
+  "schema_version": 1,
+  "git_sha": "9f5cb1ca7aea0bf91e82ed8860112b807c03c317",
+  "backend": "CPUExecutionProvider",
+  "runtime_version": "1.23.2",
+  "dataset": {
+    "url": "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json",
+    "sha256": "f8272e9c12f3a42457033ebc75da1167546edf1be5e2ffaf586d6ee97541ff6e",
+    "selection": "image_id,id ascending for four example images; SHA256(annotation id) order with all four example images excluded for val-subset",
+    "used_for_training": false,
+    "used_for_threshold_tuning": false,
+    "person_ids": [
+      529561,
+      507434,
+      1757755,
+      485485,
+      193826,
+      517847,
+      424939,
+      195791,
+      463891,
+      199294,
+      1238870,
+      2152361,
+      1745825,
+      202909,
+      217773,
+      198884,
+      1222960,
+      2158740,
+      544163,
+      2007086,
+      1242244,
+      495688,
+      2157249,
+      493484,
+      1727458,
+      423133,
+      1732438,
+      517783,
+      1277054,
+      2000372,
+      502460,
+      1751582,
+      206218,
+      1222581,
+      430546,
+      570105,
+      464416,
+      1230490,
+      456968,
+      429221,
+      188895,
+      1329144,
+      228516,
+      444795,
+      459777,
+      2164885,
+      2162589,
+      452325,
+      458932,
+      555133,
+      1242034,
+      1275621,
+      561077,
+      1298949,
+      431999,
+      1277151,
+      444677,
+      2008412,
+      1254699,
+      1272818,
+      445224,
+      1332686,
+      465357,
+      1707672
+    ],
+    "licenses": [
+      {
+        "url": "http://creativecommons.org/licenses/by-nc-sa/2.0/",
+        "id": 1,
+        "name": "Attribution-NonCommercial-ShareAlike License"
+      },
+      {
+        "url": "http://creativecommons.org/licenses/by-nc/2.0/",
+        "id": 2,
+        "name": "Attribution-NonCommercial License"
+      },
+      {
+        "url": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+        "id": 3,
+        "name": "Attribution-NonCommercial-NoDerivs License"
+      },
+      {
+        "url": "http://creativecommons.org/licenses/by/2.0/",
+        "id": 4,
+        "name": "Attribution License"
+      },
+      {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      {
+        "url": "http://creativecommons.org/licenses/by-nd/2.0/",
+        "id": 6,
+        "name": "Attribution-NoDerivs License"
+      },
+      {
+        "url": "http://flickr.com/commons/usage/",
+        "id": 7,
+        "name": "No known copyright restrictions"
+      },
+      {
+        "url": "http://www.usa.gov/copyright.shtml",
+        "id": 8,
+        "name": "United States Government Work"
+      }
+    ],
+    "kind": "val-subset",
+    "people": 64,
+    "images": [
+      {
+        "license": 1,
+        "file_name": "000000002685.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000002685.jpg",
+        "height": 555,
+        "width": 640,
+        "date_captured": "2013-11-25 19:10:39",
+        "flickr_url": "http://farm9.staticflickr.com/8535/8710326856_2aac3d36fb_z.jpg",
+        "id": 2685,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000002685.jpg",
+        "sha256": "2430b9bffb5ff52dfbaf7b922ac8018547e233a5996a6b017bd1a206a46c5bdb"
+      },
+      {
+        "license": 3,
+        "file_name": "000000005193.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000005193.jpg",
+        "height": 425,
+        "width": 640,
+        "date_captured": "2013-11-20 19:09:48",
+        "flickr_url": "http://farm5.staticflickr.com/4043/4278083464_893a7a5c1d_z.jpg",
+        "id": 5193,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000005193.jpg",
+        "sha256": "2f0360e89d71b146cbfaee05e934303864fa61d9bf1a1f5cc0c2e508b8191b8d"
+      },
+      {
+        "license": 2,
+        "file_name": "000000015335.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000015335.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-25 14:00:10",
+        "flickr_url": "http://farm6.staticflickr.com/5533/10257288534_c916fafd78_z.jpg",
+        "id": 15335,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000015335.jpg",
+        "sha256": "9fbfdb443c249bdac83b8d0c9d4120a817cdf3987a7826a90e9fcbc95b535986"
+      },
+      {
+        "license": 1,
+        "file_name": "000000017379.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000017379.jpg",
+        "height": 640,
+        "width": 478,
+        "date_captured": "2013-11-15 01:16:56",
+        "flickr_url": "http://farm6.staticflickr.com/5123/5316824279_9f0a0584c7_z.jpg",
+        "id": 17379,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000017379.jpg",
+        "sha256": "52b592adcb73170d7d07994a8781e92feddf3c7f1c45173a050c7ecfe12e7743"
+      },
+      {
+        "license": 1,
+        "file_name": "000000045550.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000045550.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-20 18:57:13",
+        "flickr_url": "http://farm4.staticflickr.com/3011/2951101998_d454d50177_z.jpg",
+        "id": 45550,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000045550.jpg",
+        "sha256": "830f564b71f327b0bcc78afcc4b8df86b41a13fa9bee13e2b0dc20bf9d827e9f"
+      },
+      {
+        "license": 2,
+        "file_name": "000000046872.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000046872.jpg",
+        "height": 391,
+        "width": 640,
+        "date_captured": "2013-11-17 19:43:47",
+        "flickr_url": "http://farm9.staticflickr.com/8033/7934872172_1826f22f18_z.jpg",
+        "id": 46872,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000046872.jpg",
+        "sha256": "fd991bcccf8342f3ab5c5228dce3873765964a545365ac3f31d69b32c8a9258d"
+      },
+      {
+        "license": 5,
+        "file_name": "000000047571.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000047571.jpg",
+        "height": 640,
+        "width": 639,
+        "date_captured": "2013-11-19 00:02:57",
+        "flickr_url": "http://farm4.staticflickr.com/3771/10008328626_e50e829f0b_z.jpg",
+        "id": 47571,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000047571.jpg",
+        "sha256": "0398da07fb61f7dd096005253c01a669358c81507ac913c2d86fdd8ca396853a"
+      },
+      {
+        "license": 6,
+        "file_name": "000000048396.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000048396.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-20 20:42:17",
+        "flickr_url": "http://farm9.staticflickr.com/8111/8655578199_071e3e3c80_z.jpg",
+        "id": 48396,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000048396.jpg",
+        "sha256": "7bcd2860143837c1dd81c63236d02526e832ba83f181162f101f232dff0b35f4"
+      },
+      {
+        "license": 5,
+        "file_name": "000000082696.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000082696.jpg",
+        "height": 640,
+        "width": 427,
+        "date_captured": "2013-11-17 00:16:17",
+        "flickr_url": "http://farm4.staticflickr.com/3075/3205065177_7864fb5c3d_z.jpg",
+        "id": 82696,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000082696.jpg",
+        "sha256": "ffb33316dedb78408fc1b7db2532b4df3b2e35d3ae76162d333e92ea17c0164c"
+      },
+      {
+        "license": 1,
+        "file_name": "000000082715.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000082715.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-20 23:05:42",
+        "flickr_url": "http://farm7.staticflickr.com/6149/5990681178_851ce5b57a_z.jpg",
+        "id": 82715,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000082715.jpg",
+        "sha256": "3633367a51bb0bcff7e513f7b3d93dea749c47a1e48e9bac5381ce39697dd5d5"
+      },
+      {
+        "license": 3,
+        "file_name": "000000085329.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000085329.jpg",
+        "height": 449,
+        "width": 640,
+        "date_captured": "2013-11-18 02:44:13",
+        "flickr_url": "http://farm9.staticflickr.com/8143/7573269216_9e5b752281_z.jpg",
+        "id": 85329,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000085329.jpg",
+        "sha256": "6f51ea5ea5be7df989ac264225486516e39c1cf90fe8a9e01b83c62a26a44f6e"
+      },
+      {
+        "license": 3,
+        "file_name": "000000091495.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000091495.jpg",
+        "height": 447,
+        "width": 640,
+        "date_captured": "2013-11-19 18:33:50",
+        "flickr_url": "http://farm8.staticflickr.com/7090/6972174878_e90689085b_z.jpg",
+        "id": 91495,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000091495.jpg",
+        "sha256": "a9907ad71d0f57cd9e83f4a703c659ef2d38a73401b4abb233a14fc59036a6ff"
+      },
+      {
+        "license": 1,
+        "file_name": "000000091500.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000091500.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-21 20:44:50",
+        "flickr_url": "http://farm3.staticflickr.com/2775/4518345389_57a4fecbb9_z.jpg",
+        "id": 91500,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000091500.jpg",
+        "sha256": "0ec62e31db905b4f6f4d52acad57f10008c95999d9c709b855bd214d63445c06"
+      },
+      {
+        "license": 3,
+        "file_name": "000000116068.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000116068.jpg",
+        "height": 375,
+        "width": 500,
+        "date_captured": "2013-11-22 17:03:02",
+        "flickr_url": "http://farm3.staticflickr.com/2539/3701003402_746f23435e_z.jpg",
+        "id": 116068,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000116068.jpg",
+        "sha256": "6e52b06562d6280810c56a55074f662763f790d6c748bcabedc1c1ecdac23ee3"
+      },
+      {
+        "license": 1,
+        "file_name": "000000122962.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000122962.jpg",
+        "height": 424,
+        "width": 640,
+        "date_captured": "2013-11-21 03:00:11",
+        "flickr_url": "http://farm8.staticflickr.com/7002/6849950899_fb164b18e6_z.jpg",
+        "id": 122962,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000122962.jpg",
+        "sha256": "cbe230270c69febc336549d68fccd0ca50f6754d58d8fe917b210c8c5f8ddf59"
+      },
+      {
+        "license": 3,
+        "file_name": "000000132587.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000132587.jpg",
+        "height": 425,
+        "width": 640,
+        "date_captured": "2013-11-16 12:17:05",
+        "flickr_url": "http://farm9.staticflickr.com/8147/7276788014_53b9138387_z.jpg",
+        "id": 132587,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000132587.jpg",
+        "sha256": "f2d7a375c81ce81285cb8fe0578803043235c95dde6b46f32b40d08963fc8fb2"
+      },
+      {
+        "license": 1,
+        "file_name": "000000142585.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000142585.jpg",
+        "height": 500,
+        "width": 375,
+        "date_captured": "2013-11-16 18:05:52",
+        "flickr_url": "http://farm1.staticflickr.com/34/71378280_e180ffc9d5_z.jpg",
+        "id": 142585,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000142585.jpg",
+        "sha256": "41277a4ea32031b3486e839d18ca61506931002fca4ff9214686c63e9c6bb983"
+      },
+      {
+        "license": 1,
+        "file_name": "000000145020.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000145020.jpg",
+        "height": 361,
+        "width": 640,
+        "date_captured": "2013-11-24 03:08:03",
+        "flickr_url": "http://farm4.staticflickr.com/3114/3198162711_41230fedb1_z.jpg",
+        "id": 145020,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000145020.jpg",
+        "sha256": "1f17b0e0bbeed6314959106da960aa8239eca859ed9016bd408eb7a1afad8e04"
+      },
+      {
+        "license": 1,
+        "file_name": "000000151938.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000151938.jpg",
+        "height": 640,
+        "width": 470,
+        "date_captured": "2013-11-18 03:00:07",
+        "flickr_url": "http://farm8.staticflickr.com/7151/6779868923_cd82eb9d59_z.jpg",
+        "id": 151938,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000151938.jpg",
+        "sha256": "4400e146316c97048244f429dc0e75979e5d992a9a2586631c8f78345381e433"
+      },
+      {
+        "license": 6,
+        "file_name": "000000153529.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000153529.jpg",
+        "height": 640,
+        "width": 480,
+        "date_captured": "2013-11-17 03:50:32",
+        "flickr_url": "http://farm1.staticflickr.com/51/179621332_5a103aef98_z.jpg",
+        "id": 153529,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000153529.jpg",
+        "sha256": "a7fd364903b9b75a4080b0e39dda9b6c17b89179e34152536db0d38ae3279a2c"
+      },
+      {
+        "license": 3,
+        "file_name": "000000161609.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000161609.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-17 17:54:25",
+        "flickr_url": "http://farm6.staticflickr.com/5201/5205658170_92d676682f_z.jpg",
+        "id": 161609,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000161609.jpg",
+        "sha256": "f143614bc124b874eed21bbce20bbcc247e56bd5a2fd8028cecd0f5c88de4b7b"
+      },
+      {
+        "license": 2,
+        "file_name": "000000165681.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000165681.jpg",
+        "height": 444,
+        "width": 640,
+        "date_captured": "2013-11-15 14:58:42",
+        "flickr_url": "http://farm6.staticflickr.com/5253/5424364481_342b9336df_z.jpg",
+        "id": 165681,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000165681.jpg",
+        "sha256": "7b23b958379742bd1fb13ade9a86b3e134a0493edf45039d3786e126b20cc9b2"
+      },
+      {
+        "license": 1,
+        "file_name": "000000179898.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000179898.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-20 13:34:38",
+        "flickr_url": "http://farm4.staticflickr.com/3277/2739804450_d230a0ac31_z.jpg",
+        "id": 179898,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000179898.jpg",
+        "sha256": "83881e46c85859364f569994e2cec8e63525926d66779815b08ee77df493eb97"
+      },
+      {
+        "license": 4,
+        "file_name": "000000199771.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000199771.jpg",
+        "height": 425,
+        "width": 640,
+        "date_captured": "2013-11-14 22:04:01",
+        "flickr_url": "http://farm6.staticflickr.com/5035/7115744429_7d4deeb996_z.jpg",
+        "id": 199771,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000199771.jpg",
+        "sha256": "060235d75ac8a669d705e7685f73f53a09da291583f45faf45ac4ac1dbab4388"
+      },
+      {
+        "license": 4,
+        "file_name": "000000203389.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000203389.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-15 17:17:36",
+        "flickr_url": "http://farm6.staticflickr.com/5257/5429775787_db93d0b30f_z.jpg",
+        "id": 203389,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000203389.jpg",
+        "sha256": "eb7fba75eaa1e49014f1fe81dfef9561478502347d8fc60c90a131d0cb8815bc"
+      },
+      {
+        "license": 4,
+        "file_name": "000000203639.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000203639.jpg",
+        "height": 640,
+        "width": 486,
+        "date_captured": "2013-11-18 01:55:46",
+        "flickr_url": "http://farm9.staticflickr.com/8211/8423150137_74f6020b26_z.jpg",
+        "id": 203639,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000203639.jpg",
+        "sha256": "6bfc106bf02f49054b9514ac8c084a4ca93f44458725f6b5ca700c6cea73d4b0"
+      },
+      {
+        "license": 1,
+        "file_name": "000000213035.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000213035.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-24 09:56:54",
+        "flickr_url": "http://farm3.staticflickr.com/2724/4254385211_4f52506341_z.jpg",
+        "id": 213035,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000213035.jpg",
+        "sha256": "2fcdee02314b94646786fa56e5fdc29acfe65c7a45d72281a4add71f2da93c7b"
+      },
+      {
+        "license": 3,
+        "file_name": "000000223955.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000223955.jpg",
+        "height": 333,
+        "width": 500,
+        "date_captured": "2013-11-18 16:08:26",
+        "flickr_url": "http://farm3.staticflickr.com/2502/3901195018_9fc3528e68_z.jpg",
+        "id": 223955,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000223955.jpg",
+        "sha256": "0ce9a7be0ab9a0f0c59fb937db8da9fd2a9ebe33df5f68db91f86674c71744c5"
+      },
+      {
+        "license": 3,
+        "file_name": "000000224807.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000224807.jpg",
+        "height": 428,
+        "width": 640,
+        "date_captured": "2013-11-25 14:19:34",
+        "flickr_url": "http://farm8.staticflickr.com/7281/9610809291_fda853e88c_z.jpg",
+        "id": 224807,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000224807.jpg",
+        "sha256": "469e5374fcf43466d3ba8167126cdfa2833f1b8c8ed1e2248b29dd9feec20733"
+      },
+      {
+        "license": 4,
+        "file_name": "000000229553.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000229553.jpg",
+        "height": 488,
+        "width": 640,
+        "date_captured": "2013-11-20 05:32:43",
+        "flickr_url": "http://farm5.staticflickr.com/4062/4653205441_96e8943d6f_z.jpg",
+        "id": 229553,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000229553.jpg",
+        "sha256": "bff35262976dc1c3c08b79c5347299671f25f2d000177447b3acb08585bdd975"
+      },
+      {
+        "license": 5,
+        "file_name": "000000231879.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000231879.jpg",
+        "height": 426,
+        "width": 640,
+        "date_captured": "2013-11-20 23:30:11",
+        "flickr_url": "http://farm8.staticflickr.com/7140/7469646364_19f9d8b394_z.jpg",
+        "id": 231879,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000231879.jpg",
+        "sha256": "febabbb4aae52f71942bdaa8696492dd82eb4cc3805d948d41d283d4ca52980d"
+      },
+      {
+        "license": 2,
+        "file_name": "000000232692.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000232692.jpg",
+        "height": 425,
+        "width": 640,
+        "date_captured": "2013-11-20 23:03:53",
+        "flickr_url": "http://farm7.staticflickr.com/6128/5990893342_a44110d2ca_z.jpg",
+        "id": 232692,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000232692.jpg",
+        "sha256": "b22868f61d01d16d4b6820d2b8b592e27e66ab2c988fd053fea5e71042681d62"
+      },
+      {
+        "license": 4,
+        "file_name": "000000250901.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000250901.jpg",
+        "height": 426,
+        "width": 640,
+        "date_captured": "2013-11-20 16:22:42",
+        "flickr_url": "http://farm5.staticflickr.com/4038/5080030991_42d65ee6f2_z.jpg",
+        "id": 250901,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000250901.jpg",
+        "sha256": "b9baf2a439fcc6f58f9d1e6d8bc4726263bd70abc6c4e68a843d2ce7b13dce5f"
+      },
+      {
+        "license": 3,
+        "file_name": "000000262048.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000262048.jpg",
+        "height": 612,
+        "width": 612,
+        "date_captured": "2013-11-18 03:34:12",
+        "flickr_url": "http://farm8.staticflickr.com/7188/6872049463_95ddd73db2_z.jpg",
+        "id": 262048,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000262048.jpg",
+        "sha256": "31a33556f0282038e0f9a5295743ae31335c66c6f90a0bfe69e17bd3e2ac3b96"
+      },
+      {
+        "license": 2,
+        "file_name": "000000266981.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000266981.jpg",
+        "height": 640,
+        "width": 426,
+        "date_captured": "2013-11-18 11:37:51",
+        "flickr_url": "http://farm1.staticflickr.com/42/85526391_5d26763bc7_z.jpg",
+        "id": 266981,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000266981.jpg",
+        "sha256": "2d2f6894a170d7efd1d3398194e046ef0e421ebbc29259bd098e8bfd552522ec"
+      },
+      {
+        "license": 1,
+        "file_name": "000000271402.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000271402.jpg",
+        "height": 640,
+        "width": 424,
+        "date_captured": "2013-11-21 02:54:19",
+        "flickr_url": "http://farm9.staticflickr.com/8459/8057784638_ba0d6496fa_z.jpg",
+        "id": 271402,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000271402.jpg",
+        "sha256": "b13b6ba1b399210e9cfd2aa3f14e7a4c209e543ee33cdca18d482bef4ff8dab4"
+      },
+      {
+        "license": 3,
+        "file_name": "000000281687.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000281687.jpg",
+        "height": 375,
+        "width": 500,
+        "date_captured": "2013-11-22 20:58:42",
+        "flickr_url": "http://farm4.staticflickr.com/3290/2351868701_e38e626f19_z.jpg",
+        "id": 281687,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000281687.jpg",
+        "sha256": "520f95c841e3f5bd7137dc21448bae0609fbe2003a94d7bf0a6bf851d2570118"
+      },
+      {
+        "license": 3,
+        "file_name": "000000312421.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000312421.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-18 08:23:25",
+        "flickr_url": "http://farm8.staticflickr.com/7417/10072949756_a273bd03da_z.jpg",
+        "id": 312421,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000312421.jpg",
+        "sha256": "9ee3cfd727144aa212dcc5826f4f721600c65223ac47af1c4107613913c359ba"
+      },
+      {
+        "license": 2,
+        "file_name": "000000314264.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000314264.jpg",
+        "height": 640,
+        "width": 480,
+        "date_captured": "2013-11-24 19:17:38",
+        "flickr_url": "http://farm4.staticflickr.com/3223/4565494785_75f127bf61_z.jpg",
+        "id": 314264,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000314264.jpg",
+        "sha256": "ef3e93663226a89789def6d1be02a244e9f524192127ee6c7a51aa3fa724b95a"
+      },
+      {
+        "license": 5,
+        "file_name": "000000329323.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000329323.jpg",
+        "height": 640,
+        "width": 425,
+        "date_captured": "2013-11-18 03:20:36",
+        "flickr_url": "http://farm7.staticflickr.com/6183/6100180267_cecedd78ba_z.jpg",
+        "id": 329323,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000329323.jpg",
+        "sha256": "fc1d988944570a6cb43dd7c90cbc40a72ba2437559a849a759db932d4473d74f"
+      },
+      {
+        "license": 1,
+        "file_name": "000000361103.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000361103.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-16 19:11:34",
+        "flickr_url": "http://farm4.staticflickr.com/3346/3556435620_b1787e8b2d_z.jpg",
+        "id": 361103,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000361103.jpg",
+        "sha256": "9188a63875d42908534f9192719b02a0fb26f110398ce6b052df664cf4aa5e55"
+      },
+      {
+        "license": 6,
+        "file_name": "000000388846.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000388846.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-18 04:19:59",
+        "flickr_url": "http://farm9.staticflickr.com/8052/8369693731_d80c42641f_z.jpg",
+        "id": 388846,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000388846.jpg",
+        "sha256": "59ef9c73d5d2460a67189695079bdb5560922e4e1f0c40a346a105d61abf261d"
+      },
+      {
+        "license": 2,
+        "file_name": "000000398203.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000398203.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-20 23:18:34",
+        "flickr_url": "http://farm8.staticflickr.com/7063/7013073201_15bc050f2b_z.jpg",
+        "id": 398203,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000398203.jpg",
+        "sha256": "785dc12a5fcae6d9f5c25a2b16e912c09fc131f412aa08fe0f8ec6cf073d6dd3"
+      },
+      {
+        "license": 5,
+        "file_name": "000000402720.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000402720.jpg",
+        "height": 612,
+        "width": 612,
+        "date_captured": "2013-11-21 02:44:46",
+        "flickr_url": "http://farm8.staticflickr.com/7245/7276665146_20af39bbaf_z.jpg",
+        "id": 402720,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000402720.jpg",
+        "sha256": "94d78b7c6ded336af99a5d48fcd507ddeb7b43e93d1d7e7c1bdc62aa3d0b6fd6"
+      },
+      {
+        "license": 1,
+        "file_name": "000000406997.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000406997.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-17 00:47:28",
+        "flickr_url": "http://farm5.staticflickr.com/4097/4934088302_28c1a4de5f_z.jpg",
+        "id": 406997,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000406997.jpg",
+        "sha256": "73d1d5fff4154d5d221f8a7826d64a93c13556068d5826047749e7b1179d6678"
+      },
+      {
+        "license": 5,
+        "file_name": "000000420916.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000420916.jpg",
+        "height": 400,
+        "width": 640,
+        "date_captured": "2013-11-16 22:08:12",
+        "flickr_url": "http://farm9.staticflickr.com/8179/7954749702_4952236206_z.jpg",
+        "id": 420916,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000420916.jpg",
+        "sha256": "49a25255378293de63164929a056228e03feee7c68931c186c9b6ea913742003"
+      },
+      {
+        "license": 7,
+        "file_name": "000000427077.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000427077.jpg",
+        "height": 500,
+        "width": 344,
+        "date_captured": "2013-11-22 21:01:33",
+        "flickr_url": "http://farm3.staticflickr.com/2718/4050450705_9a047be8de_z.jpg",
+        "id": 427077,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000427077.jpg",
+        "sha256": "87ceae40482a8f050900f5a4181eecfe5de2c8e20531c831938d2b9fe1aadb50"
+      },
+      {
+        "license": 5,
+        "file_name": "000000441543.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000441543.jpg",
+        "height": 403,
+        "width": 640,
+        "date_captured": "2013-11-18 08:29:26",
+        "flickr_url": "http://farm6.staticflickr.com/5461/9168165820_0a3b383210_z.jpg",
+        "id": 441543,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000441543.jpg",
+        "sha256": "200948918a4f8136c1040174e80ab80e7bc6e6d904487ef656e89854374e8ea7"
+      },
+      {
+        "license": 3,
+        "file_name": "000000441553.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000441553.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-16 14:04:49",
+        "flickr_url": "http://farm3.staticflickr.com/2334/2272990285_dfdf194c9b_z.jpg",
+        "id": 441553,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000441553.jpg",
+        "sha256": "8391bf51fe417be0e8860c7e227a5ff5d742e4b073befaf19de3477f75e55d6e"
+      },
+      {
+        "license": 2,
+        "file_name": "000000442161.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000442161.jpg",
+        "height": 375,
+        "width": 500,
+        "date_captured": "2013-11-25 20:17:29",
+        "flickr_url": "http://farm3.staticflickr.com/2698/4108632336_fcba616984_z.jpg",
+        "id": 442161,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000442161.jpg",
+        "sha256": "11f1288b87273244cbaad21c72e190dbf14484541a89556b9d0b616080aefef8"
+      },
+      {
+        "license": 1,
+        "file_name": "000000449909.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000449909.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-16 18:57:24",
+        "flickr_url": "http://farm5.staticflickr.com/4065/4576506981_6a421c511e_z.jpg",
+        "id": 449909,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000449909.jpg",
+        "sha256": "a79689a7913c06a5b25a4da0fb2c453dc02f84aa889c5487942a821916a345e7"
+      },
+      {
+        "license": 2,
+        "file_name": "000000451714.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000451714.jpg",
+        "height": 640,
+        "width": 480,
+        "date_captured": "2013-11-19 21:39:21",
+        "flickr_url": "http://farm8.staticflickr.com/7175/6581207789_8b8fa78236_z.jpg",
+        "id": 451714,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000451714.jpg",
+        "sha256": "5b6ee6f8b9929818dab8ba1eb713fe9c05b44ffbe9492f0d37fa9f8658f00be8"
+      },
+      {
+        "license": 4,
+        "file_name": "000000459272.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000459272.jpg",
+        "height": 640,
+        "width": 480,
+        "date_captured": "2013-11-14 16:38:53",
+        "flickr_url": "http://farm3.staticflickr.com/2448/3675278938_d31af5d707_z.jpg",
+        "id": 459272,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000459272.jpg",
+        "sha256": "86fcc50b7b87ac6fb66e75e2158d0017730a1f05c5e6351c0d3e87bb760223f9"
+      },
+      {
+        "license": 4,
+        "file_name": "000000463690.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000463690.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-22 02:33:59",
+        "flickr_url": "http://farm7.staticflickr.com/6224/6272789669_be80f59938_z.jpg",
+        "id": 463690,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000463690.jpg",
+        "sha256": "ae3f98e35c69157ae5653541324d3fa8c27680054a4aaf1c7420aae3d03bffff"
+      },
+      {
+        "license": 3,
+        "file_name": "000000488166.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000488166.jpg",
+        "height": 640,
+        "width": 361,
+        "date_captured": "2013-11-21 03:34:42",
+        "flickr_url": "http://farm7.staticflickr.com/6125/6038769056_3527314e04_z.jpg",
+        "id": 488166,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000488166.jpg",
+        "sha256": "117f8b9f05251e3b3ebc3bd6acf0d099686c6592024f5dc04827cd1defc6cc85"
+      },
+      {
+        "license": 6,
+        "file_name": "000000493905.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000493905.jpg",
+        "height": 640,
+        "width": 571,
+        "date_captured": "2013-11-21 03:06:42",
+        "flickr_url": "http://farm8.staticflickr.com/7120/7700227118_b8fe78c036_z.jpg",
+        "id": 493905,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000493905.jpg",
+        "sha256": "9b2261ff46b2a1a32592ba09a1c1aa11d621707b2b3ebacb8f35caddf078022a"
+      },
+      {
+        "license": 1,
+        "file_name": "000000506707.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000506707.jpg",
+        "height": 427,
+        "width": 640,
+        "date_captured": "2013-11-23 01:03:32",
+        "flickr_url": "http://farm8.staticflickr.com/7024/6437080595_4102ce8326_z.jpg",
+        "id": 506707,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000506707.jpg",
+        "sha256": "7d41021f6690f97184495abbe2e70d45eba3816eff5f2a41e813011976254d3b"
+      },
+      {
+        "license": 3,
+        "file_name": "000000512985.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000512985.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-20 17:25:58",
+        "flickr_url": "http://farm1.staticflickr.com/38/84192146_8d1119bfed_z.jpg",
+        "id": 512985,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000512985.jpg",
+        "sha256": "3a987fb6acc3d4f360cb097f1c715a7115ebca5f0023f01382e90f62fcc55058"
+      },
+      {
+        "license": 4,
+        "file_name": "000000516677.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000516677.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-19 21:56:02",
+        "flickr_url": "http://farm6.staticflickr.com/5186/5789961160_d750638deb_z.jpg",
+        "id": 516677,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000516677.jpg",
+        "sha256": "78547387ed604e3065739508b75e28f640efa9db784a6419c4ac44d924f3a599"
+      },
+      {
+        "license": 3,
+        "file_name": "000000541773.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000541773.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-25 20:12:57",
+        "flickr_url": "http://farm3.staticflickr.com/2737/4324509584_ab775e81eb_z.jpg",
+        "id": 541773,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000541773.jpg",
+        "sha256": "d197d3c81ce4e9c4b12dc0ae704e258d6a9b9fcde9543b78b4ef7644e86dbbbe"
+      },
+      {
+        "license": 3,
+        "file_name": "000000553731.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000553731.jpg",
+        "height": 428,
+        "width": 640,
+        "date_captured": "2013-11-24 08:41:27",
+        "flickr_url": "http://farm3.staticflickr.com/2433/3564009427_6f58d99dcd_z.jpg",
+        "id": 553731,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000553731.jpg",
+        "sha256": "d10c35af887d5b8977ab8a49996c033f50478a0e8a603cff27b463b78c4eb826"
+      },
+      {
+        "license": 3,
+        "file_name": "000000567011.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000567011.jpg",
+        "height": 426,
+        "width": 640,
+        "date_captured": "2013-11-20 22:45:16",
+        "flickr_url": "http://farm7.staticflickr.com/6186/6160889505_e0564c36a4_z.jpg",
+        "id": 567011,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000567011.jpg",
+        "sha256": "f52ff0a96efaf136300ad289e5e7a4c944596fe16f4276bb5c41ffbe0a6b657d"
+      },
+      {
+        "license": 1,
+        "file_name": "000000570688.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000570688.jpg",
+        "height": 480,
+        "width": 640,
+        "date_captured": "2013-11-22 18:05:42",
+        "flickr_url": "http://farm4.staticflickr.com/3204/2815814426_1f7c172343_z.jpg",
+        "id": 570688,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000570688.jpg",
+        "sha256": "baa5a96ec8a613dd8571a1e2bc6dcc1d8841418f8a19a6e521ca0d60ca3dd09d"
+      },
+      {
+        "license": 2,
+        "file_name": "000000574823.jpg",
+        "coco_url": "http://images.cocodataset.org/val2017/000000574823.jpg",
+        "height": 500,
+        "width": 375,
+        "date_captured": "2013-11-19 21:31:14",
+        "flickr_url": "http://farm2.staticflickr.com/1207/525441874_3607734190_z.jpg",
+        "id": 574823,
+        "retrieved_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000574823.jpg",
+        "sha256": "969b78e958e7602472d7904720988199bfd95779746793aba6937e6d7274677b"
+      }
+    ]
+  },
+  "scope": "2D pose with ground-truth person boxes; no 3D, detector, temporal or browser/GPU accuracy claim",
+  "hand_model": {
+    "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx",
+    "sha256": "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c",
+    "contract": {
+      "inputs": [
+        {
+          "name": "input_1",
+          "shape": [
+            1,
+            224,
+            224,
+            3
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Identity",
+          "shape": [
+            1,
+            63
+          ],
+          "type": "tensor(float)"
+        },
+        {
+          "name": "Identity_1",
+          "shape": [
+            1,
+            1
+          ],
+          "type": "tensor(float)"
+        },
+        {
+          "name": "Identity_2",
+          "shape": [
+            1,
+            1
+          ],
+          "type": "tensor(float)"
+        },
+        {
+          "name": "Identity_3",
+          "shape": [
+            1,
+            63
+          ],
+          "type": "tensor(float)"
+        }
+      ]
+    }
+  },
+  "models": {
+    "rtmpose-s": {
+      "url": "https://huggingface.co/RabbitDaisuke/RTMPose-Wholebody-onnx/resolve/9d7f318c43452baf33f1b39d39c1f8c03512aeb5/rtmpose-s-256x192-fp32.onnx",
+      "sha256": "0dd72a9932d5f6eb539d02b3f5825e2ac5c15aeada5c0ff2dd9d5b34ab4103e8",
+      "input": [
+        192,
+        256
+      ],
+      "contract": {
+        "inputs": [
+          {
+            "name": "input",
+            "shape": [
+              1,
+              3,
+              256,
+              192
+            ],
+            "type": "tensor(float)"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "simcc_x",
+            "shape": [
+              1,
+              133,
+              384
+            ],
+            "type": "tensor(float)"
+          },
+          {
+            "name": "simcc_y",
+            "shape": [
+              1,
+              133,
+              512
+            ],
+            "type": "tensor(float)"
+          }
+        ]
+      },
+      "conditions": {
+        "original": {
+          "body": {
+            "joints": 655,
+            "mean_error_px": 13.64136206137324,
+            "median_error_px": 4.523048126109794,
+            "p95_error_px": 56.00677309652112,
+            "pck_person_005": 0.732824427480916,
+            "pck_person_010": 0.867175572519084,
+            "coverage_score_025": 0.9053435114503817
+          },
+          "body_occluded": {
+            "joints": 74,
+            "mean_error_px": 28.68969133934315,
+            "median_error_px": 12.207007265140767,
+            "p95_error_px": 128.8366055625319,
+            "pck_person_005": 0.4189189189189189,
+            "pck_person_010": 0.6891891891891891,
+            "coverage_score_025": 0.7972972972972973
+          },
+          "body_visible": {
+            "joints": 581,
+            "mean_error_px": 11.724707385693769,
+            "median_error_px": 4.085302835915043,
+            "p95_error_px": 41.35197966881944,
+            "pck_person_005": 0.7728055077452668,
+            "pck_person_010": 0.8898450946643718,
+            "coverage_score_025": 0.919104991394148
+          },
+          "feet": {
+            "joints": 111,
+            "mean_error_px": 19.3968621481023,
+            "median_error_px": 6.705301336094049,
+            "p95_error_px": 79.28823410167348,
+            "pck_person_005": 0.6846846846846847,
+            "pck_person_010": 0.8108108108108109,
+            "coverage_score_025": 0.8288288288288288
+          },
+          "hands": {
+            "joints": 945,
+            "mean_error_px": 22.31546411706317,
+            "median_error_px": 6.853958764689384,
+            "p95_error_px": 99.8972472083705,
+            "pck_person_005": 0.7417989417989418,
+            "pck_person_010": 0.8455026455026455,
+            "coverage_score_025": 0.8984126984126984,
+            "pck_hand_020": 0.526984126984127
+          }
+        },
+        "hand_refined": {
+          "body": {
+            "joints": 655,
+            "mean_error_px": 13.64136206137324,
+            "median_error_px": 4.523048126109794,
+            "p95_error_px": 56.00677309652112,
+            "pck_person_005": 0.732824427480916,
+            "pck_person_010": 0.867175572519084,
+            "coverage_score_025": 0.9053435114503817
+          },
+          "body_occluded": {
+            "joints": 74,
+            "mean_error_px": 28.68969133934315,
+            "median_error_px": 12.207007265140767,
+            "p95_error_px": 128.8366055625319,
+            "pck_person_005": 0.4189189189189189,
+            "pck_person_010": 0.6891891891891891,
+            "coverage_score_025": 0.7972972972972973
+          },
+          "body_visible": {
+            "joints": 581,
+            "mean_error_px": 11.724707385693769,
+            "median_error_px": 4.085302835915043,
+            "p95_error_px": 41.35197966881944,
+            "pck_person_005": 0.7728055077452668,
+            "pck_person_010": 0.8898450946643718,
+            "coverage_score_025": 0.919104991394148
+          },
+          "feet": {
+            "joints": 111,
+            "mean_error_px": 19.3968621481023,
+            "median_error_px": 6.705301336094049,
+            "p95_error_px": 79.28823410167348,
+            "pck_person_005": 0.6846846846846847,
+            "pck_person_010": 0.8108108108108109,
+            "coverage_score_025": 0.8288288288288288
+          },
+          "hands": {
+            "joints": 945,
+            "mean_error_px": 20.859624805469025,
+            "median_error_px": 5.337290514448086,
+            "p95_error_px": 97.97889104823662,
+            "pck_person_005": 0.7555555555555555,
+            "pck_person_010": 0.8476190476190476,
+            "coverage_score_025": 0.8984126984126984,
+            "pck_hand_020": 0.6052910052910053
+          }
+        },
+        "original_mask_target": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 7.67883630985618,
+            "median_error_px": 3.9492589970575906,
+            "p95_error_px": 17.424882329559846,
+            "pck_person_005": 0.8055555555555556,
+            "pck_person_010": 0.9444444444444444,
+            "coverage_score_025": 0.9444444444444444
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 12.623136883834734,
+            "median_error_px": 12.623136883834734,
+            "p95_error_px": 13.927079649544401,
+            "pck_person_005": 0,
+            "pck_person_010": 1,
+            "coverage_score_025": 1
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 7.387995099622147,
+            "median_error_px": 3.723480655562472,
+            "p95_error_px": 18.68600665612605,
+            "pck_person_005": 0.8529411764705882,
+            "pck_person_010": 0.9411764705882353,
+            "coverage_score_025": 0.9411764705882353
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 5.3638458537754765,
+            "median_error_px": 5.100953716646529,
+            "p95_error_px": 10.99420820339669,
+            "pck_person_005": 0.7872340425531915,
+            "pck_person_010": 0.9361702127659575,
+            "coverage_score_025": 0.9148936170212766
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 15.468351516656329,
+            "median_error_px": 5.955207182949839,
+            "p95_error_px": 70.290151009015,
+            "pck_person_005": 0.8041074249605056,
+            "pck_person_010": 0.8941548183254344,
+            "coverage_score_025": 0.9052132701421801,
+            "pck_hand_020": 0.5687203791469194
+          }
+        },
+        "refined_mask_target": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 7.67883630985618,
+            "median_error_px": 3.9492589970575906,
+            "p95_error_px": 17.424882329559846,
+            "pck_person_005": 0.8055555555555556,
+            "pck_person_010": 0.9444444444444444,
+            "coverage_score_025": 0.9444444444444444
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 12.623136883834734,
+            "median_error_px": 12.623136883834734,
+            "p95_error_px": 13.927079649544401,
+            "pck_person_005": 0,
+            "pck_person_010": 1,
+            "coverage_score_025": 1
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 7.387995099622147,
+            "median_error_px": 3.723480655562472,
+            "p95_error_px": 18.68600665612605,
+            "pck_person_005": 0.8529411764705882,
+            "pck_person_010": 0.9411764705882353,
+            "coverage_score_025": 0.9411764705882353
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 5.3638458537754765,
+            "median_error_px": 5.100953716646529,
+            "p95_error_px": 10.99420820339669,
+            "pck_person_005": 0.7872340425531915,
+            "pck_person_010": 0.9361702127659575,
+            "coverage_score_025": 0.9148936170212766
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 13.656170548484516,
+            "median_error_px": 4.7052393132343076,
+            "p95_error_px": 44.33981164315063,
+            "pck_person_005": 0.8151658767772512,
+            "pck_person_010": 0.9036334913112164,
+            "coverage_score_025": 0.9052132701421801,
+            "pck_hand_020": 0.631911532385466
+          }
+        },
+        "masked_affected": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 17.57556145417925,
+            "median_error_px": 11.744348715458022,
+            "p95_error_px": 60.40479054824496,
+            "pck_person_005": 0.4722222222222222,
+            "pck_person_010": 0.7222222222222222,
+            "coverage_score_025": 0.8055555555555556
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 12.741155837980719,
+            "median_error_px": 12.741155837980719,
+            "p95_error_px": 12.828693302276537,
+            "pck_person_005": 0,
+            "pck_person_010": 1,
+            "coverage_score_025": 0.5
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 17.859938255132107,
+            "median_error_px": 11.182394617545722,
+            "p95_error_px": 61.91130384096166,
+            "pck_person_005": 0.5,
+            "pck_person_010": 0.7058823529411765,
+            "coverage_score_025": 0.8235294117647058
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 13.09524259645901,
+            "median_error_px": 12.416781454890671,
+            "p95_error_px": 24.908546504844452,
+            "pck_person_005": 0.2978723404255319,
+            "pck_person_010": 0.7659574468085106,
+            "coverage_score_025": 0.8936170212765957
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 48.49382122267579,
+            "median_error_px": 29.2877564007504,
+            "p95_error_px": 161.19036842926081,
+            "pck_person_005": 0.21169036334913113,
+            "pck_person_010": 0.4834123222748815,
+            "coverage_score_025": 0.6714060031595577,
+            "pck_hand_020": 0.07898894154818326
+          }
+        },
+        "masked_refined_affected": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 17.57556145417925,
+            "median_error_px": 11.744348715458022,
+            "p95_error_px": 60.40479054824496,
+            "pck_person_005": 0.4722222222222222,
+            "pck_person_010": 0.7222222222222222,
+            "coverage_score_025": 0.8055555555555556
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 12.741155837980719,
+            "median_error_px": 12.741155837980719,
+            "p95_error_px": 12.828693302276537,
+            "pck_person_005": 0,
+            "pck_person_010": 1,
+            "coverage_score_025": 0.5
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 17.859938255132107,
+            "median_error_px": 11.182394617545722,
+            "p95_error_px": 61.91130384096166,
+            "pck_person_005": 0.5,
+            "pck_person_010": 0.7058823529411765,
+            "coverage_score_025": 0.8235294117647058
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 13.09524259645901,
+            "median_error_px": 12.416781454890671,
+            "p95_error_px": 24.908546504844452,
+            "pck_person_005": 0.2978723404255319,
+            "pck_person_010": 0.7659574468085106,
+            "coverage_score_025": 0.8936170212765957
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 48.469848069614805,
+            "median_error_px": 29.2877564007504,
+            "p95_error_px": 161.19036842926081,
+            "pck_person_005": 0.21169036334913113,
+            "pck_person_010": 0.4834123222748815,
+            "coverage_score_025": 0.6714060031595577,
+            "pck_hand_020": 0.07898894154818326
+          }
+        }
+      },
+      "cpu_pose_ms": {
+        "mean": 41.08481312499978,
+        "p95": 62.8115926000035
+      },
+      "cpu_hand_ms_per_person": 17.814780812498874,
+      "refinement_accepted_hands": 36,
+      "refinement_attempted_hands": 128
+    },
+    "rtmw-l": {
+      "url": "https://huggingface.co/RabbitDaisuke/rtmw3d-webgpu-onnx/resolve/2fc6f257743eb890a340a50bbaa3e46c5a313e83/rtmw2d/rtmw-l-256x192-fp32.onnx",
+      "sha256": "8b6fb439dd02b02b0f71edaac647c8818e2335083ba1b3abc103f852a7c7c8d8",
+      "input": [
+        192,
+        256
+      ],
+      "contract": {
+        "inputs": [
+          {
+            "name": "input",
+            "shape": [
+              1,
+              3,
+              256,
+              192
+            ],
+            "type": "tensor(float)"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "simcc_x",
+            "shape": [
+              1,
+              133,
+              384
+            ],
+            "type": "tensor(float)"
+          },
+          {
+            "name": "simcc_y",
+            "shape": [
+              1,
+              133,
+              512
+            ],
+            "type": "tensor(float)"
+          }
+        ]
+      },
+      "conditions": {
+        "original": {
+          "body": {
+            "joints": 655,
+            "mean_error_px": 9.35817177707178,
+            "median_error_px": 3.25871570588133,
+            "p95_error_px": 32.51145925673467,
+            "pck_person_005": 0.8305343511450382,
+            "pck_person_010": 0.917557251908397,
+            "coverage_score_025": 0.9801526717557252
+          },
+          "body_occluded": {
+            "joints": 74,
+            "mean_error_px": 16.0677856460727,
+            "median_error_px": 6.00681934333189,
+            "p95_error_px": 78.04518048690429,
+            "pck_person_005": 0.5945945945945946,
+            "pck_person_010": 0.8243243243243243,
+            "coverage_score_025": 0.9324324324324325
+          },
+          "body_visible": {
+            "joints": 581,
+            "mean_error_px": 8.503591008902989,
+            "median_error_px": 2.987138508270108,
+            "p95_error_px": 30.23094038679575,
+            "pck_person_005": 0.8605851979345955,
+            "pck_person_010": 0.9294320137693631,
+            "coverage_score_025": 0.9862306368330465
+          },
+          "feet": {
+            "joints": 111,
+            "mean_error_px": 8.323440291219729,
+            "median_error_px": 4.232000118147417,
+            "p95_error_px": 28.70774199508641,
+            "pck_person_005": 0.8288288288288288,
+            "pck_person_010": 0.8918918918918919,
+            "coverage_score_025": 0.9459459459459459
+          },
+          "hands": {
+            "joints": 945,
+            "mean_error_px": 13.208164504861006,
+            "median_error_px": 3.391710947208451,
+            "p95_error_px": 57.557299372787774,
+            "pck_person_005": 0.8539682539682539,
+            "pck_person_010": 0.8931216931216931,
+            "coverage_score_025": 1,
+            "pck_hand_020": 0.7492063492063492
+          }
+        },
+        "hand_refined": {
+          "body": {
+            "joints": 655,
+            "mean_error_px": 9.35817177707178,
+            "median_error_px": 3.25871570588133,
+            "p95_error_px": 32.51145925673467,
+            "pck_person_005": 0.8305343511450382,
+            "pck_person_010": 0.917557251908397,
+            "coverage_score_025": 0.9801526717557252
+          },
+          "body_occluded": {
+            "joints": 74,
+            "mean_error_px": 16.0677856460727,
+            "median_error_px": 6.00681934333189,
+            "p95_error_px": 78.04518048690429,
+            "pck_person_005": 0.5945945945945946,
+            "pck_person_010": 0.8243243243243243,
+            "coverage_score_025": 0.9324324324324325
+          },
+          "body_visible": {
+            "joints": 581,
+            "mean_error_px": 8.503591008902989,
+            "median_error_px": 2.987138508270108,
+            "p95_error_px": 30.23094038679575,
+            "pck_person_005": 0.8605851979345955,
+            "pck_person_010": 0.9294320137693631,
+            "coverage_score_025": 0.9862306368330465
+          },
+          "feet": {
+            "joints": 111,
+            "mean_error_px": 8.323440291219729,
+            "median_error_px": 4.232000118147417,
+            "p95_error_px": 28.70774199508641,
+            "pck_person_005": 0.8288288288288288,
+            "pck_person_010": 0.8918918918918919,
+            "coverage_score_025": 0.9459459459459459
+          },
+          "hands": {
+            "joints": 945,
+            "mean_error_px": 13.539581155274643,
+            "median_error_px": 4.109893630236166,
+            "p95_error_px": 60.31755197417346,
+            "pck_person_005": 0.8486772486772487,
+            "pck_person_010": 0.9026455026455027,
+            "coverage_score_025": 1,
+            "pck_hand_020": 0.7248677248677249
+          }
+        },
+        "original_mask_target": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 7.368197435791051,
+            "median_error_px": 3.555463980619578,
+            "p95_error_px": 19.509359521279073,
+            "pck_person_005": 0.8333333333333334,
+            "pck_person_010": 0.9722222222222222,
+            "coverage_score_025": 1
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 11.172371982615038,
+            "median_error_px": 11.172371982615038,
+            "p95_error_px": 16.603169553935317,
+            "pck_person_005": 0.5,
+            "pck_person_010": 1,
+            "coverage_score_025": 1
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 7.144422462448464,
+            "median_error_px": 3.4144011517930486,
+            "p95_error_px": 19.362836126151738,
+            "pck_person_005": 0.8529411764705882,
+            "pck_person_010": 0.9705882352941176,
+            "coverage_score_025": 1
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 5.004174026256156,
+            "median_error_px": 2.811316315876701,
+            "p95_error_px": 25.09433387020654,
+            "pck_person_005": 0.9148936170212766,
+            "pck_person_010": 0.9148936170212766,
+            "coverage_score_025": 0.9787234042553191
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 15.296178301921078,
+            "median_error_px": 3.326681021467955,
+            "p95_error_px": 136.90184859059914,
+            "pck_person_005": 0.8420221169036335,
+            "pck_person_010": 0.8894154818325435,
+            "coverage_score_025": 1,
+            "pck_hand_020": 0.7472353870458136
+          }
+        },
+        "refined_mask_target": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 7.368197435791051,
+            "median_error_px": 3.555463980619578,
+            "p95_error_px": 19.509359521279073,
+            "pck_person_005": 0.8333333333333334,
+            "pck_person_010": 0.9722222222222222,
+            "coverage_score_025": 1
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 11.172371982615038,
+            "median_error_px": 11.172371982615038,
+            "p95_error_px": 16.603169553935317,
+            "pck_person_005": 0.5,
+            "pck_person_010": 1,
+            "coverage_score_025": 1
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 7.144422462448464,
+            "median_error_px": 3.4144011517930486,
+            "p95_error_px": 19.362836126151738,
+            "pck_person_005": 0.8529411764705882,
+            "pck_person_010": 0.9705882352941176,
+            "coverage_score_025": 1
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 5.004174026256156,
+            "median_error_px": 2.811316315876701,
+            "p95_error_px": 25.09433387020654,
+            "pck_person_005": 0.9148936170212766,
+            "pck_person_010": 0.9148936170212766,
+            "coverage_score_025": 0.9787234042553191
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 15.682002897168609,
+            "median_error_px": 3.949623795375908,
+            "p95_error_px": 136.90184859059914,
+            "pck_person_005": 0.8325434439178515,
+            "pck_person_010": 0.9004739336492891,
+            "coverage_score_025": 1,
+            "pck_hand_020": 0.7203791469194313
+          }
+        },
+        "masked_affected": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 11.103077316197977,
+            "median_error_px": 6.718961790798509,
+            "p95_error_px": 33.58101511400493,
+            "pck_person_005": 0.5833333333333334,
+            "pck_person_010": 0.8611111111111112,
+            "coverage_score_025": 0.9722222222222222
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 14.473279782405744,
+            "median_error_px": 14.473279782405744,
+            "p95_error_px": 19.577588112737693,
+            "pck_person_005": 0,
+            "pck_person_010": 0.5,
+            "coverage_score_025": 1
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 10.904830112303403,
+            "median_error_px": 6.184073155878178,
+            "p95_error_px": 35.77167016191766,
+            "pck_person_005": 0.6176470588235294,
+            "pck_person_010": 0.8823529411764706,
+            "coverage_score_025": 0.9705882352941176
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 10.254154833554335,
+            "median_error_px": 8.72594463873653,
+            "p95_error_px": 25.84814282525021,
+            "pck_person_005": 0.46808510638297873,
+            "pck_person_010": 0.8723404255319149,
+            "coverage_score_025": 0.9787234042553191
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 36.44208584474606,
+            "median_error_px": 18.901533138093995,
+            "p95_error_px": 143.06495591872985,
+            "pck_person_005": 0.34755134281200634,
+            "pck_person_010": 0.6334913112164297,
+            "coverage_score_025": 0.9225908372827805,
+            "pck_hand_020": 0.1721958925750395
+          }
+        },
+        "masked_refined_affected": {
+          "body": {
+            "joints": 36,
+            "mean_error_px": 11.103077316197977,
+            "median_error_px": 6.718961790798509,
+            "p95_error_px": 33.58101511400493,
+            "pck_person_005": 0.5833333333333334,
+            "pck_person_010": 0.8611111111111112,
+            "coverage_score_025": 0.9722222222222222
+          },
+          "body_occluded": {
+            "joints": 2,
+            "mean_error_px": 14.473279782405744,
+            "median_error_px": 14.473279782405744,
+            "p95_error_px": 19.577588112737693,
+            "pck_person_005": 0,
+            "pck_person_010": 0.5,
+            "coverage_score_025": 1
+          },
+          "body_visible": {
+            "joints": 34,
+            "mean_error_px": 10.904830112303403,
+            "median_error_px": 6.184073155878178,
+            "p95_error_px": 35.77167016191766,
+            "pck_person_005": 0.6176470588235294,
+            "pck_person_010": 0.8823529411764706,
+            "coverage_score_025": 0.9705882352941176
+          },
+          "feet": {
+            "joints": 47,
+            "mean_error_px": 10.254154833554335,
+            "median_error_px": 8.72594463873653,
+            "p95_error_px": 25.84814282525021,
+            "pck_person_005": 0.46808510638297873,
+            "pck_person_010": 0.8723404255319149,
+            "coverage_score_025": 0.9787234042553191
+          },
+          "hands": {
+            "joints": 633,
+            "mean_error_px": 36.44556816814252,
+            "median_error_px": 18.901533138093995,
+            "p95_error_px": 143.06495591872985,
+            "pck_person_005": 0.34755134281200634,
+            "pck_person_010": 0.6334913112164297,
+            "coverage_score_025": 0.9225908372827805,
+            "pck_hand_020": 0.17377567140600317
+          }
+        }
+      },
+      "cpu_pose_ms": {
+        "mean": 149.9305831093758,
+        "p95": 173.10045290000176
+      },
+      "cpu_hand_ms_per_person": 16.148603671875648,
+      "refinement_accepted_hands": 30,
+      "refinement_attempted_hands": 128
+    }
+  },
+  "limitations": [
+    "Small fixed set is not a full benchmark.",
+    "Hand and foot visibility values are reliability labels, not binary occlusion ground truth.",
+    "Gray rectangles are controlled corruption, not real occlusion videos.",
+    "Scores never filter which annotated points count toward positional error.",
+    "GT body boxes are used; predicted hand landmarks alone determine hand crops.",
+    "CPU timings do not estimate RTX/WebGPU throughput."
+  ]
+}
