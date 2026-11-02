@@ -114,16 +114,24 @@ export class Pose3DRoiTracker {
     if (this.freshDetection) { this.freshDetection = false; return { ...this.detectedCrop, imageSize: { ...imageSize } }; }
     if (this.torsoGood && this.keypoints) {
       const prior = this.lastGoodCrop, trackedRoi = prior ? [prior.cx - prior.side / 2, prior.cy - prior.side / 2, prior.side, prior.side] : roi;
-      return createPose3DCrop(trackedRoi, this.keypoints, imageSize);
+      const next = createPose3DCrop(trackedRoi, this.keypoints, imageSize);
+      // The torso gate must agree with createPose3DCrop. If anchors disappear,
+      // never feed the previous crop through person-ROI padding again: repeated
+      // 1.25x expansion makes the person vanish even while detection succeeds.
+      if (next.source === 'observed-hip-torso') return next;
     }
     if (this.lastGoodCrop && timestampMs - this.lastGoodAt <= this.cropHoldMs) return { ...this.lastGoodCrop, imageSize: { ...imageSize }, source: 'recent-crop-only-not-held-landmarks' };
     return createPose3DCrop(roi, [], imageSize);
   }
   update(decoded, crop, timestampMs) {
     this.lastUpdateAt = timestampMs; this.keypoints = decoded?.keypoints || null;
-    const observed = id => this.keypoints?.[id]?.observable !== false && this.keypoints?.[id]?.score >= .25;
-    this.poseGood = decoded?.valid === true && [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].filter(observed).length >= 4;
-    this.torsoGood = this.poseGood && [5, 6, 11, 12].every(observed);
+    const size = decoded?.imageSize || crop?.imageSize;
+    const observed = (id, threshold = .25) => {
+      const point = this.keypoints?.[id];
+      return point?.observable !== false && point?.score >= threshold && finite(point.x) && finite(point.y) && point.x >= 0 && point.y >= 0 && point.x < size?.width && point.y < size?.height;
+    };
+    this.poseGood = decoded?.valid === true && [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].filter(id => observed(id)).length >= 4;
+    this.torsoGood = this.poseGood && [5, 6, 11, 12].every(id => observed(id, .35));
     if (this.poseGood) { this.lastGoodCrop = { ...crop }; this.lastGoodAt = timestampMs; }
   }
 }
