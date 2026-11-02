@@ -13,16 +13,27 @@
 `allowApproximateCalibration:true` を明示すると、`calibrationStatus:'approximate'` のカメラも利用する。この場合のsourceは `estimatedMultiView`、distanceStatusも `estimatedMultiView`、信頼度は半減する。FOVから仮定した内部行列を実測校正と扱わない。
 `triangulateFrame([{sourceId,timeMs,keypoints}],cameras,options)` は同じidを集約し、各関節の三角測量結果を返す。時刻は受信時刻ではなく、共通時計に対応づけた撮影時刻を渡す。映像の転送遅延やデコード遅延が未知なら実測同時刻と扱わない。
 `estimateRootDepth(keypoints,camera,boneLengths,options)` の点は `{id,u,v,score,relativeZm?}`。boneLengths は `{'5-7':0.30,'7-9':0.25,...}`。複数長骨の長さ残差をHuber損失で最小化し、出力は `{valid,depthM,joints,distanceStatus,fitErrorM,confidence,boneCount,coordinateFrame,boneLengthSource}`。BBox高さを距離計算に使わない。最低3骨が必要で、探索範囲境界・矛盾の大きい骨長・深度不足は無効にする。
-`relativeZm` がない2Dモデルは既定で単眼3Dに変換しない。明示的に `allowPlanarPrior:true` を指定した場合のみ平面事前分布を使用し、`source:'planarPrior'`、`distanceStatus:'estimatedPlanarPrior'`、低い信頼度を返す。これは学習済み3D姿勢推定の代替精度を保証しない。
+`relativeZm` がない2Dモデルは既定で単眼3Dに変換しない。明示的に `allowPlanarPrior:true` を指定した場合のみ平面事前分布を使用し、関節の `source:'planarPrior'` と低い信頼度を返す。出力全体の `distanceStatus` は、実測内部パラメータなら `estimatedPlanarPrior`、暫定内部パラメータなら `estimatedLowConfidence`。これは学習済み3D姿勢推定の代替精度を保証しない。
 `anthropometricBoneLengths(heightM)` は身長からの初期比率を生成する。本人の実測骨長ではないため、`boneLengthSource:'measured'` を指定してはならない。未実測内部パラメータでの距離は `estimatedLowConfidence`。
 `BODY_BONES`、`SKELETON_EDGES` は COCO-WholeBody 133点の身体・足・手の接続を公開する。顔の詳細接続は含めない。
 `calibratePlanarCamera({imagePoints,worldPoints,intrinsics,id,maximumReprojectionErrorPx:8})` は既知の床矩形等の対応4点以上からカメラ外部姿勢を求める。imagePoints は `[[u,v],...]`、worldPoints は `[[x,0,z],...]`、距離単位m、床Y上。4点の順は両配列で対応させる。例は `[[0,0,0],[幅,0,0],[幅,0,奥行],[0,0,奥行]]`。出力は `{valid,camera,reprojectionErrorPx,maximumPointErrorPx,calibrationStatus,pointCount}`。失敗は `{valid:false,camera:null,reason}`。
 歪み補正後の対応から正規化ホモグラフィを解き、回転を正規直交化した後、原画像再投影誤差を最小化する。共線点・床以外の点・カメラ後方・床より下のカメラ・再投影残差超過は拒否する。カメラは床より上にあることを前提とする。4点の再投影が一致しても未知Kの誤差が消えるわけではない。
-intrinsics に `intrinsicsCalibrated:true` を指定した場合だけ、返すcameraの `calibrated:true` とする。FOV由来の暫定Kなら `intrinsicsCalibrated:false` とし、返るcameraも `calibrated:false,calibrationStatus:'approximate'`。床矩形の測定によりスケールの基準は得られるが、暫定Kによる3D誤差は残る。
+intrinsics の `intrinsicsCalibrated:true` を実測Kの指定として用い、互換指定の `calibrated:true` も同じ意味で受け付ける。いずれかが厳密にtrueなら、返すcameraは `calibrated:true,intrinsicsCalibrated:true,calibrationStatus:'calibrated'` となる。FOV由来の暫定Kなら両フラグをfalseまたは未指定にし、返るcameraも `calibrated:false,calibrationStatus:'approximate'` となる。`intrinsicsCalibrated:false` と `calibrated:true` を混在させない。床矩形の測定によりスケールの基準は得られるが、暫定Kによる3D誤差は残る。
 ## tracking.js
 `new OcclusionTracker(options)` の `update({timeMs,joints})` は `{timeMs,joints,root,feet,stats}` を返す。入力関節は `{id,xyz:[x,y,z],confidence,source,valid?}`。許可する現在入力sourceは `triangulated`、`estimatedMultiView`、`monocular`、`planarPrior`、`model3d`。過去の予測を再入力して観測寿命を延ばさない。
-出力jointsは133点。`source:'predicted'` は減衰する速度外挿、`source:'kinematicPrior'` は直近の骨長・親関節位置・掌座標系による補完。入力がある関節はそれぞれのsourceを維持する。`observed:true` は三角測量された3Dだけに付く。`ageMs` と `lastObservedTimeMs` は予測フレームでは更新しない。
-既定の自由外挿期限は身体600ms、手250ms、足450ms。観測できる親や掌で拘束する補完も最大1200msで終了し、信頼度は時間で減衰する。最初から一度も推定できない関節や、期限後の関節は `missing` とする。完全遮蔽中の未知の指曲げを実測として出さない。
+出力jointsは133点。`source:'predicted'` は減衰する速度外挿、`source:'kinematicPrior'` は直近の骨長・親関節位置・掌座標系による補完。入力がある関節はそれぞれのsourceを維持する。`observed:true` は三角測量された3Dだけに付く。予測中も `ageMs` は最後に受け付けた現在入力からの経過時間として増える。`lastObservedTimeMs` は新しい現在入力を受け付けるまで固定し、予測では更新しない。このフィールド名の「Observed」は単眼等の受け付けた推定入力も含むため、`observed:true` と同じ意味ではない。
+
+既定の自由外挿期限は次のとおり。値は正確に復元できる時間の保証ではなく、出力を打ち切る上限である。
+
+| COCO-WholeBody ID群 | 期限 | 関節の範囲 |
+|---|---:|---|
+| 0–16、23–90 | 600ms | 身体・顔。身体モデルの手首9/10、足首15/16を含む |
+| 17–22 | 450ms | 足の拡張6点（母趾先・小趾先・踵） |
+| 91–132 | 250ms | 左右の手21点ブロック。各手モデルの手首91/112を含む |
+
+親関節や掌を使う拘束付き補完は、自身の最後の現在入力から最大1200msまで許可する。親関節は現在入力の点に加え、その子の自由外挿期限以内の `ageMs` を持つ予測点も使用できる。掌は現在入力から作れる座標系、または現在入力の手首へ最大1200ms以内の保存掌姿勢を合わせた座標系を使い、各点の保存ローカル座標も1200ms以内であることを要求する。親や掌が更新されても、隠れた点自身の寿命は延長しない。
+
+信頼度は時間と拘束に使う点の信頼度で減衰し、下限を割れば各期限より前に `missing` となる。最初から一度も推定できない関節や、期限後の関節も `missing` とする。完全遮蔽中の未知の指曲げを実測として出さない。
 逆方向の動画シークで履歴を初期化する。入力を切り替える場合にも `reset()` を呼ぶ。未来フレームを参照する平滑化は行わない。
 `deriveFootFrames(joints)` は左右の踵・母趾・小趾・足首から足の向きと足の甲の代理位置 `instepProxy` を出す。標準133点には各足指の関節がないため、`toeArticulationAvailable:false` を必ず返す。足の甲の表面形状や5本の足指の曲げ角を測れたという意味ではない。
 `mergeJointEstimates(primary,fallback)` は有効なprimaryを優先し、欠測点にfallbackを使う。両方は同一の座標系に変換してから渡す。

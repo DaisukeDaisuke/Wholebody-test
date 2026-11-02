@@ -1,0 +1,2470 @@
+{
+  "schema_version": 1,
+  "mode": "reused-real-cropped-hand-multiview",
+  "git_sha": "ee54e5c99335d487f81305dcae570e046694c24d",
+  "source": {
+    "url": "https://lmb.informatik.uni-freiburg.de/data/HanCo/HanCo_tester.zip",
+    "bytes": 61720728,
+    "sha256": "ba3403b1997a06881341953de8d24d3e630169a9ef7b8bd279300bf10ef84603"
+  },
+  "source_page": "https://lmb.informatik.uni-freiburg.de/resources/datasets/HanCo.en.html",
+  "projection_source": "https://github.com/lmb-freiburg/contra-hand/blob/main/show_dataset.py",
+  "dataset": {
+    "sequence": 110,
+    "frames": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39
+    ],
+    "fps": 5,
+    "views": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "paired_views": [
+      0,
+      3
+    ],
+    "manually_validated_frames": [
+      12,
+      15,
+      24
+    ],
+    "reference_kind": "Manually inspected MANO fits; not independent optical-marker ground truth",
+    "crop": "Dataset-provided 224x224 hand crops; no full-image person/hand detection evaluated",
+    "units": "Metres inferred from the shared FreiHAND/MANO convention; no bone-length alignment",
+    "unit_source": "https://github.com/lmb-freiburg/freihand/blob/master/eval.py",
+    "native_wrist_to_middle_mcp_median": 0.08863363180341008,
+    "projection": "Frame-specific K times M_world_to_camera; official crop example applies no extra distortion"
+  },
+  "model": {
+    "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx",
+    "sha256": "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c",
+    "contract": {
+      "inputs": [
+        {
+          "name": "input_1",
+          "shape": [
+            1,
+            224,
+            224,
+            3
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Identity",
+          "shape": [
+            1,
+            63
+          ],
+          "type": "tensor(float)"
+        },
+        {
+          "name": "Identity_1",
+          "shape": [
+            1,
+            1
+          ],
+          "type": "tensor(float)"
+        },
+        {
+          "name": "Identity_2",
+          "shape": [
+            1,
+            1
+          ],
+          "type": "tensor(float)"
+        },
+        {
+          "name": "Identity_3",
+          "shape": [
+            1,
+            63
+          ],
+          "type": "tensor(float)"
+        }
+      ]
+    }
+  },
+  "backend": "CPUExecutionProvider",
+  "runtime_version": "1.23.2",
+  "rotation_candidates_degrees": [
+    0,
+    45,
+    90,
+    135,
+    180,
+    225,
+    270,
+    315
+  ],
+  "rotation_selection": "Maximum model hand-presence, independent of reference coordinates",
+  "cpu_ms_per_crop_eight_candidates": {
+    "mean": 15.991248684375847,
+    "p95": 17.697397000065962
+  },
+  "pixel_metrics": {
+    "two_views": {
+      "joints": 126,
+      "mean_error_px": 16.050802064092224,
+      "median_error_px": 9.962113564926465,
+      "p95_error_px": 48.06364707373492,
+      "pck_5px": 0.24603174603174602,
+      "pck_10px": 0.5
+    },
+    "eight_views": {
+      "joints": 504,
+      "mean_error_px": 13.698079662330157,
+      "median_error_px": 8.661734917375004,
+      "p95_error_px": 46.269690491649136,
+      "pck_5px": 0.25793650793650796,
+      "pck_10px": 0.5853174603174603
+    },
+    "two_views_one_image_masked": {
+      "joints": 126,
+      "mean_error_px": 15.782882773506218,
+      "median_error_px": 10.051682052989971,
+      "p95_error_px": 46.41763815058849,
+      "pck_5px": 0.25396825396825395,
+      "pck_10px": 0.49206349206349204
+    },
+    "eight_views_one_image_masked": {
+      "joints": 504,
+      "mean_error_px": 13.631099839683655,
+      "median_error_px": 8.722927626611895,
+      "p95_error_px": 45.100208724383705,
+      "pck_5px": 0.25992063492063494,
+      "pck_10px": 0.5833333333333334
+    }
+  },
+  "one_view_image_mask": {
+    "camera": "cam0",
+    "frames": [
+      10,
+      11,
+      12,
+      13,
+      14
+    ],
+    "rectangle_xyxy": [
+      67,
+      34,
+      157,
+      190
+    ],
+    "fill_value": 128,
+    "same_target_pixel_metrics": {
+      "unmodified_same_targets": {
+        "joints": 21,
+        "mean_error_px": 32.24847127064135,
+        "median_error_px": 25.527386836878424,
+        "p95_error_px": 63.38397425745418,
+        "pck_5px": 0,
+        "pck_10px": 0.09523809523809523
+      },
+      "masked_targets": {
+        "joints": 21,
+        "mean_error_px": 30.640955527125314,
+        "median_error_px": 23.190453520201437,
+        "p95_error_px": 74.99606418465793,
+        "pck_5px": 0.047619047619047616,
+        "pck_10px": 0.047619047619047616
+      }
+    }
+  },
+  "artificial_all_view_gap": {
+    "frame": 12,
+    "duration_ms": 200,
+    "selection": "First manually validated frame with two preceding fitted frames, selected before inference"
+  },
+  "limitations": [
+    "One tester sequence is not a held-out population benchmark; model training overlap is unknown.",
+    "Only manually validated reference frames count toward errors; all frames supply causal history.",
+    "Eight-way rotation search on known hand crops is a component evaluation, not the whole-body ROI pipeline.",
+    "Eight-view reconstruction is an upper-bound diagnostic; the published app accepts two views.",
+    "MANO-fit agreement is not independently measured physical finger accuracy.",
+    "Presence is a shared hand-level model score, not per-finger visibility ground truth.",
+    "Fixed gray rectangles and omitted observations are artificial corruption, not labeled natural occlusion.",
+    "No body, instep or toe reference is included; browser throughput is not measured.",
+    "Original images, references and calibration arrays are excluded from public artifacts."
+  ],
+  "image_inference_git_sha": "e9bc84483c88884c7b88ed9589eb069a6070a903",
+  "reuse_input_json_sha256": {
+    "observations": "5cab71615930fc2092d1468217a9ee031ff5b4340bed47cde8f763753698e542",
+    "report": "d87820da45ff9ef803798cb867718fae728d638eb822aeb0762de1be3fa443a7"
+  },
+  "additional_image_inference_runs": 0,
+  "timing_origin": "CPU image timings are from the original image-inference run, not this geometry-only evaluation.",
+  "pair_selection": {
+    "sourceCondition": "eight_views",
+    "warmupFrameCount": 10,
+    "jointIds": [
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132
+    ],
+    "name": "selected_two_views_from_warmup",
+    "scope": "Placement diagnostic among eight recorded candidates, not automatic placement of a two-camera app."
+  },
+  "ok": true,
+  "geometry": {
+    "schemaVersion": 1,
+    "kind": "real-multiview-pose-evaluation",
+    "dataset": "HanCo Tester",
+    "referenceKind": "MANO-fit, manually validated frames only",
+    "sequence": "0110",
+    "fps": 5,
+    "coordinateUnit": "m",
+    "errorUnit": "mm",
+    "sourceCommit": "ee54e5c99335d487f81305dcae570e046694c24d",
+    "methods": {
+      "triangulation": "dist/geometry.js triangulateJoint",
+      "input": "Real-image model observations.",
+      "tracking": "dist/tracking.js OcclusionTracker",
+      "holdLast": "Causal last accepted input coordinate; expires at the product free-prediction age for each joint group."
+    },
+    "cameraIds": [
+      "cam0",
+      "cam1",
+      "cam2",
+      "cam3",
+      "cam4",
+      "cam5",
+      "cam6",
+      "cam7"
+    ],
+    "metricGroups": {
+      "hands": [
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132
+      ]
+    },
+    "provenance": {
+      "source": {
+        "url": "https://lmb.informatik.uni-freiburg.de/data/HanCo/HanCo_tester.zip",
+        "bytes": 61720728,
+        "sha256": "ba3403b1997a06881341953de8d24d3e630169a9ef7b8bd279300bf10ef84603"
+      },
+      "sourcePage": "https://lmb.informatik.uni-freiburg.de/resources/datasets/HanCo.en.html",
+      "projectionSource": "https://github.com/lmb-freiburg/contra-hand/blob/main/show_dataset.py",
+      "coordinateConversion": "No conversion: native coordinates treated as metres under the inherited FreiHAND/MANO convention.",
+      "unitStatus": "Inference from the shared convention, not a direct HanCo statement of SI units.",
+      "unitSource": "https://github.com/lmb-freiburg/freihand/blob/master/eval.py",
+      "reference": "Only manually inspected MANO fits are scored; no independent optical-marker reference.",
+      "input": "Dataset-provided hand crops with eight fixed rotation candidates, selected by model presence.",
+      "imageInferenceCommit": "e9bc84483c88884c7b88ed9589eb069a6070a903",
+      "reusedArtifactJsonSha256": {
+        "observations": "5cab71615930fc2092d1468217a9ee031ff5b4340bed47cde8f763753698e542",
+        "report": "d87820da45ff9ef803798cb867718fae728d638eb822aeb0762de1be3fa443a7"
+      },
+      "additionalImageInferenceRuns": 0
+    },
+    "pairSelection": {
+      "sourceCondition": "eight_views",
+      "warmupFrameCount": 10,
+      "firstWarmupFrame": 0,
+      "lastWarmupFrame": 9,
+      "firstScoredFrame": 10,
+      "objective": "Sum of product triangulation confidence / all declared joint-frames in the warmup.",
+      "tieBreak": "Lexicographic camera IDs.",
+      "referenceUsedForSelection": false,
+      "selectedCameraIds": [
+        "cam3",
+        "cam4"
+      ],
+      "selectedScore": 0.6397887354606894,
+      "selectedPairHasSupport": true,
+      "scoring": "Warmup observations initialize history; their reference points are excluded from the added comparisons.",
+      "candidates": [
+        {
+          "cameraIds": [
+            "cam3",
+            "cam4"
+          ],
+          "score": 0.6397887354606894,
+          "jointFrames": 210,
+          "validJointFrames": 200,
+          "validFraction": 0.9523809523809523,
+          "meanBaselineM": 0.8000853107405559,
+          "meanRayAngleDegAvailable": 63.91414155221141,
+          "meanReprojectionErrorPxAvailable": 2.2112913898206408,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 10
+          }
+        },
+        {
+          "cameraIds": [
+            "cam4",
+            "cam5"
+          ],
+          "score": 0.5222127594861884,
+          "jointFrames": 210,
+          "validJointFrames": 168,
+          "validFraction": 0.8,
+          "meanBaselineM": 0.4091792501706344,
+          "meanRayAngleDegAvailable": 30.11547456983168,
+          "meanReprojectionErrorPxAvailable": 2.5531672401960637,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 42
+          }
+        },
+        {
+          "cameraIds": [
+            "cam3",
+            "cam5"
+          ],
+          "score": 0.5155474184319373,
+          "jointFrames": 210,
+          "validJointFrames": 156,
+          "validFraction": 0.7428571428571429,
+          "meanBaselineM": 0.7055518523393414,
+          "meanRayAngleDegAvailable": 56.41620877565289,
+          "meanReprojectionErrorPxAvailable": 2.5402699527953576,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 54
+          }
+        },
+        {
+          "cameraIds": [
+            "cam2",
+            "cam3"
+          ],
+          "score": 0.4432667561410556,
+          "jointFrames": 210,
+          "validJointFrames": 148,
+          "validFraction": 0.7047619047619048,
+          "meanBaselineM": 0.3830371054002791,
+          "meanRayAngleDegAvailable": 29.33815154824441,
+          "meanReprojectionErrorPxAvailable": 3.197229321109634,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 62
+          }
+        },
+        {
+          "cameraIds": [
+            "cam4",
+            "cam7"
+          ],
+          "score": 0.42342200509549005,
+          "jointFrames": 210,
+          "validJointFrames": 138,
+          "validFraction": 0.6571428571428571,
+          "meanBaselineM": 1.1149159137917104,
+          "meanRayAngleDegAvailable": 77.72103579980148,
+          "meanReprojectionErrorPxAvailable": 2.634849298756752,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 30,
+            "insufficient-calibrated-views": 42
+          }
+        },
+        {
+          "cameraIds": [
+            "cam3",
+            "cam7"
+          ],
+          "score": 0.4184920723408125,
+          "jointFrames": 210,
+          "validJointFrames": 147,
+          "validFraction": 0.7,
+          "meanBaselineM": 1.1994337415506173,
+          "meanRayAngleDegAvailable": 52.13240150944139,
+          "meanReprojectionErrorPxAvailable": 3.679063925414033,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 42,
+            "degenerate-or-inconsistent-rays": 21
+          }
+        },
+        {
+          "cameraIds": [
+            "cam5",
+            "cam7"
+          ],
+          "score": 0.373706506739948,
+          "jointFrames": 210,
+          "validJointFrames": 128,
+          "validFraction": 0.6095238095238096,
+          "meanBaselineM": 0.951431615458824,
+          "meanRayAngleDegAvailable": 85.38440115348611,
+          "meanReprojectionErrorPxAvailable": 3.5016482527139337,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 42,
+            "degenerate-or-inconsistent-rays": 40
+          }
+        },
+        {
+          "cameraIds": [
+            "cam6",
+            "cam7"
+          ],
+          "score": 0.3507808438648276,
+          "jointFrames": 210,
+          "validJointFrames": 117,
+          "validFraction": 0.5571428571428572,
+          "meanBaselineM": 0.7248911023649843,
+          "meanRayAngleDegAvailable": 75.88693169303208,
+          "meanReprojectionErrorPxAvailable": 2.9628369672188675,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 30,
+            "insufficient-calibrated-views": 63
+          }
+        },
+        {
+          "cameraIds": [
+            "cam4",
+            "cam6"
+          ],
+          "score": 0.3463126211336771,
+          "jointFrames": 210,
+          "validJointFrames": 143,
+          "validFraction": 0.680952380952381,
+          "meanBaselineM": 1.319727548005258,
+          "meanRayAngleDegAvailable": 22.24697161277504,
+          "meanReprojectionErrorPxAvailable": 3.4679879687327198,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 25,
+            "insufficient-calibrated-views": 42
+          }
+        },
+        {
+          "cameraIds": [
+            "cam5",
+            "cam6"
+          ],
+          "score": 0.32894977417534166,
+          "jointFrames": 210,
+          "validJointFrames": 114,
+          "validFraction": 0.5428571428571428,
+          "meanBaselineM": 1.1858789500873093,
+          "meanRayAngleDegAvailable": 50.97742954588819,
+          "meanReprojectionErrorPxAvailable": 3.280420688669536,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 54,
+            "insufficient-calibrated-views": 42
+          }
+        },
+        {
+          "cameraIds": [
+            "cam3",
+            "cam6"
+          ],
+          "score": 0.292709643150866,
+          "jointFrames": 210,
+          "validJointFrames": 108,
+          "validFraction": 0.5142857142857142,
+          "meanBaselineM": 0.9579267601403136,
+          "meanRayAngleDegAvailable": 79.9382426173135,
+          "meanReprojectionErrorPxAvailable": 3.7289209184068786,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 60,
+            "insufficient-calibrated-views": 42
+          }
+        },
+        {
+          "cameraIds": [
+            "cam2",
+            "cam6"
+          ],
+          "score": 0.2632267893351445,
+          "jointFrames": 210,
+          "validJointFrames": 90,
+          "validFraction": 0.42857142857142855,
+          "meanBaselineM": 1.108736125150408,
+          "meanRayAngleDegAvailable": 63.05671242115939,
+          "meanReprojectionErrorPxAvailable": 3.042171061103481,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 78,
+            "insufficient-calibrated-views": 42
+          }
+        },
+        {
+          "cameraIds": [
+            "cam2",
+            "cam4"
+          ],
+          "score": 0.24432559246346425,
+          "jointFrames": 210,
+          "validJointFrames": 83,
+          "validFraction": 0.3952380952380952,
+          "meanBaselineM": 0.7330168066650745,
+          "meanRayAngleDegAvailable": 56.26367168276103,
+          "meanReprojectionErrorPxAvailable": 2.9722852256350407,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 127
+          }
+        },
+        {
+          "cameraIds": [
+            "cam2",
+            "cam5"
+          ],
+          "score": 0.22131909278427694,
+          "jointFrames": 210,
+          "validJointFrames": 76,
+          "validFraction": 0.3619047619047619,
+          "meanBaselineM": 0.8411473264127924,
+          "meanRayAngleDegAvailable": 67.21666167030585,
+          "meanReprojectionErrorPxAvailable": 3.3601191742016048,
+          "invalidReasons": {
+            "degenerate-or-inconsistent-rays": 134
+          }
+        },
+        {
+          "cameraIds": [
+            "cam2",
+            "cam7"
+          ],
+          "score": 0.1972367467912792,
+          "jointFrames": 210,
+          "validJointFrames": 69,
+          "validFraction": 0.32857142857142857,
+          "meanBaselineM": 1.339143572422817,
+          "meanRayAngleDegAvailable": 28.397562353766272,
+          "meanReprojectionErrorPxAvailable": 3.5160959823828346,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 42,
+            "degenerate-or-inconsistent-rays": 99
+          }
+        },
+        {
+          "cameraIds": [
+            "cam1",
+            "cam6"
+          ],
+          "score": 0.015169367403036406,
+          "jointFrames": 210,
+          "validJointFrames": 6,
+          "validFraction": 0.02857142857142857,
+          "meanBaselineM": 0.6867939800385287,
+          "meanRayAngleDegAvailable": 71.08082062731285,
+          "meanReprojectionErrorPxAvailable": 1.8766888740406575,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 189,
+            "degenerate-or-inconsistent-rays": 15
+          }
+        },
+        {
+          "cameraIds": [
+            "cam1",
+            "cam4"
+          ],
+          "score": 0.014015722981732903,
+          "jointFrames": 210,
+          "validJointFrames": 6,
+          "validFraction": 0.02857142857142857,
+          "meanBaselineM": 1.2500433601530259,
+          "meanRayAngleDegAvailable": 53.119692891125204,
+          "meanReprojectionErrorPxAvailable": 2.527440702095422,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 189,
+            "degenerate-or-inconsistent-rays": 15
+          }
+        },
+        {
+          "cameraIds": [
+            "cam1",
+            "cam5"
+          ],
+          "score": 0.008743471460531735,
+          "jointFrames": 210,
+          "validJointFrames": 4,
+          "validFraction": 0.01904761904761905,
+          "meanBaselineM": 1.3357827895526369,
+          "meanRayAngleDegAvailable": 24.711117074804545,
+          "meanReprojectionErrorPxAvailable": 3.0067109425001926,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 189,
+            "degenerate-or-inconsistent-rays": 17
+          }
+        },
+        {
+          "cameraIds": [
+            "cam1",
+            "cam7"
+          ],
+          "score": 0.0071359586725102285,
+          "jointFrames": 210,
+          "validJointFrames": 4,
+          "validFraction": 0.01904761904761905,
+          "meanBaselineM": 1.0099376663342985,
+          "meanRayAngleDegAvailable": 68.62377130784415,
+          "meanReprojectionErrorPxAvailable": 4.547546652390566,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 189,
+            "degenerate-or-inconsistent-rays": 17
+          }
+        },
+        {
+          "cameraIds": [
+            "cam1",
+            "cam3"
+          ],
+          "score": 0.006766198803241394,
+          "jointFrames": 210,
+          "validJointFrames": 3,
+          "validFraction": 0.014285714285714285,
+          "meanBaselineM": 1.1116102743279082,
+          "meanRayAngleDegAvailable": 63.56655713216443,
+          "meanReprojectionErrorPxAvailable": 2.7053557680974145,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 189,
+            "degenerate-or-inconsistent-rays": 18
+          }
+        },
+        {
+          "cameraIds": [
+            "cam1",
+            "cam2"
+          ],
+          "score": 0.006404011315548826,
+          "jointFrames": 210,
+          "validJointFrames": 3,
+          "validFraction": 0.014285714285714285,
+          "meanBaselineM": 1.0125207508494716,
+          "meanRayAngleDegAvailable": 83.03020642957246,
+          "meanReprojectionErrorPxAvailable": 3.0913607023015985,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 189,
+            "degenerate-or-inconsistent-rays": 18
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam1"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 0.7352650631429377,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam2"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 1.2558591859313644,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam3"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 1.325238045375299,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam4"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 1.0183121286336694,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam5"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 1.1266368353908205,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam6"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 1.0051857626071816,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        },
+        {
+          "cameraIds": [
+            "cam0",
+            "cam7"
+          ],
+          "score": 0,
+          "jointFrames": 210,
+          "validJointFrames": 0,
+          "validFraction": 0,
+          "meanBaselineM": 0.7021227242357212,
+          "meanRayAngleDegAvailable": null,
+          "meanReprojectionErrorPxAvailable": null,
+          "invalidReasons": {
+            "insufficient-calibrated-views": 210
+          }
+        }
+      ]
+    },
+    "scope": "Known-crop hand inference followed by the product triangulation and causal tracker; two-view comparison and eight-view upper-bound diagnostic.",
+    "limitations": [
+      "Reference coordinates are consumed for scoring and are not included in this report.",
+      "Artificial observation-drop removes observations after inference or reconstruction; it is not an image-occlusion benchmark.",
+      "MPJPE is conditional on an available estimate. Coverage and PCK use all valid GT joints.",
+      "This sequence does not establish performance on user cameras or every type of occlusion.",
+      "Reference coordinates are consumed for scoring and are not included in this report.",
+      "Artificial observation-drop removes observations after inference or reconstruction; it is not an image-occlusion benchmark.",
+      "MPJPE is conditional on an available estimate. Coverage and PCK use all valid GT joints.",
+      "This sequence does not establish performance on user cameras or every type of occlusion.",
+      "Known hand crop plus eight-direction search does not evaluate the product whole-body-to-hand ROI pipeline.",
+      "Eight-view reconstruction is a diagnostic; the published app accepts two views.",
+      "Training-data overlap is unknown; this does not establish unseen-data generalization.",
+      "Reported millimetres express agreement with MANO fits under the inherited metre convention, not independently measured physical accuracy.",
+      "Placement diagnostic among eight recorded candidates, not automatic placement of a two-camera app."
+    ],
+    "conditions": [
+      {
+        "name": "two_views",
+        "frameCount": 40,
+        "firstFrame": 0,
+        "lastFrame": 39,
+        "cameraIds": [
+          "cam0",
+          "cam3"
+        ],
+        "scoringStartIndex": 0,
+        "artificialDrop": {
+          "firstFrame": 12,
+          "lastFrame": 12,
+          "frameCount": 1,
+          "removedJointIds": [
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "selection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+          "inputStage": "all camera observations after image inference"
+        },
+        "scenarios": {
+          "unmodified_observations": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            }
+          },
+          "all_hand_views_observation_drop": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            }
+          }
+        },
+        "holdLastPolicy": {
+          "maximumBodyAgeMs": 600,
+          "maximumHandAgeMs": 250,
+          "maximumFootAgeMs": 450,
+          "minimumInputConfidence": 0.025,
+          "coordinates": "Last raw accepted observation, without velocity, smoothing, or reference coordinates."
+        }
+      },
+      {
+        "name": "eight_views",
+        "frameCount": 40,
+        "firstFrame": 0,
+        "lastFrame": 39,
+        "cameraIds": [
+          "cam0",
+          "cam1",
+          "cam2",
+          "cam3",
+          "cam4",
+          "cam5",
+          "cam6",
+          "cam7"
+        ],
+        "scoringStartIndex": 0,
+        "artificialDrop": {
+          "firstFrame": 12,
+          "lastFrame": 12,
+          "frameCount": 1,
+          "removedJointIds": [
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "selection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+          "inputStage": "all camera observations after image inference"
+        },
+        "scenarios": {
+          "unmodified_observations": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 57,
+                "missingJoints": 6,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 12.307655705569164,
+                "medianErrorMmAvailable": 10.061998642292949,
+                "p95ErrorMmAvailable": 28.578085312407474,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 57,
+                  "missing": 6
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 63,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 13.712753902822028,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 34.147737365563785,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 57,
+                  "kinematicPrior": 6
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 60,
+                "missingJoints": 3,
+                "coverage": 0.9523809523809523,
+                "mpjpeMmAvailable": 13.449010499471175,
+                "medianErrorMmAvailable": 10.369509805029203,
+                "p95ErrorMmAvailable": 39.91109227583409,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 0.9523809523809523,
+                "pck100mmAll": 0.9523809523809523,
+                "sources": {
+                  "triangulated": 57,
+                  "missing": 3,
+                  "holdLast": 3
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 13.026047567623792,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 29.321259721615775,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 19,
+                  "missing": 2
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 14.117426445279657,
+                "medianErrorMmAvailable": 11.253562461326874,
+                "p95ErrorMmAvailable": 28.131954722504975,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 19,
+                  "kinematicPrior": 2
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 13.026047567623792,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 29.321259721615775,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 19,
+                  "missing": 2
+                }
+              }
+            }
+          },
+          "all_hand_views_observation_drop": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 38,
+                "missingJoints": 25,
+                "coverage": 0.6031746031746031,
+                "mpjpeMmAvailable": 11.948459774541849,
+                "medianErrorMmAvailable": 9.851232478727448,
+                "p95ErrorMmAvailable": 28.56420119896339,
+                "pck20mmAll": 0.5555555555555556,
+                "pck50mmAll": 0.6031746031746031,
+                "pck100mmAll": 0.6031746031746031,
+                "sources": {
+                  "missing": 25,
+                  "triangulated": 38
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 61,
+                "missingJoints": 2,
+                "coverage": 0.9682539682539683,
+                "mpjpeMmAvailable": 14.082035105209707,
+                "medianErrorMmAvailable": 10.81900188369493,
+                "p95ErrorMmAvailable": 35.89798606114486,
+                "pck20mmAll": 0.8412698412698413,
+                "pck50mmAll": 0.9682539682539683,
+                "pck100mmAll": 0.9682539682539683,
+                "sources": {
+                  "predicted": 3,
+                  "kinematicPrior": 20,
+                  "missing": 2,
+                  "triangulated": 38
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 55,
+                "missingJoints": 8,
+                "coverage": 0.873015873015873,
+                "mpjpeMmAvailable": 13.4548507896608,
+                "medianErrorMmAvailable": 10.580741814065416,
+                "p95ErrorMmAvailable": 36.15227870111994,
+                "pck20mmAll": 0.7777777777777778,
+                "pck50mmAll": 0.873015873015873,
+                "pck100mmAll": 0.873015873015873,
+                "sources": {
+                  "holdLast": 17,
+                  "missing": 8,
+                  "triangulated": 38
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 15.345610573204056,
+                "medianErrorMmAvailable": 13.272243442585456,
+                "p95ErrorMmAvailable": 36.67377103049711,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "predicted": 3,
+                  "kinematicPrior": 16,
+                  "missing": 2
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 14,
+                "missingJoints": 7,
+                "coverage": 0.6666666666666666,
+                "mpjpeMmAvailable": 12.897933374851826,
+                "medianErrorMmAvailable": 12.73636269080799,
+                "p95ErrorMmAvailable": 25.01278986020646,
+                "pck20mmAll": 0.6190476190476191,
+                "pck50mmAll": 0.6666666666666666,
+                "pck100mmAll": 0.6666666666666666,
+                "sources": {
+                  "holdLast": 14,
+                  "missing": 7
+                }
+              }
+            }
+          }
+        },
+        "holdLastPolicy": {
+          "maximumBodyAgeMs": 600,
+          "maximumHandAgeMs": 250,
+          "maximumFootAgeMs": 450,
+          "minimumInputConfidence": 0.025,
+          "coordinates": "Last raw accepted observation, without velocity, smoothing, or reference coordinates."
+        }
+      },
+      {
+        "name": "two_views_one_image_masked",
+        "frameCount": 40,
+        "firstFrame": 0,
+        "lastFrame": 39,
+        "cameraIds": [
+          "cam0",
+          "cam3"
+        ],
+        "scoringStartIndex": 0,
+        "artificialDrop": {
+          "firstFrame": 12,
+          "lastFrame": 12,
+          "frameCount": 1,
+          "removedJointIds": [
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "selection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+          "inputStage": "all camera observations after image inference"
+        },
+        "scenarios": {
+          "unmodified_observations": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            }
+          },
+          "all_hand_views_observation_drop": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 0,
+                "missingJoints": 63,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 63
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            }
+          }
+        },
+        "holdLastPolicy": {
+          "maximumBodyAgeMs": 600,
+          "maximumHandAgeMs": 250,
+          "maximumFootAgeMs": 450,
+          "minimumInputConfidence": 0.025,
+          "coordinates": "Last raw accepted observation, without velocity, smoothing, or reference coordinates."
+        }
+      },
+      {
+        "name": "eight_views_one_image_masked",
+        "frameCount": 40,
+        "firstFrame": 0,
+        "lastFrame": 39,
+        "cameraIds": [
+          "cam0",
+          "cam1",
+          "cam2",
+          "cam3",
+          "cam4",
+          "cam5",
+          "cam6",
+          "cam7"
+        ],
+        "scoringStartIndex": 0,
+        "artificialDrop": {
+          "firstFrame": 12,
+          "lastFrame": 12,
+          "frameCount": 1,
+          "removedJointIds": [
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "selection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+          "inputStage": "all camera observations after image inference"
+        },
+        "scenarios": {
+          "unmodified_observations": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 57,
+                "missingJoints": 6,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 12.307655705569164,
+                "medianErrorMmAvailable": 10.061998642292949,
+                "p95ErrorMmAvailable": 28.578085312407474,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 57,
+                  "missing": 6
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 63,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 13.712753902822028,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 34.147737365563785,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 57,
+                  "kinematicPrior": 6
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 60,
+                "missingJoints": 3,
+                "coverage": 0.9523809523809523,
+                "mpjpeMmAvailable": 13.449010499471175,
+                "medianErrorMmAvailable": 10.369509805029203,
+                "p95ErrorMmAvailable": 39.91109227583409,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 0.9523809523809523,
+                "pck100mmAll": 0.9523809523809523,
+                "sources": {
+                  "triangulated": 57,
+                  "missing": 3,
+                  "holdLast": 3
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 13.026047567623792,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 29.321259721615775,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 19,
+                  "missing": 2
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 14.117426445279657,
+                "medianErrorMmAvailable": 11.253562461326874,
+                "p95ErrorMmAvailable": 28.131954722504975,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 19,
+                  "kinematicPrior": 2
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 13.026047567623792,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 29.321259721615775,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 19,
+                  "missing": 2
+                }
+              }
+            }
+          },
+          "all_hand_views_observation_drop": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 38,
+                "missingJoints": 25,
+                "coverage": 0.6031746031746031,
+                "mpjpeMmAvailable": 11.948459774541849,
+                "medianErrorMmAvailable": 9.851232478727448,
+                "p95ErrorMmAvailable": 28.56420119896339,
+                "pck20mmAll": 0.5555555555555556,
+                "pck50mmAll": 0.6031746031746031,
+                "pck100mmAll": 0.6031746031746031,
+                "sources": {
+                  "missing": 25,
+                  "triangulated": 38
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 61,
+                "missingJoints": 2,
+                "coverage": 0.9682539682539683,
+                "mpjpeMmAvailable": 14.082035105209707,
+                "medianErrorMmAvailable": 10.81900188369493,
+                "p95ErrorMmAvailable": 35.89798606114486,
+                "pck20mmAll": 0.8412698412698413,
+                "pck50mmAll": 0.9682539682539683,
+                "pck100mmAll": 0.9682539682539683,
+                "sources": {
+                  "predicted": 3,
+                  "kinematicPrior": 20,
+                  "missing": 2,
+                  "triangulated": 38
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 55,
+                "missingJoints": 8,
+                "coverage": 0.873015873015873,
+                "mpjpeMmAvailable": 13.4548507896608,
+                "medianErrorMmAvailable": 10.580741814065416,
+                "p95ErrorMmAvailable": 36.15227870111994,
+                "pck20mmAll": 0.7777777777777778,
+                "pck50mmAll": 0.873015873015873,
+                "pck100mmAll": 0.873015873015873,
+                "sources": {
+                  "holdLast": 17,
+                  "missing": 8,
+                  "triangulated": 38
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 15.345610573204056,
+                "medianErrorMmAvailable": 13.272243442585456,
+                "p95ErrorMmAvailable": 36.67377103049711,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "predicted": 3,
+                  "kinematicPrior": 16,
+                  "missing": 2
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 14,
+                "missingJoints": 7,
+                "coverage": 0.6666666666666666,
+                "mpjpeMmAvailable": 12.897933374851826,
+                "medianErrorMmAvailable": 12.73636269080799,
+                "p95ErrorMmAvailable": 25.01278986020646,
+                "pck20mmAll": 0.6190476190476191,
+                "pck50mmAll": 0.6666666666666666,
+                "pck100mmAll": 0.6666666666666666,
+                "sources": {
+                  "holdLast": 14,
+                  "missing": 7
+                }
+              }
+            }
+          }
+        },
+        "holdLastPolicy": {
+          "maximumBodyAgeMs": 600,
+          "maximumHandAgeMs": 250,
+          "maximumFootAgeMs": 450,
+          "minimumInputConfidence": 0.025,
+          "coordinates": "Last raw accepted observation, without velocity, smoothing, or reference coordinates."
+        }
+      },
+      {
+        "name": "selected_two_views_from_warmup",
+        "frameCount": 40,
+        "firstFrame": 0,
+        "lastFrame": 39,
+        "cameraIds": [
+          "cam3",
+          "cam4"
+        ],
+        "scoringStartIndex": 10,
+        "artificialDrop": {
+          "firstFrame": 12,
+          "lastFrame": 12,
+          "frameCount": 1,
+          "removedJointIds": [
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "selection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+          "inputStage": "all camera observations after image inference"
+        },
+        "scenarios": {
+          "unmodified_observations": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 62,
+                "missingJoints": 1,
+                "coverage": 0.9841269841269841,
+                "mpjpeMmAvailable": 11.619859134948575,
+                "medianErrorMmAvailable": 9.85938370321252,
+                "p95ErrorMmAvailable": 26.780278685858217,
+                "pck20mmAll": 0.8888888888888888,
+                "pck50mmAll": 0.9841269841269841,
+                "pck100mmAll": 0.9841269841269841,
+                "sources": {
+                  "triangulated": 62,
+                  "missing": 1
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 63,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 11.553262128405256,
+                "medianErrorMmAvailable": 9.785423527741429,
+                "p95ErrorMmAvailable": 26.66674507040539,
+                "pck20mmAll": 0.9047619047619048,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 62,
+                  "kinematicPrior": 1
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 63,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 11.550577574958123,
+                "medianErrorMmAvailable": 9.78542352773191,
+                "p95ErrorMmAvailable": 26.666745055560106,
+                "pck20mmAll": 0.9047619047619048,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 62,
+                  "holdLast": 1
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 14.253439243916716,
+                "medianErrorMmAvailable": 12.985103747003565,
+                "p95ErrorMmAvailable": 31.06998633986065,
+                "pck20mmAll": 0.8571428571428571,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 14.253439248116917,
+                "medianErrorMmAvailable": 12.985103759524936,
+                "p95ErrorMmAvailable": 31.06998636327124,
+                "pck20mmAll": 0.8571428571428571,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 21
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 14.253439243916716,
+                "medianErrorMmAvailable": 12.985103747003565,
+                "p95ErrorMmAvailable": 31.06998633986065,
+                "pck20mmAll": 0.8571428571428571,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 21
+                }
+              }
+            }
+          },
+          "all_hand_views_observation_drop": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 41,
+                "missingJoints": 22,
+                "coverage": 0.6507936507936508,
+                "mpjpeMmAvailable": 10.27095224986733,
+                "medianErrorMmAvailable": 8.622291148648857,
+                "p95ErrorMmAvailable": 22.20101329731059,
+                "pck20mmAll": 0.6031746031746031,
+                "pck50mmAll": 0.6507936507936508,
+                "pck100mmAll": 0.6507936507936508,
+                "sources": {
+                  "missing": 22,
+                  "triangulated": 41
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 63,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 15.26343590312978,
+                "medianErrorMmAvailable": 9.785423527741429,
+                "p95ErrorMmAvailable": 51.768813080132574,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9365079365079365,
+                "pck100mmAll": 1,
+                "sources": {
+                  "predicted": 2,
+                  "kinematicPrior": 20,
+                  "triangulated": 41
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 62,
+                "missingJoints": 1,
+                "coverage": 0.9841269841269841,
+                "mpjpeMmAvailable": 13.062334012164898,
+                "medianErrorMmAvailable": 9.85938370321252,
+                "p95ErrorMmAvailable": 37.56672655996362,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 0.9682539682539683,
+                "pck100mmAll": 0.9841269841269841,
+                "sources": {
+                  "holdLast": 21,
+                  "missing": 1,
+                  "triangulated": 41
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 25.383960572290487,
+                "medianErrorMmAvailable": 18.505586025503575,
+                "p95ErrorMmAvailable": 67.35805849569272,
+                "pck20mmAll": 0.5714285714285714,
+                "pck50mmAll": 0.8095238095238095,
+                "pck100mmAll": 1,
+                "sources": {
+                  "predicted": 2,
+                  "kinematicPrior": 19
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 20,
+                "missingJoints": 1,
+                "coverage": 0.9523809523809523,
+                "mpjpeMmAvailable": 19.07502728270564,
+                "medianErrorMmAvailable": 13.594225517218042,
+                "p95ErrorMmAvailable": 50.12782101846546,
+                "pck20mmAll": 0.6190476190476191,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9523809523809523,
+                "sources": {
+                  "holdLast": 20,
+                  "missing": 1
+                }
+              }
+            }
+          }
+        },
+        "holdLastPolicy": {
+          "maximumBodyAgeMs": 600,
+          "maximumHandAgeMs": 250,
+          "maximumFootAgeMs": 450,
+          "minimumInputConfidence": 0.025,
+          "coordinates": "Last raw accepted observation, without velocity, smoothing, or reference coordinates."
+        }
+      },
+      {
+        "name": "eight_views_after_warmup",
+        "frameCount": 40,
+        "firstFrame": 0,
+        "lastFrame": 39,
+        "cameraIds": [
+          "cam0",
+          "cam1",
+          "cam2",
+          "cam3",
+          "cam4",
+          "cam5",
+          "cam6",
+          "cam7"
+        ],
+        "scoringStartIndex": 10,
+        "artificialDrop": {
+          "firstFrame": 12,
+          "lastFrame": 12,
+          "frameCount": 1,
+          "removedJointIds": [
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "selection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+          "inputStage": "all camera observations after image inference"
+        },
+        "scenarios": {
+          "unmodified_observations": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 57,
+                "missingJoints": 6,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 12.307655705569164,
+                "medianErrorMmAvailable": 10.061998642292949,
+                "p95ErrorMmAvailable": 28.578085312407474,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 57,
+                  "missing": 6
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 63,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 13.712753902822028,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 34.147737365563785,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 57,
+                  "kinematicPrior": 6
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 60,
+                "missingJoints": 3,
+                "coverage": 0.9523809523809523,
+                "mpjpeMmAvailable": 13.449010499471175,
+                "medianErrorMmAvailable": 10.369509805029203,
+                "p95ErrorMmAvailable": 39.91109227583409,
+                "pck20mmAll": 0.8253968253968254,
+                "pck50mmAll": 0.9523809523809523,
+                "pck100mmAll": 0.9523809523809523,
+                "sources": {
+                  "triangulated": 57,
+                  "missing": 3,
+                  "holdLast": 3
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 13.026047567623792,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 29.321259721615775,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 19,
+                  "missing": 2
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 21,
+                "missingJoints": 0,
+                "coverage": 1,
+                "mpjpeMmAvailable": 14.117426445279657,
+                "medianErrorMmAvailable": 11.253562461326874,
+                "p95ErrorMmAvailable": 28.131954722504975,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 1,
+                "pck100mmAll": 1,
+                "sources": {
+                  "triangulated": 19,
+                  "kinematicPrior": 2
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 13.026047567623792,
+                "medianErrorMmAvailable": 10.583895548225769,
+                "p95ErrorMmAvailable": 29.321259721615775,
+                "pck20mmAll": 0.7619047619047619,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "triangulated": 19,
+                  "missing": 2
+                }
+              }
+            }
+          },
+          "all_hand_views_observation_drop": {
+            "triangulated": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 38,
+                "missingJoints": 25,
+                "coverage": 0.6031746031746031,
+                "mpjpeMmAvailable": 11.948459774541849,
+                "medianErrorMmAvailable": 9.851232478727448,
+                "p95ErrorMmAvailable": 28.56420119896339,
+                "pck20mmAll": 0.5555555555555556,
+                "pck50mmAll": 0.6031746031746031,
+                "pck100mmAll": 0.6031746031746031,
+                "sources": {
+                  "missing": 25,
+                  "triangulated": 38
+                }
+              }
+            },
+            "causalTracker": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 61,
+                "missingJoints": 2,
+                "coverage": 0.9682539682539683,
+                "mpjpeMmAvailable": 14.082035105209707,
+                "medianErrorMmAvailable": 10.81900188369493,
+                "p95ErrorMmAvailable": 35.89798606114486,
+                "pck20mmAll": 0.8412698412698413,
+                "pck50mmAll": 0.9682539682539683,
+                "pck100mmAll": 0.9682539682539683,
+                "sources": {
+                  "predicted": 3,
+                  "kinematicPrior": 20,
+                  "missing": 2,
+                  "triangulated": 38
+                }
+              }
+            },
+            "holdLast": {
+              "hands": {
+                "groundTruthJoints": 63,
+                "availableJoints": 55,
+                "missingJoints": 8,
+                "coverage": 0.873015873015873,
+                "mpjpeMmAvailable": 13.4548507896608,
+                "medianErrorMmAvailable": 10.580741814065416,
+                "p95ErrorMmAvailable": 36.15227870111994,
+                "pck20mmAll": 0.7777777777777778,
+                "pck50mmAll": 0.873015873015873,
+                "pck100mmAll": 0.873015873015873,
+                "sources": {
+                  "holdLast": 17,
+                  "missing": 8,
+                  "triangulated": 38
+                }
+              }
+            },
+            "middleIntervalTriangulated": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 0,
+                "missingJoints": 21,
+                "coverage": 0,
+                "mpjpeMmAvailable": null,
+                "medianErrorMmAvailable": null,
+                "p95ErrorMmAvailable": null,
+                "pck20mmAll": 0,
+                "pck50mmAll": 0,
+                "pck100mmAll": 0,
+                "sources": {
+                  "missing": 21
+                }
+              }
+            },
+            "middleIntervalTracker": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 19,
+                "missingJoints": 2,
+                "coverage": 0.9047619047619048,
+                "mpjpeMmAvailable": 15.345610573204056,
+                "medianErrorMmAvailable": 13.272243442585456,
+                "p95ErrorMmAvailable": 36.67377103049711,
+                "pck20mmAll": 0.8095238095238095,
+                "pck50mmAll": 0.9047619047619048,
+                "pck100mmAll": 0.9047619047619048,
+                "sources": {
+                  "predicted": 3,
+                  "kinematicPrior": 16,
+                  "missing": 2
+                }
+              }
+            },
+            "middleIntervalHoldLast": {
+              "hands": {
+                "groundTruthJoints": 21,
+                "availableJoints": 14,
+                "missingJoints": 7,
+                "coverage": 0.6666666666666666,
+                "mpjpeMmAvailable": 12.897933374851826,
+                "medianErrorMmAvailable": 12.73636269080799,
+                "p95ErrorMmAvailable": 25.01278986020646,
+                "pck20mmAll": 0.6190476190476191,
+                "pck50mmAll": 0.6666666666666666,
+                "pck100mmAll": 0.6666666666666666,
+                "sources": {
+                  "holdLast": 14,
+                  "missing": 7
+                }
+              }
+            }
+          }
+        },
+        "holdLastPolicy": {
+          "maximumBodyAgeMs": 600,
+          "maximumHandAgeMs": 250,
+          "maximumFootAgeMs": 450,
+          "minimumInputConfidence": 0.025,
+          "coordinates": "Last raw accepted observation, without velocity, smoothing, or reference coordinates."
+        }
+      }
+    ]
+  }
+}

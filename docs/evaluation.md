@@ -85,6 +85,8 @@ maskに対する反応はあるが、Lでも元画像の有効注釈手の24.4%�
 
 384入力は身体・足のPCKと手の中央値・PCKを改善した。一方、手の平均誤差は改善せず、p95誤差は256入力の57.56pxから79.33pxへ増えた。全指標で優位ではないため、外れ値と処理負荷も含めて選ぶ。384への手ROI追加は再び悪化しており、手ROIの既定OFFを維持する根拠となる。身体の自然遮蔽74点ではPCK(.05)64.86%。灰色maskをかけた同一633手点のHand PCK(.20)は原画像79.78%から18.64%へ下がり、mask後もスコア0.25以上の割合は100%だった。
 
+最終のアプリ既定はRTMW-L 384×288・手ROI OFFとし、身体PCKと手のPCK・中央値の改善を優先した。256×192も処理負荷を抑える選択肢として残す。選択画面と公開数値では平均誤差・足・処理量の不利な点も併記する。
+
 384の全身推論CPU平均は258.85msだった。256の149.93msとは別runnerの測定なので増加量は参考値であり、GPUや実端末の速度を表さない。これらは全身推論部分だけの時間で、画像転送・人物検出・手ROIなどを含むアプリ全体の遅延ではない。
 
 RTMDetの実画像確認では、出荷経路の正規化BGR入力が人物1件を検出し、選ばれた最大人物BBoxの正解とのIoUは0.96848だった。比較用の生BGR入力では人物135件を出し、最大人物のIoUは0.43775だった。最大面積の人物を選ぶ現アプリの仕様に対し、正規化BGRを維持する根拠が得られた。この1画像から一般的な検出率は主張しない。
@@ -115,7 +117,59 @@ FreeMoCap validationは公開済みのRTMPose 3D系列と独立Qualisys marker�
 
 選んだ組は残りの系列で固定する。先頭10frameは履歴の初期化に使うが、追加条件の採点からは除外し、同じ採点区間の8視点条件も出す。各組のbaseline、再構成できた点数、平均ray角、平均再投影誤差、拒否理由を保存するため、元のcam0/3が失敗する理由も確認できる。この選択に新しいモデル、参照母集団、画像推論は追加しない。
 
-fresh画像推論とFreeMoCapのworkflowは手動実行として保持する。再利用元artifactの保持期間は7日なので、期限後はfresh workflowで元の観測を再生成し、再利用workflowの`source_run`と`source_artifact`にそのrunを指定する。
+fresh画像推論とFreeMoCap、固定2視点診断のworkflowは、必要な実測を完了後は手動実行として保持する。再利用元artifactの保持期間は7日なので、期限後はfresh workflowで元の観測を再生成し、再利用workflowの`source_run`と`source_artifact`にそのrunを指定する。
+
+## 実系列の結果
+
+### HanCoの手21点
+
+[最初の実画像推論](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383880)と[固定2視点の追加診断](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41379194013)は成功した。40frame・5Hzの手crop画像を推論し、手動検証済みのMANO fitがあるframe 12、15、24の計63関節点で採点した。40frame全てに独立の3D実測正解があるという意味ではない。既知の手cropを入力しており、全身映像からの手検出性能は含まれない。
+
+GTを見ないwarmup選択はcam3/4を選んだ。2台間距離は0.8001m、warmupの210関節時刻中200で再構成が成立し、平均ray角63.91度、平均再投影誤差2.211pxだった。以下は同じ63参照点に対する製品trackerの結果である。
+
+| 視点 | 利用可能点 / 参照点 | 利用可能点の平均誤差 | 全参照点PCK20mm |
+|---|---:|---:|---:|
+| 元の固定cam0/3 | 0 / 63 | 算出不可 | 0% |
+| 8視点 | 63 / 63 | 13.71mm | 82.54% |
+| warmupで固定したcam3/4 | 63 / 63 | 11.55mm | 90.48% |
+
+全視点の手観測をframe 12で1frame（200ms）だけ除去した結果も残す。
+
+| 履歴に使った視点 | 方法 | 利用可能点 / 参照点 | 利用可能点の平均誤差 | 全参照点PCK20mm |
+|---|---|---:|---:|---:|
+| 8視点 | 製品tracker | 19 / 21 | 15.35mm | 80.95% |
+| 8視点 | hold-last | 14 / 21 | 12.90mm | 61.90% |
+| 固定cam3/4 | 製品tracker | 21 / 21 | 25.38mm | 57.14% |
+| 固定cam3/4 | hold-last | 20 / 21 | 19.08mm | 61.90% |
+
+8視点の履歴では被覆率と全点PCKが改善したが、選択2視点では製品trackerが単純保持に精度で負けた。利用可能点だけの平均誤差は異なる点集合になり得るため、必ず全点PCKと被覆率を併記する。この結果を根拠に「完全遮蔽時は常に単純保持より正確」とは主張しない。cam0の画像maskは元の観測採用へ影響しない条件で結果が変わらず、自然遮蔽への頑健性を証明する実験としては扱わない。
+
+### FreeMoCapの身体補完
+
+[同じ実系列runのFreeMoCap job](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383880/job/125063561669)では、取得した5速度条件の全てで座標読取りと製品tracker評価が成功した。各300frame中の中央8frame、両肘・両手首の4点を除去した計160参照点を、5速度でまとめた値を示す。
+
+| 入力 → 参照 | 方法 | 平均誤差 | PCK20mm | PCK50mm | 被覆率 |
+|---|---|---:|---:|---:|---:|
+| 記録済みRTMPose → Qualisys | 製品tracker | 33.35mm | 29.38% | 81.25% | 100% |
+| 記録済みRTMPose → Qualisys | hold-last | 57.98mm | 8.75% | 47.50% | 100% |
+| Qualisys → Qualisys | 製品tracker | 26.27mm | 57.50% | 83.75% | 100% |
+| Qualisys → Qualisys | hold-last | 55.34mm | 13.75% | 52.50% | 100% |
+
+RTMPose入力の腕4点の平均では5速度全てで単純保持を上回った。ただし、1.5m/s条件の手首だけを見ると製品tracker42.91mm、hold-last34.80mmで悪化した。全箇所で一様に改善するという結果ではない。詳細は[FreeMoCap評価記録](freemocap-evaluation.md)に残す。ここでの欠測は約267msの観測除去であり、長時間の実物遮蔽、手指、足の甲や足の指の精度へ拡張しない。
+
+## 最終PRのActions証拠と実行範囲
+
+| 確認対象 | 実行コミット | Actions run | 確認した結論 |
+|---|---|---|---|
+| S/L256の固定64人比較 | `9f5cb1ca7aea0bf91e82ed8860112b807c03c317` | [41376400694](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41376400694) | `evaluate` job成功。Panoptic job失敗のためrun全体はfailure |
+| L384の固定64人、人物検出1画像、合成幾何契約 | `e9bc84483c88884c7b88ed9589eb069a6070a903` | [41378383899](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383899) | 全step成功 |
+| HanCo画像推論・FreeMoCap記録系列 | `e9bc84483c88884c7b88ed9589eb069a6070a903` | [41378383880](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383880) | 2つのjobが取得・評価・artifact保存まで成功 |
+| HanCo観測再利用とGT未使用の固定2視点選択 | `ee54e5c99335d487f81305dcae570e046694c24d` | [41379194013](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41379194013) | 成功。モデルの再推論なし |
+| 最終アプリJSの構文 | `ee54e5c99335d487f81305dcae570e046694c24d` | [41379193918](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41379193918) | 成功。UI操作やGPU性能の測定ではない |
+
+画像モデルと人物検出の数値はONNX Runtime 1.23.2の`CPUExecutionProvider`で測定した。ブラウザWebGPU/WASMで同じ数値や速度を実測した結果ではなく、CanvasとOpenCVの補間にも差がある。幾何と時系列補完はアプリのJSモジュールをNodeから直接使用した。LAN端末間の同期誤差、利用者のカメラ校正誤差、RTXでの実時間処理速度は今回測定していない。
+
+未達のPanoptic実動画評価は上記の配布元接続失敗として保持する。個々の足指関節の3D正解評価、長時間全視点遮蔽の保証、全身・手指・足先を同時に実カメラから追跡したend-to-end精度の確認は含まれない。job成功は計算と出典記録の正常完了を表し、上記の不利な精度結果を消すものではない。
 
 ## 出典
 

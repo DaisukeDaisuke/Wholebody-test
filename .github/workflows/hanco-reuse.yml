@@ -1,12 +1,5 @@
 name: HanCo fixed-pair selection from recorded inference
 on:
-  push:
-    paths:
-      - 'scripts/evaluate-hanco.py'
-      - 'scripts/verify-geometry.mjs'
-      - 'dist/geometry.js'
-      - 'dist/tracking.js'
-      - '.github/workflows/hanco-reuse.yml'
   workflow_dispatch:
     inputs:
       source_run:
