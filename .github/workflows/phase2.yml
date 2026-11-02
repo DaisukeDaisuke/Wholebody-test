@@ -1,0 +1,92 @@
+name: Phase 2 real-image accuracy and model publication
+on:
+  push:
+    branches: [main, phase2-20261102-4fc7ff60]
+    paths: ['dist/**', 'evaluation/**', '.github/workflows/phase2.yml', 'server/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wholebody-phase2-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  real-model-accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: evaluation/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install evaluation runtime
+        run: python -m pip install -r evaluation/requirements.txt onnx==1.18.0 huggingface_hub==0.31.2
+      - name: Acquire and inspect actual model tensors
+        run: python evaluation/prepare_models.py
+      - name: Publish unchanged official model weights
+        id: publish_models
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
+        run: python evaluation/prepare_models.py --publish
+      - name: Validate shipped JavaScript syntax
+        run: for file in dist/*.mjs dist/sw.js; do node --check "$file"; done
+      - name: Evaluate real annotated images and controlled occlusion
+        run: python evaluation/benchmark.py --output evaluation/results --cache .cache/wholebody --max-people 14 --emit-codec-fixture
+      - name: Evaluate person detection through body and selective hand inference
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
+        run: python evaluation/detector-evaluate.py --output evaluation/results/detector-report.json --cache .cache/wholebody --publish --emit-codec-fixture
+      - name: Compare the shipped JavaScript preprocessing and decoding to the real Python inference
+        run: node evaluation/codec-parity.mjs --fixture evaluation/results/codec-fixture --output evaluation/results/codec-parity.json
+      - name: Compare the shipped person detector codec to actual ONNX outputs
+        run: node evaluation/detector-codec-parity.mjs
+      - name: Measure the frozen policy on 32 previously unused validation images
+        run: python evaluation/holdout-evaluate.py --output evaluation/results/holdout-report.json --cache .cache/wholebody --max-images 32 --threads 2
+      - name: Evaluate calibrated geometry and observed temporal sequences
+        run: node evaluation/geometry-experiment.mjs
+      - name: Measure occlusion recovery against captured Panoptic 3D sequences
+        run: node evaluation/panoptic-experiment.mjs evaluation/results/panoptic-report.json
+      - name: Prepare the exact deployable static application and experiment report
+        run: |
+          mkdir -p dist/evaluation
+          cp evaluation/results/report.json dist/evaluation/report.json
+          cp evaluation/results/report.md dist/evaluation/report.md
+          cp evaluation/results/publication.json dist/evaluation/publication.json
+          cp evaluation/results/geometry-report.json dist/evaluation/geometry-report.json
+          cp evaluation/results/codec-parity.json dist/evaluation/codec-parity.json
+          cp evaluation/results/panoptic-report.json dist/evaluation/panoptic-report.json
+          cp evaluation/results/detector-report.json dist/evaluation/detector-report.json
+          cp evaluation/results/detector-codec-parity.json dist/evaluation/detector-codec-parity.json
+          cp evaluation/results/holdout-report.json dist/evaluation/holdout-report.json
+          cp evaluation/results/holdout-report.md dist/evaluation/holdout-report.md
+          cp evaluation/results/holdout-selection.json dist/evaluation/holdout-selection.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase2-measured-results-${{ github.sha }}
+          path: |
+            evaluation/results/*.json
+            evaluation/results/*.md
+            evaluation/results/overlays/
+            evaluation/results/detector-codec-fixture/
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wholebody-phase2-site-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+      - name: Require successful model publication
+        if: always() && steps.publish_models.outcome != 'success'
+        run: |
+          echo 'Model publication did not complete. Read the publication step error; the accuracy experiment is independent.'
+          exit 1

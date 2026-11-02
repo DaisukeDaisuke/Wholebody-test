@@ -1,0 +1,12 @@
+.cache/
+model-package/
+foot-model-package/
+evaluation/foot-results/
+evaluation/results/
+__pycache__/
+*.pyc
+node_modules/
+*.tar.gz
+*.zip
+.env
+dist/vendor/
