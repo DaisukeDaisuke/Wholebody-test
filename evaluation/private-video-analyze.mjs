@@ -35,14 +35,41 @@ const tapirRoiMode=args['tapir-roi']||'full-frame';if(!['full-frame','seed-squar
 if(args.annotations){const path=await realpath(resolve(args.annotations));if(!inside(path,privateRoot))throw new Error('Manual references must remain inside the private analysis root.');}
 const seeds=new Map((annotations.seeds||[]).map(x=>[x.frame,x])),references=new Map((annotations.references||[]).map(x=>[x.frame,x]));
 const tracker=new FootTracker(),records=[],inferenceTimes=[],flowTimes=[],baselineScores=[],neuralTimes=[];
-let session=null,ort=null,modelHash=null,tapir=null,tapirManifest=null,tapirManifestHash=null,tapirOptimization=null,tapirStepOptimization=null;const spec=MODEL_SPECS['focus-foot8-one2many'];
+let session=null,ort=null,modelHash=null,tapir=null,tapirManifest=null,tapirManifestHash=null,tapirOptimization=null,tapirStepOptimization=null,runtimeInfo=null;const spec=MODEL_SPECS['focus-foot8-one2many'];
 if(!args.flowOnly||args['tapir-manifest']){
   if(!args['runtime-dir'])throw new Error('Local --runtime-dir is required for model inference.');
   const runtime=await realpath(resolve(args['runtime-dir']));
-  ort=await import(pathToFileURL(resolve(runtime,'ort.webgpu.min.mjs')).href);
-  ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths=pathToFileURL(runtime+sep).href;
-  ort.env.wasm.wasmBinary=new Uint8Array(await readFile(resolve(runtime,'ort-wasm-simd-threaded.jsep.wasm')));
+  let runtimeManifest=null,runtimeManifestHash=null;
+  try{const raw=await readFile(resolve(runtime,'runtime-manifest.json'));runtimeManifest=JSON.parse(raw);runtimeManifestHash=createHash('sha256').update(raw).digest('hex');}
+  catch(error){if(error.code!=='ENOENT')throw error;}
+  let wasmFile='ort-wasm-simd-threaded.jsep.wasm',wasmBytes;
+  if(runtimeManifest){
+    if(runtimeManifest.schemaVersion!==1||!Array.isArray(runtimeManifest.records))throw new Error('Unsupported local runtime manifest.');
+    const candidates=runtimeManifest.records.filter(record=>/^ort-wasm-simd-threaded\.(jsep|asyncify)\.wasm$/.test(record.file));
+    if(candidates.length!==1)throw new Error('The runtime manifest must select exactly one JSEP or Asyncify WASM binary.');
+    wasmFile=candidates[0].file;
+    // Verify the JavaScript bundle, its paired loader, and the exact WASM binary
+    // before executing local runtime code. Do not combine different ORT builds.
+    for(const file of ['ort.webgpu.min.mjs',wasmFile.replace(/\.wasm$/,'.mjs'),wasmFile]){
+      const matches=runtimeManifest.records.filter(record=>record.file===file);
+      if(matches.length!==1||!/^[a-f0-9]{64}$/i.test(matches[0].sha256||''))throw new Error('A unique runtime checksum is required for '+file);
+      const bytes=new Uint8Array(await readFile(resolve(runtime,file))),record=matches[0];
+      if(record.bytes!==bytes.byteLength||createHash('sha256').update(bytes).digest('hex')!==record.sha256.toLowerCase())throw new Error('Local runtime checksum mismatch: '+file);
+      if(file===wasmFile)wasmBytes=bytes;
+    }
+  }else{
+    // Compatibility for the explicitly supplied legacy local 1.22 package.
+    // New Asyncify packages require a manifest rather than guessing filenames.
+    wasmBytes=new Uint8Array(await readFile(resolve(runtime,wasmFile)));
+  }
   globalThis.fetch=async()=>{throw new Error('Network is disabled during private video analysis.');};
+  ort=await import(pathToFileURL(resolve(runtime,'ort.webgpu.min.mjs')).href);
+  const actualVersion=ort.env.versions?.web??null;
+  if(runtimeManifest?.ortWebVersion&&actualVersion!==runtimeManifest.ortWebVersion)throw new Error('The runtime module version does not match its manifest.');
+  if(!runtimeManifest&&actualVersion!=='1.22.0')throw new Error('A runtime manifest is required for packages other than the legacy 1.22.0 JSEP runtime.');
+  ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths=pathToFileURL(runtime+sep).href;
+  ort.env.wasm.wasmBinary=wasmBytes;
+  runtimeInfo={ortWebVersion:actualVersion,wasmFile,wasmSha256:createHash('sha256').update(wasmBytes).digest('hex'),manifestSha256:runtimeManifestHash,manifestIntegrityChecked:!!runtimeManifest};
   if(!args.flowOnly){
     if(!args.model)throw new Error('Provide a local --model for the FOCUS comparison, or use --flow-only.');
     const model=new Uint8Array(await readFile(resolve(args.model)));modelHash=createHash('sha256').update(model).digest('hex');
@@ -128,7 +155,7 @@ function metrics(kind){
 }
 const summary={schemaVersion:1,privacy:'Local only: never upload frames, annotations, or raw traces.',policy:FOOT_TRACK_POLICY,model:{id:spec.id,sha256:modelHash,provider:session?'wasm-single-thread':null},video:{width:stream.width,height:stream.height,fps},analysis:{processedFrames:records.length,elapsedSeconds:(performance.now()-started)/1000,manualSeedCount:records.filter(r=>r.seeded).length,referenceFramesExcludingSeeds:records.filter(r=>r.reference&&!r.seeded).length,manualReferenceUncertaintyPx:annotations.uncertaintyPx??null,manualReferenceMeaning:annotations.meaning??null,modelRuns:inferenceTimes.length,modelInferenceMs:{mean:average(inferenceTimes),median:percentile(inferenceTimes,.5),p95:percentile(inferenceTimes,.95)},flowProcessingMs:{mean:average(flowTimes),median:percentile(flowTimes,.5),p95:percentile(flowTimes,.95)},modelDetectionThreshold:.25,modelFramesPassingDetectionThreshold:baselineScores.filter(x=>x>=.25).length,flowFramesWithImageSupport:records.filter(r=>r.prediction.footTracks.some(t=>t.source==='opticalFlow2D')).length},metrics:{uninitializedModel:metrics('model'),stationarySeed:metrics('seedHold'),manualSeedAndOpticalFlow:metrics('flow')},limitations:['Diagnostic nearest-reference matching is optimistic when multiple model tracks exist.','Manual seeds and references are not an independent benchmark. Seed frames are excluded from position metrics.','Missing output remains a PCK failure; finite-only mean error is reported with its missing count.','These are 2D image coordinates; depth, hidden joints, and anatomical side for an unknown seed are unobserved.','Processing timings include Node WASM and this host only, not browser or 60 Hz display performance.']};
 await writeFile(resolve(outputDir,'trace-private.json'),JSON.stringify({metadata,annotations,records}));
-summary.metrics.uninitializedModel.status=session?'evaluated':'not-run';
+summary.metrics.uninitializedModel.status=session?'evaluated':'not-run';summary.runtime=runtimeInfo;
 if(tapir){
   summary.neuralModel={id:'causal-bootstapir',manifestSha256:tapirManifestHash,graphs:tapirManifest.models.map(m=>({id:m.id,sha256:m.sha256,bytes:m.bytes})),queryCount:3,visibilityThreshold:.5,provider:'wasm-single-thread',graphOptimizationLevels:{encoder:tapirOptimization,query:tapirOptimization,step:tapirStepOptimization},roiMode:tapirRoiMode,roiPolicy:tapirRoiMode==='seed-square'?TAPIR_SEED_ROI_POLICY:null};
   summary.analysis.neuralInferenceMs={frames:neuralTimes.length,mean:average(neuralTimes),median:percentile(neuralTimes,.5),p95:percentile(neuralTimes,.95)};

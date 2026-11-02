@@ -2,11 +2,10 @@ name: Public WebGPU causal-tracker compatibility
 on:
   push:
     branches: [main, phase3-20261102-4fc7ff60]
-    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'evaluation/package-runtime.mjs', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', '.github/workflows/phase3-webgpu.yml']
+    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'evaluation/package-runtime.mjs', 'evaluation/prepare-tapir-ci.py', 'evaluation/public-fixture-requirements.txt', 'evaluation/fixtures/tapir-public-reference.json', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', 'dist/tapir-models.mjs', '.github/workflows/phase3-webgpu.yml']
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 concurrency:
   group: wholebody-webgpu-${{ github.ref }}
   cancel-in-progress: false
@@ -21,24 +20,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: evaluation/public-fixture-requirements.txt
       - name: Install the exact isolated browser dependency without package scripts
         run: npm install --prefix evaluation/webgpu-deps --ignore-scripts --no-audit --no-fund
       - name: Install Chromium only inside this disposable Actions runner
         run: node evaluation/webgpu-deps/node_modules/playwright/cli.js install --with-deps --no-shell chromium
-      - name: Download the pinned normalized causal tracker graphs
-        uses: actions/download-artifact@v4
-        with:
-          name: tapir-model-package-274407d44a7fbdcb8411f9dc78286b1f49409c6d
-          path: .cache/webgpu-ci/models
-          run-id: 41384892970
-          github-token: ${{ github.token }}
-      - name: Download only the matching public-image numerical reference
-        uses: actions/download-artifact@v4
-        with:
-          name: tapir-measured-results-274407d44a7fbdcb8411f9dc78286b1f49409c6d
-          path: .cache/webgpu-ci/results
-          run-id: 41384892970
-          github-token: ${{ github.token }}
+      - name: Recreate the pinned public reference and fetch immutable published models
+        run: |
+          python -m pip install -r evaluation/public-fixture-requirements.txt
+          python evaluation/prepare-tapir-ci.py --root .cache/webgpu-ci
       - name: Package the exact candidate ONNX runtime using the same code as the core delivery
         run: node evaluation/package-runtime.mjs --onnx-only --output .cache/webgpu-ci/runtime/vendor
       - name: Parse the isolated compatibility fixture

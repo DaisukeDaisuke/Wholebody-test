@@ -123,7 +123,7 @@ async function initReceiver() {
   $('receiver-app').hidden = false;
   const state = {
     engine: null, engineModule: null, geometry: null, calibrationModule: null, retarget: null, tracker: null, avatar: null, bridge: null,
-    running: false, loading: false, processing: false, generation: 0,
+    running: false, loading: false, processing: false, processingDone: null, generation: 0,
     initializing: true, preparingOffline: false, modeChanging: false, loadCanceled: false,
     sources: new Map(), observations: new Map(), cameras: [], fused: null,
     records: [], totalFrames: 0, recentTimes: [], neuralTimes: [], stageTimes: [], latencies: [], lastObservationAt: 0,
@@ -131,7 +131,7 @@ async function initReceiver() {
     selectedModel: null, backend: null, loadedModes: null, loadedFootTrackingMethod: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
     view: { yaw: .33, pitch: .17, zoom: 1, center: [0, 0, 0], extent: 1, initialized: false, metric: false }
   };
-  let modulesPromise;
+  let modulesPromise, stepperModulePromise, inferenceStartPromise = null;
   const ensureModules = () => {
     if (!modulesPromise) modulesPromise = Promise.all([import('./engine-client.mjs'), import('./geometry.mjs'), import('./calibration.mjs'), import('./retarget.mjs')]).then(([engineModule, geometry, calibrationModule, retarget]) => {
       state.engineModule = engineModule; state.geometry = geometry; state.calibrationModule = calibrationModule;
@@ -164,7 +164,15 @@ async function initReceiver() {
     $('foot-refinement').disabled = operation || state.running || state.processing;
     $('foot-tracking-method').disabled = operation || state.running || state.processing;
     $('hand-refinement').disabled = operation;
-    for(const source of state.sources.values())$(`source-${source.id}-mode`).disabled=operation||state.running||state.processing;
+    for (const source of state.sources.values()) {
+      $(`source-${source.id}-mode`).disabled = operation || state.running || state.processing;
+      $(`source-${source.id}-foot-crop`).disabled = operation || state.running || state.processing;
+      const stepping = source.stepper?.active || source.stepRequested;
+      $(`source-${source.id}-step-controls`).hidden = source.kind !== 'video';
+      $(`source-${source.id}-step-controls`).dataset.active = String(Boolean(stepping));
+      $(`source-${source.id}-step-start`).disabled = operation || stepping || source.kind !== 'video' || source.video.readyState < 2 || Boolean(source.selection);
+      $(`source-${source.id}-step-stop`).disabled = !stepping;
+    }
   }
   async function waitForInferenceIdle() {
     const started = performance.now();
@@ -191,23 +199,151 @@ async function initReceiver() {
       priorPose: state.tracker?.lastPose, boneLengths: state.tracker?.getBoneLengths() || {} };
   }
 
+  const STEP_GUIDE = '30Hzの時刻サンプルです。実時間再生・全ネイティブフレームの解析ではありません。';
+  function setStepStatus(source, message, error = false) {
+    $(`source-${source.id}-step-state`).textContent = message;
+    $(`source-${source.id}-step-controls`).dataset.error = String(error);
+  }
+  function normalCaptureBlocked(source) {
+    return source.kind === 'video' && (source.stepRequested || source.stepper?.active || (source.stepHold && source.video.paused));
+  }
+  function stepFrameCurrent(source, frame) {
+    const sampling = frame.steppedVideo;
+    return !sampling || (source.stepper?.active && source.stepper.runId === sampling.runId);
+  }
+  function stepStopped(source, detail) {
+    source.stepRequested = false; source.stepRequestId++; source.stepCompleted = null;
+    source.stepHold = !['play', 'user-seek', 'source-closed', 'source-changed', 'timing-change', 'target-change', 'model-reload'].includes(detail.reason);
+    if (source.pending?.steppedVideo) source.pending = null;
+    if (state.observations.get(source.id)?.steppedVideo?.runId === detail.runId) state.observations.delete(source.id);
+    const label = { ended: '動画の終端まで解析しました', play: '通常再生へ戻りました', 'user-seek': '手動シークで順送りを終了しました',
+      'source-closed': '入力を閉じました', 'source-changed': '入力を変更しました', 'timing-change': '時刻・校正の変更で順送りを終了しました',
+      'target-change': '対象の変更で順送りを終了しました', selection: '選択操作のため順送りを停止しました',
+      'model-reload': 'モデル設定の変更で順送りを終了しました', error: '順送りを停止しました', 'inference-stopped': '推論と順送りを停止しました' }[detail.reason] || '順送りを停止しました';
+    setStepStatus(source, `${label} · ${source.stepProcessedCount}枚解析済み。${STEP_GUIDE}`);
+    updateOperationControls();
+    // A stopped view must not leave another view at the pair barrier forever.
+    queueMicrotask(advanceVideoSteppers);
+  }
+  function stopVideoStepper(source, reason = 'stopped') {
+    const requested = source.stepRequested, active = source.stepper?.active;
+    source.stepRequested = false; source.stepRequestId++; source.stepCompleted = null;
+    if (source.pending?.steppedVideo) source.pending = null;
+    if (active) source.stepper.stop(reason);
+    else if (requested) stepStopped(source, { reason, runId: source.stepper?.runId ?? null });
+    updateOperationControls();
+  }
+  function stopAllVideoSteppers(reason) { for (const source of state.sources.values()) stopVideoStepper(source, reason); }
+  function advanceVideoSteppers() {
+    if (!state.running || state.processing || state.loading) return;
+    if (Array.from(state.sources.values()).some(source => source.stepRequested)) return;
+    const sources = Array.from(state.sources.values()).filter(source => source.stepper?.active);
+    if (!sources.length || sources.some(source => !source.stepCompleted || source.stepCompleted.runId !== source.stepper.runId)) return;
+    // Both active video samplers wait until their current frames have been
+    // accepted and fused. The faster input cannot skip ahead of the other one.
+    const completed = sources.map(source => ({ source, frame: source.stepCompleted }));
+    for (const { source, frame } of completed) {
+      source.stepCompleted = null;
+      if (source.stepper?.active && source.stepper.runId === frame.runId) source.stepper.advance(frame.frameToken);
+    }
+  }
+  function acceptSteppedFrame(source, frame) {
+    if (!state.running || source.kind !== 'video' || !source.stepper?.active || source.stepper.runId !== frame.runId || source.selection) {
+      stopVideoStepper(source, 'stopped'); return;
+    }
+    source.frameCount++; source.lastPresentationAt = frame.capturedAtMs; source.lastMediaTime = frame.mediaTime;
+    source.presentedTimes.push(frame.capturedAtMs);
+    while (source.presentedTimes[0] < frame.capturedAtMs - 3000) source.presentedTimes.shift();
+    const { canvas, capturedAtMs, ...sampling } = frame;
+    source.lastSteppedFrame = sampling;
+    source.pending = { canvas, epoch: source.epoch, capturedAtMs, frameId: source.frameCount,
+      ...frameTiming(source, capturedAtMs, { mediaTime: frame.mediaTime, steppedVideo: sampling }), steppedVideo: sampling };
+    // The overlay belongs to the last analysed image, not this newly sought
+    // image. Clear it while inference is pending instead of moving old points.
+    source.overlay.getContext('2d').clearRect(0, 0, source.overlay.width, source.overlay.height);
+    setStepStatus(source, `${frame.mediaTime.toFixed(3)}秒を解析中 · ${source.stepProcessedCount}枚解析済み。${STEP_GUIDE}`);
+    queueMicrotask(processFrames);
+  }
+  function modelSettingsMatch() {
+    const modes = Array.from(state.sources.values()).filter(source => source.kind).map(source => $(`source-${source.id}-mode`).value);
+    const modeKey = JSON.stringify([modes.includes('wholebody'), modes.includes('feet'), $('foot-tracking-method').value]);
+    return state.engine && state.selectedModel === $('model-select').value && state.backend === $('backend-select').value
+      && state.loadedModes === modeKey && state.loadedOffline === state.offline
+      && state.loadedPersonDetection === $('person-detection').checked && state.loadedFootRefinement === $('foot-refinement').checked;
+  }
+  async function startVideoStepper(source) {
+    if (state.loading || state.preparingOffline || state.modeChanging || state.initializing || source.stepper?.active || source.stepRequested) return;
+    if (source.kind !== 'video' || source.video.readyState < 2) throw new Error('動画のフレームが表示されてから順送りを開始してください。');
+    if (source.selection) throw new Error('人物・足・校正点の選択を終えてから順送りを開始してください。');
+    source.video.pause(); source.stepRequested = true; source.stepHold = true;
+    const requestId = ++source.stepRequestId;
+    source.pending = null; source.epoch++; source.stepCompleted = null; source.stepProcessedCount = 0;
+    const epoch = source.epoch;
+    targetChanged(source, { preserveStepper: true, capture: false });
+    startWatching(source);
+    if (source.footSeed && Math.abs(source.footSeed.mediaTimeMs - source.video.currentTime * 1000) > 75) {
+      source.footSeed = null; source.footSeedPoints = [];
+      $(`source-${source.id}-foot-seed-state`).textContent = '前の3点とは別のフレームです。必要なら、現在の足の3点を指定し直してください。';
+    }
+    const currentRequest = () => source.stepRequested && source.stepRequestId === requestId && source.epoch === epoch && source.kind === 'video';
+    setStepStatus(source, `現在のフレームで停止し、モデルと前の処理を待っています。${STEP_GUIDE}`); updateOperationControls();
+    try {
+      const oldBatch = state.processingDone;
+      if (!stepperModulePromise) stepperModulePromise = import('./video-stepper.mjs').catch(error => { stepperModulePromise = null; throw error; });
+      const [{ VideoStepper }] = await Promise.all([stepperModulePromise, oldBatch || Promise.resolve()]);
+      if (!currentRequest()) return;
+      if (!state.running || !modelSettingsMatch()) {
+        if (state.running || state.processing) {
+          state.running = false; state.generation++;
+          for (const other of state.sources.values()) if (other !== source) stopVideoStepper(other, 'model-reload');
+        }
+        if (state.processingDone) await state.processingDone;
+        if (!currentRequest()) return;
+        await startInference({ preserveStepRequests: true });
+      }
+      if (!currentRequest() || !state.running) { if (currentRequest()) stopVideoStepper(source, 'inference-stopped'); return; }
+      if (!source.stepper) source.stepper = new VideoStepper({ video: source.video, stepSeconds: 1 / 30,
+        onFrame: frame => acceptSteppedFrame(source, frame), onStop: detail => stepStopped(source, detail),
+        onError: error => { setStepStatus(source, error.message || String(error), true); toast(error.message || String(error), true); } });
+      source.stepper.start(); source.stepRequested = false; updateOperationControls();
+    } catch (error) {
+      if (currentRequest()) { stopVideoStepper(source, 'error'); setStepStatus(source, error.message || String(error), true); }
+      throw error;
+    }
+  }
+
   function createSource(id) {
     const source = { id, video: $(`source-${id}-video`), overlay: $(`source-${id}-overlay`), screen: $(`source-${id}-screen`),
       kind: null, epoch: 0, stream: null, peer: null, url: null, filename: null, fileIdentity: null,
       pending: null, pool: [], requestId: null, requestKind: null, roi: null, roiStart: null, draftRoi: null, targetVersion: 0, selection: null,
       boardPoints: [], frameCount: 0, lastCaptureTime: null, frameIntervals: [], lastPresentationAt: 0,
       lastMediaTime: null, lastVideoMediaTimeMs: null, videoFrameIntervals: [], presentedTimes: [], footSeed: null, footSeedPoints: [], seedSequence: 0,
-      lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false };
+      lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false,
+      stepper: null, stepRequested: false, stepRequestId: 0, stepHold: false, stepCompleted: null, stepProcessedCount: 0, lastSteppedFrame: null };
     state.sources.set(id, source);
+    $(`source-${id}-step-start`).onclick = safe(() => startVideoStepper(source));
+    $(`source-${id}-step-stop`).onclick = () => {
+      if (state.loading && source.stepRequested) $('stop-inference').click();
+      else stopVideoStepper(source, 'stopped');
+    };
+    $(`source-${id}-foot-crop`).onchange = () => {
+      if (source.footSeed && Math.abs(source.footSeed.mediaTimeMs - source.video.currentTime * 1000) <= 75) {
+        source.footSeed = { ...source.footSeed, version: ++source.seedSequence,
+          cropPolicy: $(`source-${id}-foot-crop`).checked ? 'seed-square' : 'full-frame' };
+      } else { source.footSeed = null; source.footSeedPoints = []; }
+      targetChanged(source);
+      $(`source-${id}-foot-seed-state`).textContent = source.footSeed ? '現在の3点に切り出し設定を適用しました。' : '切り出し設定を変更しました。必要なら現在の足の3点を指定してください。';
+    };
     const updateMode=()=>{$(`source-${id}-foot-controls`).hidden=$(`source-${id}-mode`).value!=='feet';};
     $(`source-${id}-mode`).onchange=()=>{source.footSeed=null;updateMode();targetChanged(source);updateTargetState(source);};
     updateMode();
     $(`source-${id}-foot-seed`).onclick=()=>{
       if(!source.video.videoWidth)return toast('先に映像を選択してください。',true);
       if($(`source-${id}-mode`).value!=='feet')return toast('入力方式を「足だけ」に切り替えてください。',true);
+      stopVideoStepper(source, 'selection');
       source.video.pause();source.pending=null;source.selection='foot';source.footSeedPoints=[];source.screen.classList.add('picking');
       $(`source-${id}-foot-seed-state`).textContent='停止した映像で、母趾の先 → 小趾の先 → 踵の中心をクリック';
-      drawOverlay(source);
+      drawOverlay(source); updateOperationControls();
     };
     $(`source-${id}-file`).onchange = safe(async (event) => {
       const file = event.target.files?.[0];
@@ -215,6 +351,7 @@ async function initReceiver() {
       resetSource(source);
       source.kind = 'video'; source.filename = file.name; source.fileIdentity = `${file.name}:${file.size}:${file.lastModified}`;
       source.url = URL.createObjectURL(file); source.video.src = source.url; source.video.controls = true;
+      updateOperationControls();
       $(`source-${id}-state`).textContent = file.name;
       $(`source-${id}-empty`).hidden = true;
       $('video-sync-confirmed').checked = false;
@@ -233,10 +370,11 @@ async function initReceiver() {
     });
     $(`source-${id}-roi`).onclick = () => {
       if (!source.video.videoWidth) return toast('先に映像を選択してください。', true);
+      if (source.selection !== 'roi') stopVideoStepper(source, 'selection');
       source.selection = source.selection === 'roi' ? null : 'roi';
       source.roiStart = null; source.draftRoi = null;
       source.screen.classList.toggle('picking', Boolean(source.selection));
-      updateTargetState(source); drawOverlay(source);
+      updateTargetState(source); drawOverlay(source); updateOperationControls();
     };
     $(`source-${id}-reset-roi`).onclick = () => {
       source.roi = null; source.selection = null; source.roiStart = null; source.draftRoi = null;
@@ -253,9 +391,26 @@ async function initReceiver() {
       updateTargetState(source);
       startWatching(source);
       if (source.kind === 'video' && source.video.paused && state.running) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
+      updateOperationControls();
     });
-    source.video.addEventListener('seeked', () => { if (source.kind === 'video') { source.lastVideoMediaTimeMs = null; resetTiming(); } });
+    source.video.addEventListener('loadeddata', updateOperationControls);
+    source.video.addEventListener('play', () => {
+      if (source.kind !== 'video') return;
+      if (source.stepRequested && !source.video.paused) stopVideoStepper(source, 'play');
+      if (!source.video.paused) source.stepHold = false;
+      updateOperationControls();
+    });
+    source.video.addEventListener('seeking', () => {
+      if (source.kind === 'video' && !source.stepper?.ownsSeek(source.video.currentTime)) {
+        stopVideoStepper(source, 'user-seek'); source.stepHold = false;
+      }
+    });
+    source.video.addEventListener('seeked', () => {
+      if (source.kind !== 'video' || source.stepper?.ownsSeek(source.video.currentTime)) return;
+      source.lastVideoMediaTimeMs = null; resetTiming();
+    });
     source.video.addEventListener('error', () => {
+      stopVideoStepper(source, 'error');
       $(`source-${id}-state`).textContent = '映像を読み込めません';
       toast(`入力 ${id.toUpperCase()}：この動画形式をブラウザで再生できません。`, true);
     });
@@ -263,6 +418,7 @@ async function initReceiver() {
   }
 
   function resetSource(source, preservePeer = false) {
+    stopVideoStepper(source, 'source-closed'); source.stepper?.dispose(); source.stepper = null;
     source.epoch++;
     state.engine?.resetSource?.(source.id);
     if (source.requestId !== null) {
@@ -279,6 +435,8 @@ async function initReceiver() {
     source.footSeed=null;source.footSeedPoints=[];source.presentedTimes=[];
     source.frameCount = 0; source.lastCaptureTime = null; source.frameIntervals = []; source.lastMediaTime = null;
     source.lastVideoMediaTimeMs = null; source.videoFrameIntervals = [];
+    source.stepHold = false; source.stepCompleted = null; source.stepProcessedCount = 0; source.lastSteppedFrame = null;
+    setStepStatus(source, `1枚の解析後に1/30秒進みます。${STEP_GUIDE}`);
     source.clock = null; source.audit = null; source.inviteLink = null; source.failed = false;
     state.observations.delete(source.id); state.tracker?.reset();
     source.overlay.getContext('2d').clearRect(0, 0, source.overlay.width, source.overlay.height);
@@ -296,6 +454,7 @@ async function initReceiver() {
       $('scene-empty').hidden = false; $('root-status').textContent = '絶対位置は未校正';
       $('coordinate-state').textContent = '相対ポーズ · 待機中';
     }
+    updateOperationControls();
   }
 
   async function openLocalCamera(source) {
@@ -367,6 +526,7 @@ async function initReceiver() {
     const callback = (now, metadata) => {
       if (source.epoch !== epoch || !source.kind) return;
       source.requestId = null;
+      if (normalCaptureBlocked(source)) { source.lastVideoMediaTimeMs = null; queue(); return; }
       const frame = metadata || { mediaTime: source.video.currentTime, presentationTime: now };
       if (source.kind === 'video' && metadata && Number.isFinite(metadata.mediaTime)) {
         const mediaMs = metadata.mediaTime * 1000;
@@ -396,10 +556,10 @@ async function initReceiver() {
     if (source.kind === 'video') {
       const confirmed = $('video-sync-confirmed').checked;
       const frameInterval = median(source.videoFrameIntervals);
-      const uncertainty = frameInterval === null ? 16.67 : frameInterval / 2;
+      const uncertainty = metadata.steppedVideo ? Math.max(metadata.steppedVideo.stepSeconds * 500, (frameInterval ?? 33.34) / 2) : frameInterval === null ? 16.67 : frameInterval / 2;
       return { timestampMs: (metadata.mediaTime ?? source.video.currentTime) * 1000 + (source.id === 'b' ? numberInput('video-offset-ms', 0) : 0),
-        timeUncertaintyMs: confirmed ? uncertainty : Infinity, timeDomain: 'media', timeSource: confirmed ? 'manually-aligned-media-time-estimate' : 'unaligned-media-time',
-        uncertaintyBasis: !confirmed ? 'manual-alignment-unconfirmed' : frameInterval === null ? 'fallback-half-frame-16.67ms-manual-error-not-calibrated-not-a-guarantee' : 'half-adjacent-rvfc-mediaTime-interval-manual-error-not-calibrated-not-a-guarantee',
+        timeUncertaintyMs: confirmed ? uncertainty : Infinity, timeDomain: 'media', timeSource: metadata.steppedVideo ? confirmed ? 'manually-aligned-stepped-media-time-estimate' : 'unaligned-stepped-media-time' : confirmed ? 'manually-aligned-media-time-estimate' : 'unaligned-media-time',
+        uncertaintyBasis: !confirmed ? 'manual-alignment-unconfirmed' : metadata.steppedVideo ? 'half-sample-grid-or-frame-cadence-native-frame-not-guaranteed-manual-error-not-calibrated' : frameInterval === null ? 'fallback-half-frame-16.67ms-manual-error-not-calibrated-not-a-guarantee' : 'half-adjacent-rvfc-mediaTime-interval-manual-error-not-calibrated-not-a-guarantee',
         mediaTimeMs: (metadata.mediaTime ?? source.video.currentTime) * 1000 };
     }
     const capture = metadata.captureTime;
@@ -422,7 +582,7 @@ async function initReceiver() {
 
   function captureFrame(source, now, metadata) {
     const { videoWidth: width, videoHeight: height, readyState } = source.video;
-    if (!width || !height || readyState < 2 || source.failed || ['board','foot'].includes(source.selection)) return;
+    if (normalCaptureBlocked(source) || source.video.seeking || !width || !height || readyState < 2 || source.failed || ['board','foot'].includes(source.selection)) return;
     let canvas = source.pending?.canvas || source.pool.pop();
     if (!canvas) canvas = document.createElement('canvas');
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
@@ -438,19 +598,22 @@ async function initReceiver() {
     });
     if (!batch.length) return;
     state.processing = true;
+    let finishProcessing;
+    state.processingDone = new Promise(resolve => { finishProcessing = resolve; });
     updateOperationControls();
     const generation = state.generation;
     const batchObservations = [];
     try {
       // Freeze both current inputs before running the single shared model sequentially.
       for (const { source, frame } of batch) {
-        if (!state.running || generation !== state.generation || source.epoch !== frame.epoch) continue;
+        if (!state.running || generation !== state.generation || source.epoch !== frame.epoch || !stepFrameCurrent(source, frame)) continue;
         const targetVersion = source.targetVersion;
         const result = await state.engine.estimate(frame.canvas, { sourceId: source.id, timestampMs: frame.timestampMs,
           roi: source.roi?.slice() || null, mode:$(`source-${source.id}-mode`).value,footSeed:source.footSeed,frameMediaTimeMs:frame.mediaTimeMs,
           handRefinement: $('hand-refinement').checked, footRefinement: $('foot-refinement').checked });
         if (generation !== state.generation || source.epoch !== frame.epoch) { state.engine.resetSource?.(source.id); continue; }
         if (source.targetVersion !== targetVersion) { state.engine.resetSource?.(source.id); continue; }
+        if (!stepFrameCurrent(source, frame)) continue;
         if (result.personDetection?.targetReset === true) {
           state.observations.delete(source.id); state.tracker?.reset(); state.fused = null;
           state.sceneDirty = true; state.view.initialized = false;
@@ -462,6 +625,7 @@ async function initReceiver() {
         const observation = { ...result, sourceId: source.id,targetVersion, timestampMs: frame.timestampMs, timeUncertaintyMs: frame.timeUncertaintyMs,
           timeDomain: frame.timeDomain, timeSource: frame.timeSource, uncertaintyBasis: frame.uncertaintyBasis,
           frameId: frame.frameId, mediaTimeMs: frame.mediaTimeMs, captureReceivedAtMs: frame.capturedAtMs,
+          steppedVideo: frame.steppedVideo || null,
           receiveTimeMs: frame.receiveTimeMs, rtpTimestamp: frame.rtpTimestamp, inferredAtMs: finishedAtMs,
           localPipelineLatencyMs: finishedAtMs - frame.capturedAtMs };
         source.lastObservation = observation;
@@ -481,7 +645,8 @@ async function initReceiver() {
         // only after that frozen frame has initialized the temporal tracker.
         if(result.diagnostics?.manualSeedApplied&&source.kind!=='video'&&source.video.paused)await source.video.play();
       }
-      const acceptedObservations = batchObservations.filter((observation) => state.observations.get(observation.sourceId) === observation);
+      const acceptedObservations = batchObservations.filter((observation) => state.observations.get(observation.sourceId) === observation
+        && stepFrameCurrent(state.sources.get(observation.sourceId), observation));
       if (acceptedObservations.length && generation === state.generation) {
         // Commit one fused result per frozen input pair. Otherwise the later-arriving
         // view can share the first view's timestamp and be ignored by the time filter.
@@ -490,21 +655,29 @@ async function initReceiver() {
         acceptedObservations.forEach((observation, index) => {
           state.records.push({ observation, fused: index === acceptedObservations.length - 1 ? state.fused : null });
           if (state.records.length > 1800) state.records.shift();
+          if (observation.steppedVideo) {
+            const source = state.sources.get(observation.sourceId);
+            source.stepCompleted = observation.steppedVideo; source.stepProcessedCount++;
+            setStepStatus(source, `${(observation.mediaTimeMs / 1000).toFixed(3)}秒まで ${source.stepProcessedCount}枚解析済み · 次の解析を待っています。${STEP_GUIDE}`);
+          }
         });
         $('load-progress').hidden = true;
-        engineStatus('running', '推論中', '観測を更新しています。モデルは入力A・Bで共有します。');
+        const stepping = Array.from(state.sources.values()).some(source => source.stepper?.active);
+        engineStatus('running', stepping ? '動画を順送り解析中' : '推論中', stepping ? '30Hzの時刻サンプルを1枚ずつ解析しています。実時間の推論速度は下の計測欄に表示します。' : '観測を更新しています。モデルは入力A・Bで共有します。');
         updateMetrics();
       }
     } catch (error) {
       if (generation === state.generation && state.running) {
         state.running = false;
+        stopAllVideoSteppers('error');
         engineStatus('error', '推論停止', error.message || String(error));
         toast(error.message || String(error), true);
       }
     } finally {
       for (const { source, frame } of batch) if (source.epoch === frame.epoch && source.pool.length < 2) source.pool.push(frame.canvas);
-      state.processing = false;
+      state.processing = false; state.processingDone = null; finishProcessing();
       updateOperationControls();
+      advanceVideoSteppers();
       if (state.running && Array.from(state.sources.values()).some((source) => source.pending)) setTimeout(processFrames, 0);
     }
   }
@@ -647,7 +820,8 @@ async function initReceiver() {
     $(`source-${source.id}-roi`).disabled = !ready;
     $(`source-${source.id}-reset-roi`).disabled = !ready;
   }
-  function targetChanged(source) {
+  function targetChanged(source, { preserveStepper = false, capture = true } = {}) {
+    if (!preserveStepper) { stopVideoStepper(source, 'target-change'); source.stepHold = false; }
     source.targetVersion++;
     source.lastObservation = null;
     state.engine?.resetSource?.(source.id);
@@ -658,7 +832,7 @@ async function initReceiver() {
     $('scene-empty').hidden = false; $('root-status').textContent = '新しい追跡対象の推論待ち';
     $('coordinate-state').textContent = '相対ポーズ · 待機中';
     for (const axis of ['x', 'y', 'z']) $(`root-${axis}`).textContent = '—';
-    if (source.video.paused && state.running && (source.kind==='video'||source.footSeed)) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
+    if (capture && source.video.paused && state.running && (source.kind==='video'||source.footSeed)) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
   }
   function beginSelection(source, event) {
     if (!source.selection || !source.video.videoWidth) return;
@@ -667,17 +841,18 @@ async function initReceiver() {
     if(source.selection==='foot'){
       source.footSeedPoints.push(point);
       if(source.footSeedPoints.length===3){
-        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice()),mediaTimeMs:source.video.currentTime*1000};
+        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice()),mediaTimeMs:source.video.currentTime*1000,
+          cropPolicy:$(`source-${source.id}-foot-crop`).checked?'seed-square':'full-frame'};
         source.selection=null;source.screen.classList.remove('picking');
         targetChanged(source);
-        $(`source-${source.id}-foot-seed-state`).textContent='3点を記録しました。推論開始後に動画を再生すると画像追跡します。';
+        $(`source-${source.id}-foot-seed-state`).textContent='3点を記録しました。「動画を順送り解析」で1枚ずつ追跡できます。通常再生も選べます。';
       }else $(`source-${source.id}-foot-seed-state`).textContent=`${source.footSeedPoints.length}/3点 · 次は${source.footSeedPoints.length===1?'小趾の先':'踵の中心'}`;
       drawOverlay(source);return;
     }
     if (source.selection === 'board') {
       if (source.boardPoints.length < 4) source.boardPoints.push(point);
       $('board-state').textContent = `${source.id.toUpperCase()}：${source.boardPoints.length} / 4 点を選択`;
-      if (source.boardPoints.length === 4) { source.selection = null; source.screen.classList.remove('picking'); updateTargetState(source); }
+      if (source.boardPoints.length === 4) { source.selection = null; source.screen.classList.remove('picking'); updateTargetState(source); updateOperationControls(); }
       drawOverlay(source); return;
     }
     source.roiStart = point; source.draftRoi = null; source.screen.setPointerCapture(event.pointerId);
@@ -695,7 +870,7 @@ async function initReceiver() {
     else { source.roi = source.draftRoi.slice(); targetChanged(source); }
     source.draftRoi = null;
     source.selection = null; source.screen.classList.remove('picking');
-    updateTargetState(source); drawOverlay(source);
+    updateTargetState(source); drawOverlay(source); updateOperationControls();
   }
 
   function updateDetailViews(image, observation) {
@@ -780,10 +955,12 @@ async function initReceiver() {
     return status;
   }
   function resetTiming() {
+    stopAllVideoSteppers('timing-change');
     state.generation++; state.tracker?.reset(); state.observations.clear();
     state.fused = null; state.sceneDirty = true; state.view.initialized = false; state.lastObservationAt = 0;
     state.latestPoseTimeDomain = null; state.latestPoseUpdatedAtMs = null;state.lastPoseObservationAt=0;
     for (const source of state.sources.values()) {
+      source.stepHold = false;
       source.pending = null; source.lastObservation = null;source.footSeed=null;source.footSeedPoints=[]; state.engine?.resetSource?.(source.id);
       updateTargetState(source); drawOverlay(source);
       if (state.running && source.kind === 'video' && source.video.paused) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
@@ -939,6 +1116,7 @@ async function initReceiver() {
     $('pick-board').onclick = () => {
       const source = state.sources.get($('board-source').value);
       if (!source.video.videoWidth) return toast('校正する入力の映像を先に開いてください。', true);
+      stopVideoStepper(source, 'selection');
       for (const other of state.sources.values()) { other.selection = null; other.draftRoi = null; other.roiStart = null; other.screen.classList.remove('picking'); updateTargetState(other); }
       source.video.pause(); source.selection = 'board'; source.boardPoints = []; source.screen.classList.add('picking'); source.pending = null;
       const camera = state.cameras.find((item) => item.id === source.id);
@@ -946,7 +1124,7 @@ async function initReceiver() {
       if (!$('board-cx').value) $('board-cx').value = String(source.video.videoWidth / 2);
       if (!$('board-cy').value) $('board-cy').value = String(source.video.videoHeight / 2);
       $('board-state').textContent = `${source.id.toUpperCase()}：左上 → 右上 → 右下 → 左下の順に選択`;
-      drawOverlay(source); source.screen.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      drawOverlay(source); updateOperationControls(); source.screen.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
     $('solve-board').onclick = safe(async () => {
       await ensureModules();
@@ -977,9 +1155,18 @@ async function initReceiver() {
   };
   $('refresh-evaluation').onclick = safe(loadEvaluationPanel);
   loadEvaluationPanel().catch(() => { $('evaluation-content').textContent = '評価結果を読み込めませんでした。'; });
-  $('start-inference').onclick = safe(async () => {
+  function startInference(options = {}) {
+    if (!inferenceStartPromise) inferenceStartPromise = runInference(options).finally(() => { inferenceStartPromise = null; });
+    return inferenceStartPromise;
+  }
+  async function runInference({ preserveStepRequests = false } = {}) {
     if (state.loading || state.preparingOffline || state.modeChanging || state.initializing) return;
     if (state.processing) throw new Error('前の推論処理の終了を待って、もう一度開始してください。');
+    if (!preserveStepRequests) {
+      stopAllVideoSteppers('model-reload');
+      for (const source of state.sources.values()) source.stepHold = false;
+    }
+    for (const source of state.sources.values()) source.pending = null;
     state.loading = true; state.loadCanceled = false; state.running = false; state.generation++;
     updateOperationControls();
     try {
@@ -1011,6 +1198,7 @@ async function initReceiver() {
       processFrames(); updateDiagnostics();
     } catch (error) {
       state.running = false;
+      stopAllVideoSteppers('error');
       const failedEngine = state.engine; state.engine = null; state.selectedModel = null;
       try { await failedEngine?.dispose?.(); } catch { /* Preserve the original initialization error. */ }
       $('load-progress').hidden = true;
@@ -1018,8 +1206,10 @@ async function initReceiver() {
       else { engineStatus('error', '読込失敗', error.message || String(error)); throw error; }
     }
     finally { state.loading = false; state.loadCanceled = false; updateOperationControls(); }
-  });
+  }
+  $('start-inference').onclick = safe(() => startInference());
   $('stop-inference').onclick = () => {
+    stopAllVideoSteppers('inference-stopped');
     if (state.loading) {
       state.loadCanceled = true;
       state.engine?.abort?.abort();
@@ -1087,6 +1277,7 @@ async function initReceiver() {
     const a = state.sources.get('a'), b = state.sources.get('b');
     if (a.kind !== 'video' || b.kind !== 'video') return toast('2本の同時撮影動画を開いてください。', true);
     if (a.fileIdentity === b.fileIdentity) return toast('同じ動画の複製は2視点として使えません。', true);
+    stopAllVideoSteppers('timing-change');
     a.video.pause(); b.video.pause();
     $('video-offset-ms').value = String(Math.round((a.video.currentTime - b.video.currentTime) * 1000));
     $('video-sync-confirmed').checked = true; resetTiming();
@@ -1095,6 +1286,7 @@ async function initReceiver() {
   $('play-video-pair').onclick = safe(async () => {
     const a = state.sources.get('a'), b = state.sources.get('b');
     if (a.kind !== 'video' || b.kind !== 'video') throw new Error('入力A・Bに動画を開いてください。');
+    stopAllVideoSteppers('play'); a.stepHold = false; b.stepHold = false;
     a.video.pause(); b.video.pause();
     if ($('video-sync-confirmed').checked) {
       const target = a.video.currentTime - numberInput('video-offset-ms', 0) / 1000;
@@ -1107,7 +1299,7 @@ async function initReceiver() {
     }
     await Promise.all([a.video.play(), b.video.play()]);
   });
-  $('pause-video-pair').onclick = () => { for (const source of state.sources.values()) if (source.kind === 'video') source.video.pause(); };
+  $('pause-video-pair').onclick = () => { for (const source of state.sources.values()) if (source.kind === 'video') { stopVideoStepper(source, 'stopped'); source.video.pause(); } };
   $('export-session').onclick = () => {
     const { priorPose, ...options } = fusionOptions();
     downloadJson(`wholebody-session-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
@@ -1118,9 +1310,11 @@ async function initReceiver() {
       latestPoseTimeDomain: state.fused ? state.latestPoseTimeDomain : null,
       latestPoseUpdatedAtPerformanceMs: state.fused ? state.latestPoseUpdatedAtMs : null,
       snapshotAtPerformanceMs: performance.now(), synchronization: synchronizationStatus(),
-      timingNotes: 'captureTime is a browser estimate. Null uncertainty means synchronization was not established. mediaTime is only aligned when explicitly confirmed.',
+      timingNotes: 'captureTime is a browser estimate. Null uncertainty means synchronization was not established. mediaTime is only aligned when explicitly confirmed. steppedVideo is a fixed media-time grid, not real-time inference or native-frame-accurate decoding; processing FPS and latency use wall-clock performance time.',
       footNotes: 'Big toe, little toe, heel are model landmarks. Other toes and toe articulation are anatomical priors, not observed independent toe joints.',
-      sources: Array.from(state.sources.values()).map((source) => ({ id: source.id, kind: source.kind, imageSize: { width: source.video.videoWidth, height: source.video.videoHeight }, roi: source.roi, clock: source.clock, networkAudit: source.audit })),
+      sources: Array.from(state.sources.values()).map((source) => ({ id: source.id, kind: source.kind, imageSize: { width: source.video.videoWidth, height: source.video.videoHeight }, roi: source.roi, clock: source.clock, networkAudit: source.audit,
+        videoSampling: { active: Boolean(source.stepper?.active), preparing: source.stepRequested, heldAfterStop: source.stepHold, processedSamples: source.stepProcessedCount, lastSample: source.lastSteppedFrame },
+        footSeedCropPolicy: source.footSeed?.cropPolicy || null })),
       records: state.records
     });
   };
@@ -1150,7 +1344,7 @@ async function initReceiver() {
   requestAnimationFrame(animate);
   refreshDevices().catch(() => {});
   navigator.mediaDevices?.addEventListener?.('devicechange', () => refreshDevices().catch(() => {}));
-  addEventListener('pagehide', () => { state.running = false;state.avatar?.dispose();state.bridge?.disconnect();state.engine?.dispose().catch(()=>{}); for (const source of state.sources.values()) { source.peer?.close(); source.stream?.getTracks().forEach((track) => track.stop()); if (source.url) URL.revokeObjectURL(source.url); } });
+  addEventListener('pagehide', () => { state.running = false;state.avatar?.dispose();state.bridge?.disconnect();state.engine?.dispose().catch(()=>{}); for (const source of state.sources.values()) { source.stepRequested = false; source.stepRequestId++; source.stepper?.dispose(); source.peer?.close(); source.stream?.getTracks().forEach((track) => track.stop()); if (source.url) URL.revokeObjectURL(source.url); } });
   updateOperationControls();
   try {
     const offline = await import('./offline.mjs');

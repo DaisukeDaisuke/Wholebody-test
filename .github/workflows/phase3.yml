@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 concurrency:
   group: wholebody-phase3-${{ github.ref }}
   cancel-in-progress: true
@@ -21,6 +20,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: evaluation/public-fixture-requirements.txt
       - name: Install pinned runtime bundler without install scripts
         run: npm ci --prefix build --ignore-scripts --no-audit --no-fund
       - name: Install pinned local bridge dependencies without install scripts
@@ -42,20 +46,10 @@ jobs:
         run: node evaluation/vrm-ci.mjs
       - name: Run the actual pinned RTMW3D-X and FOCUS models on a public reference image
         run: node evaluation/phase3-real-model.mjs
-      - name: Download the pinned public causal tracker export
-        uses: actions/download-artifact@v4
-        with:
-          name: tapir-model-package-274407d44a7fbdcb8411f9dc78286b1f49409c6d
-          path: .cache/tapir-ci/models
-          run-id: 41384892970
-          github-token: ${{ github.token }}
-      - name: Download the matching public-image recurrent reference
-        uses: actions/download-artifact@v4
-        with:
-          name: tapir-measured-results-274407d44a7fbdcb8411f9dc78286b1f49409c6d
-          path: .cache/tapir-ci/results
-          run-id: 41384892970
-          github-token: ${{ github.token }}
+      - name: Recreate the pinned public reference and fetch immutable published models
+        run: |
+          python -m pip install -r evaluation/public-fixture-requirements.txt
+          python evaluation/prepare-tapir-ci.py --root .cache/tapir-ci
       - name: Exercise the shipped causal point tracker with actual ONNX Web WASM
         run: node evaluation/tapir-wasm-ci.mjs --models .cache/tapir-ci/models --fixtures .cache/tapir-ci/results/codec-fixture --optimization mixed
       - name: Include public execution evidence in the delivered application
