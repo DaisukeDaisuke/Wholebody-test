@@ -28,9 +28,9 @@ def main():
     annotations = {a["id"]: a for a in dataset["annotations"]}
     images = {i["id"]: i for i in dataset["images"]}
     records = []
-    # Predeclared first 32 old heldout IDs, without choosing on current outputs.
-    # This is a regression subset, not a fresh heldout selection claim.
-    for image_id, annotation_id in zip(split["test_image_ids"][:32], split["test_annotation_ids"][:32], strict=True):
+    # The first 32 were used to reject standalone 3D XY and design hybrid
+    # routing. Fix the remaining 160 before evaluating that routing.
+    for image_id, annotation_id in zip(split["test_image_ids"][32:], split["test_annotation_ids"][32:], strict=True):
         image, item = images[image_id], annotations[annotation_id]
         assert item["image_id"] == image_id
         path = cache / f"{image_id:012d}.jpg"
@@ -38,7 +38,7 @@ def main():
         records.append({"imageId": image_id, "annotationId": annotation_id, "path": str(path),
                         "width": image["width"], "height": image["height"], "bbox": item["bbox"], "keypoints": item["keypoints"]})
     (cache / "input.json").write_text(json.dumps({"records": records, "sourceAnnotationSha256": split["annotation_sha256"]}), encoding="utf-8")
-    print(json.dumps({"publicImages": len(records), "privateInputsUsed": False, "selection": "first32FixedOldHeldoutIds"}))
+    print(json.dumps({"publicImages": len(records), "privateInputsUsed": False, "selection": "remaining160FixedOldHeldoutIds", "excludedRoutingDevelopmentImages": 32}))
 
 
 if __name__ == "__main__":

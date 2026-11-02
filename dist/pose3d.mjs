@@ -147,6 +147,68 @@ export function mergePose3DKeypoints(existing, decoded) {
   return result;
 }
 
+/** Preserve the higher-accuracy current 2D observation. A slower world-landmark
+ * model supplies relative Z only where it actually observed that joint. The
+ * depth timestamp is independent of the current image-plane observation.
+ * No previous fused result should be passed as decoded3D: keep the last actual
+ * neural decode separate, including its confidence and original root fit. */
+export function fuseBodyDepth(current133, decoded3D, timestampMs, depthTimestampMs, options = {}) {
+  const threshold = options.minPointConfidence ?? .25, maxDepthAgeMs = options.maxDepthAgeMs ?? 300;
+  const depthAgeMs = finite(timestampMs) && finite(depthTimestampMs) ? timestampMs - depthTimestampMs : Infinity;
+  const depthFresh = depthAgeMs >= 0 && depthAgeMs <= maxDepthAgeMs && decoded3D?.valid === true;
+  const imageSize = options.imageSize || decoded3D?.imageSize;
+  const observed = point => point && point.observable !== false && point.score >= threshold && finite(point.x) && finite(point.y) && (!imageSize || point.x >= 0 && point.y >= 0 && point.x < imageSize.width && point.y < imageSize.height);
+  const depthFields = ['modelPosition', 'relativeZm', 'relativeZ', 'depthConfidence', 'depthObservedAtMs', 'depthAgeMs', 'depthEstimated', 'depthSource', 'depthProjection'];
+  const diagnostics = { method: 'current-2d-with-learned-relative-depth', primaryXYUnchanged: 0, missingXYFilledBy3D: 0, learnedDepthJoints: 0, rayProjectedJoints: 0, depthFresh, depthAgeMs: finite(depthAgeMs) ? depthAgeMs : null, absoluteDistanceMeasured: false };
+  const keypoints = Array.from({ length: 133 }, (_, id) => {
+    const point = current133?.[id] ? { ...current133[id] } : { id, x: 0, y: 0, score: 0, observable: false };
+    // Callers may keep old details between inference frames. They cannot carry
+    // old depth forward by accident through an ordinary 2D point copy.
+    for (const field of depthFields) delete point[field];
+    point.id = id;
+    if (observed(point)) { point.observedAtMs = finite(point.observedAtMs) ? point.observedAtMs : timestampMs; diagnostics.primaryXYUnchanged++; }
+    return point;
+  });
+  if (depthFresh) for (const [, id] of POSE3D_TO_COCO) {
+    const depth = decoded3D.keypoints?.[id];
+    if (!observed(depth) || !finite3(depth.modelPosition)) continue;
+    let point = keypoints[id];
+    if (!observed(point)) {
+      point = keypoints[id] = { ...depth, id, observedAtMs: depthTimestampMs, xySource: 'learned3d-missing-2d-fallback' };
+      diagnostics.missingXYFilledBy3D++;
+    } else point.xySource = 'current-primary-2d';
+    point.modelPosition = depth.modelPosition.slice(); point.relativeZm = depth.modelPosition[2];
+    point.depthConfidence = depth.score; point.depthObservedAtMs = depthTimestampMs; point.depthAgeMs = depthAgeMs;
+    point.depthEstimated = true; point.depthSource = POSE3D_SPEC.id; diagnostics.learnedDepthJoints++;
+  }
+  const decoded = { ...(decoded3D || {}), imageSize, valid: depthFresh, confidence: depthFresh ? decoded3D.confidence : 0, keypoints };
+  decoded.rootFit = fitPerspectiveRoot(decoded, options);
+  // A current successful perspective fit updates preview translation. A fresh
+  // original-model fit may still project limb rays when the current fit is
+  // inconsistent, but it is NOT promoted to a current root measurement.
+  const projection = decoded.rootFit.valid ? decoded.rootFit : depthFresh && decoded3D.rootFit?.valid ? decoded3D.rootFit : null;
+  const supplied = options.K, K = Array.isArray(supplied) && supplied.length === 9 ? [supplied[0], supplied[4], supplied[2], supplied[5]] : supplied;
+  const calibrated = Array.isArray(K) && K.length === 4 && K.every(finite) && K[0] > 0 && K[1] > 0;
+  const intrinsics = calibrated ? K : imageSize ? [Math.max(imageSize.width, imageSize.height), Math.max(imageSize.width, imageSize.height), imageSize.width / 2, imageSize.height / 2] : null;
+  if (intrinsics) for (const point of keypoints) {
+    if (!finite3(point.modelPosition)) continue;
+    if (projection) {
+      const [tx, ty, tz] = projection.positionCamera, [fx, fy, cx, cy] = intrinsics, z = point.relativeZm, distance = z + tz;
+      const projected = [(point.x - cx) / fx * distance - tx, (point.y - cy) / fy * distance - ty, z];
+      if (distance > .05 && projected.every(v => finite(v) && Math.abs(v) < 5)) {
+        point.modelPosition = projected; point.depthProjection = decoded.rootFit.valid ? 'current-2d-perspective-fit' : 'fresh-depth-model-perspective-fit'; diagnostics.rayProjectedJoints++;
+      } else delete point.modelPosition;
+    } else if (point.xySource === 'current-primary-2d') {
+      // Keep the current 2D motion and the separately labelled relative Z.
+      // Without a valid projection, stale model XY must not replace current XY.
+      delete point.modelPosition;
+    }
+  }
+  decoded.worldJoints = keypoints.map((point, id) => observed(point) && finite3(point.modelPosition) ? { id, positionCamera: point.modelPosition.slice(), score: point.score, depthConfidence: point.depthConfidence, depthObservedAtMs: point.depthObservedAtMs, source: 'inferredMonocular', modelRelativeZ: true, depthAmbiguous: false } : null);
+  decoded.diagnostics = { ...(decoded3D?.diagnostics || {}), ...diagnostics, rootFitUsesCurrent2D: decoded.rootFit.valid };
+  return { keypoints, decoded, depthAgeMs: finite(depthAgeMs) ? depthAgeMs : null, depthFresh, diagnostics };
+}
+
 function solve3(matrix, vector) {
   const m = [0, 1, 2].map(i => [...matrix.slice(i * 3, i * 3 + 3), vector[i]]), scale = Math.max(...matrix.map(Math.abs));
   for (let col = 0; col < 3; col++) {
@@ -175,7 +237,7 @@ export function fitPerspectiveRoot(decoded, options = {}) {
   const records = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 19, 22].map(id => decoded.keypoints[id]).filter(p => p?.observable && p.score >= .35 && finite3(p.modelPosition));
   if (records.length < 4) return missing('fewerThanFourVisibleJoints');
   let translation = null;
-  const weights = records.map(p => p.score ** 2), residuals = Array(records.length).fill(0);
+  const weights = records.map(p => Math.min(p.score, p.depthConfidence ?? p.score) ** 2), residuals = Array(records.length).fill(0);
   for (let pass = 0; pass < 3; pass++) {
     const a = Array(9).fill(0), b = Array(3).fill(0);
     records.forEach((p, index) => {

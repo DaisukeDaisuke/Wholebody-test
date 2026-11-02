@@ -16,6 +16,10 @@ SHA256 = "9d89c599319a18fb7d2e28451a883476164543182bafca5f09eb2cf767ed2f3f"
 SIZE = 5557238
 BASE = f"https://media.githubusercontent.com/media/opencv/opencv_zoo/{REVISION}/models/pose_estimation_mediapipe/"
 LICENSE_URL = f"https://raw.githubusercontent.com/opencv/opencv_zoo/{REVISION}/models/pose_estimation_mediapipe/LICENSE"
+DETECTOR_NAME = "person_detection_mediapipe_2023mar.onnx"
+DETECTOR_SHA256 = "47fd5599d6fa17608f03e0eb0ae230baa6e597d7e8a2c8199fe00abea55a701f"
+DETECTOR_SIZE = 11990159
+DETECTOR_BASE = f"https://media.githubusercontent.com/media/opencv/opencv_zoo/{REVISION}/models/person_detection_mediapipe/"
 
 
 def fetch(url, limit):
@@ -64,6 +68,32 @@ def main():
         "provenance": {"weightOrigin": "Google MediaPipe Pose, ONNX conversion published by OpenCV Zoo", "customTrainingPerformed": False, "privateInputsUsed": False},
     }
     (args.output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    detector = fetch(DETECTOR_BASE + DETECTOR_NAME, DETECTOR_SIZE)
+    if len(detector) != DETECTOR_SIZE or hashlib.sha256(detector).hexdigest() != DETECTOR_SHA256:
+        raise RuntimeError("person_detector_model_integrity_failed")
+    detector_license = fetch(f"https://raw.githubusercontent.com/opencv/opencv_zoo/{REVISION}/models/person_detection_mediapipe/LICENSE", 20000)
+    if b"Apache License" not in detector_license or b"Version 2.0" not in detector_license:
+        raise RuntimeError("person_detector_license_integrity_failed")
+    (args.output / "person-detector.onnx").write_bytes(detector)
+    (args.output / "LICENSE-PERSON-DETECTOR.txt").write_bytes(detector_license)
+    detector_manifest = {
+        "id": "mediapipe-person-detector-opencv-2023mar",
+        "file": "person-detector.onnx", "filename": "person-detector.onnx",
+        "sha256": DETECTOR_SHA256, "bytes": DETECTOR_SIZE,
+        "inputShape": [1, 3, 224, 224], "inputWH": [224, 224],
+        "inputNamePolicy": "session.inputNames[0]", "layout": "NCHW", "color": "RGB",
+        "inputRange": [-1, 1], "letterboxPaddingNormalizedValue": 0,
+        "outputContract": {"boxAndVirtualPoints": [1, 2254, 12], "scoreLogits": [1, 2254, 1]},
+        "anchors": [{"grid": 28, "perCell": 2}, {"grid": 14, "perCell": 2}, {"grid": 7, "perCell": 6}],
+        "purpose": "Initial/lost person ROI acquisition only; virtual points are not observed body joints",
+        "maximumScheduledHz": 2, "executionProvider": "CPU",
+        "upstreamRevision": REVISION, "upstreamUrl": DETECTOR_BASE + DETECTOR_NAME,
+        "source": f"https://github.com/opencv/opencv_zoo/tree/{REVISION}/models/person_detection_mediapipe",
+        "license": "Apache-2.0", "licenseFile": "LICENSE-PERSON-DETECTOR.txt",
+        "optionalUnvalidatedCandidate": {"upstreamUrl": DETECTOR_BASE + "person_detection_mediapipe_2023mar_int8bq.onnx", "sha256": "c5ed8c00c028b98e5d2c55b920a6e975af6c4cd538cfeea7c054f4fbbd8b9075", "bytes": 3482053, "opset": 21, "selected": False, "runtimeAndTrackingValidated": False},
+        "provenance": {"weightOrigin": "MediaPipe person detector ONNX published by OpenCV Zoo", "customTrainingPerformed": False, "privateInputsUsed": False},
+    }
+    (args.output / "person-detector-manifest.json").write_text(json.dumps(detector_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"status": "prepared", "sha256": SHA256, "bytes": SIZE, "privateInputsUsed": False}))
 
 

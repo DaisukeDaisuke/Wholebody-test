@@ -10,7 +10,8 @@ import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { PUBLIC_VIDEO, PUBLIC_VRM, REFERENCE_133, modelBytes, publicFixture, probeVideo, decodedFrames, rgbCropTensor } from './headless-video.mjs';
 import { COCO59, cropTransform, decodeSimCC, toCoco133 } from '../dist/compact-codec.mjs';
-import { createPose3DCrop, samplePose3DRgb, decodePose3D, mergePose3DKeypoints, fitPerspectiveRoot } from '../dist/pose3d.mjs';
+import { createPose3DCrop, samplePose3DRgb, decodePose3D, fuseBodyDepth, fitPerspectiveRoot } from '../dist/pose3d.mjs';
+import { createPersonDetectorTransform, samplePersonDetectorRgb, decodePersonDetector, Pose3DRoiTracker, bodyRoiFromCrop } from '../dist/person-detector.mjs';
 import { estimateMonocularPose, estimateLearnedMonocularPose } from '../dist/geometry.mjs';
 import { PoseStabilizer } from '../dist/pose-stability.mjs';
 import { retargetPose, rotateVector, quaternionAngle } from '../dist/retarget.mjs';
@@ -44,13 +45,15 @@ function createReplay(rig, kind) {
   let previous = null, pose = null, rawPose = null, longestLost = 0, lostRun = 0, lostFrames = 0, renderFrames = 0, rootValidFrames = 0;
   const roots = [[], [], []], jointRanges = Array.from({ length: 3 }, () => ({ min: Infinity, max: -Infinity }));
   let finiteTransforms = true, atLeastFour = 0, atLeastSix = 0, allEight = 0;
+  const limbGroups = { arms: { framesWithAtLeast2: 0, framesWithAll4: 0, completelyLostFrames: 0 }, legs: { framesWithAtLeast2: 0, framesWithAll4: 0, completelyLostFrames: 0 } };
+  const isLearned = kind === 'hybrid59Depth';
   function observe(keypoints, decoded, timestampMs, imageSize, sourceId) {
     const observation = { sourceId, inputMode: 'wholebody', targetVersion: kind, timestampMs, imageSize, keypoints, learned3D: decoded ? { confidence: decoded.confidence, rootFit: decoded.rootFit } : null };
-    rawCounts.push(BODY.filter(id => seen(keypoints[id])).length);
+    rawCounts.push(BODY.filter(id => seen(keypoints[id]) && keypoints[id].x >= 0 && keypoints[id].y >= 0 && keypoints[id].x < imageSize.width && keypoints[id].y < imageSize.height).length);
     const options = { bodyHeightM: 1.7, scaleConfirmed: false, minScore: .25, priorPose: filter.priorPose };
-    rawPose = kind === 'pose3d' ? estimateLearnedMonocularPose(observation, null, options) : estimateMonocularPose(observation, null, options);
+    rawPose = isLearned ? estimateLearnedMonocularPose(observation, null, options) : estimateMonocularPose(observation, null, options);
     const filtered = filter.filterObservation(observation, { minScore: .25 });
-    const estimated = kind === 'pose3d' ? estimateLearnedMonocularPose(filtered, null, options) : estimateMonocularPose(filtered, null, options);
+    const estimated = isLearned ? estimateLearnedMonocularPose(filtered, null, options) : estimateMonocularPose(filtered, null, options);
     pose = filter.update(estimated, { observation: filtered });
     acceptedCounts.push(BODY.filter(id => vector(pose.joints[id]?.position)).length);
     if (pose.previewRoot?.valid) { rootValidFrames++; pose.previewRoot.position.forEach((v, i) => roots[i].push(v)); }
@@ -64,6 +67,10 @@ function createReplay(rig, kind) {
     const count = Object.keys(LIMBS).filter(name => result.bones[name]?.observed).length;
     drivenCounts.push(count); renderFrames++;
     if (count >= 4) atLeastFour++; if (count >= 6) atLeastSix++; if (count === 8) allEight++;
+    for (const [group, state] of Object.entries(limbGroups)) {
+      const ending = group === 'arms' ? 'Arm' : 'Leg', observed = Object.keys(LIMBS).filter(name => name.endsWith(ending) && result.bones[name]?.observed).length;
+      if (observed >= 2) state.framesWithAtLeast2++; if (observed === 4) state.framesWithAll4++; if (observed === 0) state.completelyLostFrames++;
+    }
     if (count === 0) { lostRun++; lostFrames++; longestLost = Math.max(longestLost, lostRun); } else lostRun = 0;
     for (const [name, [a, b, childName]] of Object.entries(LIMBS)) {
       const bone = result.bones[name], state = boneStats[name];
@@ -90,20 +97,22 @@ function createReplay(rig, kind) {
       rawVisibleBody13: stats(rawCounts), acceptedBody13: stats(acceptedCounts), drivenLimbBonesOf8: stats(drivenCounts),
       tracking: { framesWithAtLeast4Limbs: atLeastFour, framesWithAtLeast6Limbs: atLeastSix, framesWithAll8Limbs: allEight,
         fractionWithAtLeast4Limbs: renderFrames ? atLeastFour / renderFrames : 0, fractionWithAtLeast6Limbs: renderFrames ? atLeastSix / renderFrames : 0, fractionWithAll8Limbs: renderFrames ? allEight / renderFrames : 0,
-        completelyLostRenderFrames: lostFrames, completelyLostFraction: renderFrames ? lostFrames / renderFrames : 1, longestCompletelyLostSeconds: longestLost / 30 },
+        completelyLostRenderFrames: lostFrames, completelyLostFraction: renderFrames ? lostFrames / renderFrames : 1, longestCompletelyLostSeconds: longestLost / 30,
+        groups: Object.fromEntries(Object.entries(limbGroups).map(([name, group]) => [name, { ...group, fractionWithAtLeast2: renderFrames ? group.framesWithAtLeast2 / renderFrames : 0, fractionWithAll4: renderFrames ? group.framesWithAll4 / renderFrames : 0, completelyLostFraction: renderFrames ? group.completelyLostFrames / renderFrames : 1 }])) },
       activeBoneFrameAngleDeg: stats(activeFrameAngles), renderedVsModelTargetDirectionErrorDeg: stats(targetErrors),
       movement: { rawTargetCriterion: 'At least 12 target frames and at least 12 degrees of raw model limb-direction variation', retainedCriterion: 'Rendered direction varies at least 4 degrees and tracks at least 30% of target frames', movingInputBones: moving, retainedInputBones: retained,
         allMovingInputBonesRetained: moving.length > 0 && retained.length === moving.length, anyMovingInputBoneRetained: retained.length > 0, bones: boneDetails, isGroundTruthAccuracy: false },
-      depth: { learned3D: kind === 'pose3d', jointZSpread: stats(depthSpreads), modelJointAxisRanges: jointRanges.map(v => finite(v.min) && finite(v.max) ? v.max - v.min : null),
+      depth: { learned3D: isLearned, jointZSpread: stats(depthSpreads), modelJointAxisRanges: jointRanges.map(v => finite(v.min) && finite(v.max) ? v.max - v.min : null),
         validRootFrames: rootValidFrames, validRootFraction: rawCounts.length ? rootValidFrames / rawCounts.length : 0, estimatedRootAxisRanges: rootRanges, absoluteDistanceGroundTruth: false },
       finiteTransforms };
   }
   return { observe, render, finish };
 }
 
-async function runModel(model, rgb, imageSize, ort, anchors, benchmark = true) {
+async function runModel(model, rgb, imageSize, ort, anchors, benchmark = true, sharedCrop = null) {
   const start = performance.now();
-  const crop = model.role === 'pose3d' ? createPose3DCrop([0, 0, imageSize.width, imageSize.height], anchors || [], imageSize) : cropTransform([0, 0, imageSize.width, imageSize.height], [model.width, model.height], model.spec.input.crop?.padding || 1.25);
+  const bodyRoi = sharedCrop ? bodyRoiFromCrop(sharedCrop, imageSize) : { roi: [0, 0, imageSize.width, imageSize.height], padding: model.spec.input?.crop?.padding || 1.25 };
+  const crop = model.role === 'pose3d' ? sharedCrop || createPose3DCrop([0, 0, imageSize.width, imageSize.height], anchors || [], imageSize) : cropTransform(bodyRoi.roi, [model.width, model.height], bodyRoi.padding);
   const data = model.role === 'pose3d' ? samplePose3DRgb(rgb, imageSize.width, imageSize.height, crop) : rgbCropTensor(rgb, imageSize.width, imageSize.height, crop, model.spec.input.mean, model.spec.input.std);
   const input = new ort.Tensor('float32', data, model.role === 'pose3d' ? [1, 256, 256, 3] : [1, 3, model.height, model.width]);
   const preprocessingMs = performance.now() - start;
@@ -128,6 +137,57 @@ async function runModel(model, rgb, imageSize, ort, anchors, benchmark = true) {
     if (benchmark) model.postprocessing.push(postprocessingMs);
     return { keypoints, decoded, computeMs: preprocessingMs + inferenceMs + postprocessingMs };
   } finally { input.dispose?.(); if (outputs) Object.values(outputs).forEach(t => t.dispose?.()); }
+}
+
+async function runDetector(model, rgb, imageSize, ort, benchmark = true) {
+  const start = performance.now(), transform = createPersonDetectorTransform([0, 0, imageSize.width, imageSize.height], imageSize);
+  const data = samplePersonDetectorRgb(rgb, imageSize.width, imageSize.height, transform), input = new ort.Tensor('float32', data, [1, 3, 224, 224]);
+  const preprocessingMs = performance.now() - start;
+  let outputs;
+  try {
+    if (!model.warmed) { for (let n = 0; n < 3; n++) { const warm = await model.session.run({ [model.session.inputNames[0]]: input }); Object.values(warm).forEach(t => t.dispose?.()); } model.warmed = true; }
+    const inferStart = performance.now(); outputs = await model.session.run({ [model.session.inputNames[0]]: input });
+    const inferenceMs = performance.now() - inferStart;
+    if (!Object.values(outputs).every(t => t.data.every(finite))) fail('nonFinitePersonDetectorInference');
+    const postStart = performance.now(), detections = decodePersonDetector(outputs, transform), postprocessingMs = performance.now() - postStart;
+    if (benchmark) { model.inference.push(inferenceMs); model.preprocessing.push(preprocessingMs); model.postprocessing.push(postprocessingMs); }
+    return { detections, preprocessingMs, inferenceMs, postprocessingMs, computeMs: preprocessingMs + inferenceMs + postprocessingMs };
+  } finally { input.dispose?.(); if (outputs) Object.values(outputs).forEach(t => t.dispose?.()); }
+}
+
+/** Same acquisition and scheduling contract as the application: current59 XY
+ * each frame, learned Z every third frame, and learned ROI at most 2 Hz when
+ * initial/lost/partial. Baseline models receive that same current person ROI. */
+async function runHybridFrame(state, rgb, imageSize, timestampMs, frameIndex, ort, benchmark = true) {
+  let acquisition = null;
+  if (state.tracker.shouldDetect(timestampMs)) {
+    acquisition = await runDetector(state.detector, rgb, imageSize, ort, benchmark);
+    state.tracker.acceptDetections(acquisition.detections, timestampMs);
+  }
+  const crop = state.tracker.nextCrop([0, 0, imageSize.width, imageSize.height], imageSize, timestampMs);
+  const output = {};
+  for (const role of ['compact59', 'reference133']) output[role] = await runModel(state.models.find(model => model.role === role), rgb, imageSize, ort, null, benchmark, crop);
+  let depthComputeMs = 0;
+  if (frameIndex % 3 === 0) {
+    const depth = await runModel(state.models.find(model => model.role === 'pose3d'), rgb, imageSize, ort, null, benchmark, crop);
+    state.decoded3D = depth.decoded; state.depthTimestampMs = timestampMs; state.depthCalls++;
+    depthComputeMs = depth.computeMs;
+  }
+  const fusionStart = performance.now();
+  const fused = fuseBodyDepth(output.compact59.keypoints, state.decoded3D, timestampMs, state.depthTimestampMs, { imageSize });
+  const fusionMs = performance.now() - fusionStart;
+  // Crop tracking uses only the current 2D observations, not virtual detector
+  // anchors or a slower held depth-model fallback.
+  state.tracker.update({ valid: true, keypoints: output.compact59.keypoints }, crop, timestampMs);
+  output.hybrid59Depth = { ...fused, computeMs: output.compact59.computeMs + depthComputeMs + (acquisition?.computeMs || 0) + fusionMs };
+  return { output, acquisition, cropSource: crop.source, depthRan: frameIndex % 3 === 0, fusionMs };
+}
+
+function acquisitionReport(samples, durationSeconds) {
+  return { calls: samples.length, scheduledHz: durationSeconds ? samples.length / durationSeconds : 0, maximumConfiguredHz: 2,
+    framesWithDetection: samples.filter(s => s.detections.length > 0).length,
+    inference: times(samples.map(s => s.inferenceMs)), preprocessing: times(samples.map(s => s.preprocessingMs)), postprocessing: times(samples.map(s => s.postprocessingMs)), compute: times(samples.map(s => s.computeMs)),
+    virtualPointsUsedAsBodyObservations: false };
 }
 
 function rootMechanics(rig) {
@@ -156,94 +216,104 @@ async function main(options) {
   if (process.env.GITHUB_ACTIONS !== 'true') fail('githubActionsRequired');
   const require = createRequire(resolve(process.env.VRC_NODE_PACKAGE || '.cache/headless/package.json')), ort = require('onnxruntime-node'); ort.env.logLevel = 'error';
   const workspace = await mkdtemp(join(tmpdir(), 'vrc-pose3d-')), models = [];
+  let detector = null;
   const originalWarn = console.warn; console.warn = () => {};
   try {
     const videoPath = options.video || await publicFixture(PUBLIC_VIDEO, join(workspace, 'input.mp4'));
     const vrmPath = options.vrm || await publicFixture(PUBLIC_VRM, join(workspace, 'avatar.vrm'));
     const video = await probeVideo(videoPath, options), manifest = JSON.parse(await readFile(options.manifest, 'utf8'));
-    if (!manifest.pose3d || !manifest.bodies?.standard) fail('publishedPose3dOrStandardMissing');
+    if (!manifest.pose3d || !manifest.bodies?.standard || !manifest.personDetector) fail('publishedHybridModelsMissing');
     for (const [role, spec, count] of [['pose3d', manifest.pose3d, 33], ['compact59', manifest.bodies.standard, 59], ['reference133', REFERENCE_133, 133]]) {
       const session = await ort.InferenceSession.create(await modelBytes(spec, options.manifest), { executionProviders: ['cpu'], intraOpNumThreads: options.threads, interOpNumThreads: 1, executionMode: 'sequential', graphOptimizationLevel: 'all' });
       models.push({ role, spec, session, count, width: role === 'pose3d' ? 256 : spec.input.shape[3], height: role === 'pose3d' ? 256 : spec.input.shape[2], inference: [], preprocessing: [], postprocessing: [] });
     }
+    detector = { role: 'personDetector', spec: manifest.personDetector, session: await ort.InferenceSession.create(await modelBytes(manifest.personDetector, options.manifest), { executionProviders: ['cpu'], intraOpNumThreads: options.threads, interOpNumThreads: 1, executionMode: 'sequential', graphOptimizationLevel: 'all' }), inference: [], preprocessing: [], postprocessing: [] };
     globalThis.self ||= globalThis;
     globalThis.ProgressEvent ||= class ProgressEvent extends Event { constructor(type, value = {}) { super(type); Object.assign(this, value); } };
     const [{ THREE }, { loadEmbeddedVRM, captureRig }] = await Promise.all([import('../dist/vendor/vrm-runtime.mjs'), import('../dist/vrm-view.mjs')]);
     const bytes = await readFile(vrmPath), vrm = await loadEmbeddedVRM(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { headless: true });
     const group = new THREE.Group(); group.add(vrm.scene); group.updateMatrixWorld(true); const rig = captureRig(vrm, group);
     if (Object.keys(rig.bones).length < 15) fail('actualVrmRigMissing');
-    const replays = Object.fromEntries(models.map(model => [model.role, createReplay(rig, model.role)]));
-    let count = 0, anchors = null, detailPoints = null, actualVrmUpdates = 0, springUpdates = 0, transformsFinite = true;
-    const vrmTimes = [], productionCompute = [];
+    const roles = ['hybrid59Depth', 'compact59', 'reference133'], replays = Object.fromEntries(roles.map(role => [role, createReplay(rig, role)]));
+    const state = { models, detector, tracker: new Pose3DRoiTracker(), decoded3D: null, depthTimestampMs: -Infinity, depthCalls: 0 };
+    let count = 0, actualVrmUpdates = 0, springUpdates = 0, transformsFinite = true;
+    const vrmTimes = [], productionCompute = [], acquisitionSamples = [], fusionTimes = [], cropSources = {};
     if (typeof vrm.springBoneManager?.update === 'function') { const update = vrm.springBoneManager.update.bind(vrm.springBoneManager); vrm.springBoneManager.update = dt => { springUpdates++; return update(dt); }; }
     for await (const rgb of decodedFrames(videoPath, video, options)) {
-      const output = {}, order = [...models.filter(model => model.role !== 'pose3d'), models.find(model => model.role === 'pose3d')];
-      // Match the browser: the first fresh standard59 detail inference seeds
-      // the 3D crop. Later frames use the previous raw 3D observation, including
-      // its missing points; a loss falls back to the supplied person ROI.
-      for (const model of order) output[model.role] = await runModel(model, rgb, video, ort, anchors || output.compact59?.keypoints);
-      anchors = output.pose3d.keypoints;
-      if (count % 3 === 0) detailPoints = output.compact59.keypoints.map(p => ({ ...p, observedAtMs: count * 1000 / options.fps }));
-      const combined = mergePose3DKeypoints(detailPoints, output.pose3d.decoded), timestampMs = count * 1000 / options.fps;
-      for (const model of models) replays[model.role].observe(model.role === 'pose3d' ? combined : output[model.role].keypoints, output[model.role].decoded, timestampMs, video, 'actual-' + model.role);
+      const timestampMs = count * 1000 / options.fps;
+      const { output, acquisition, cropSource, fusionMs } = await runHybridFrame(state, rgb, video, timestampMs, count, ort);
+      if (acquisition) acquisitionSamples.push(acquisition); fusionTimes.push(fusionMs); cropSources[cropSource] = (cropSources[cropSource] || 0) + 1;
+      for (const role of roles) replays[role].observe(output[role].keypoints, output[role].decoded, timestampMs, video, 'actual-' + role);
       let vrmCompute = 0;
-      for (let half = 0; half < 2; half++) for (const model of models) {
-        const result = replays[model.role].render(timestampMs + half * 1000 / 30);
-        if (model.role !== 'pose3d') continue;
+      for (let half = 0; half < 2; half++) for (const role of roles) {
+        const result = replays[role].render(timestampMs + half * 1000 / 30);
+        if (role !== 'hybrid59Depth') continue;
         const start = performance.now(); vrm.humanoid.setNormalizedPose(result.normalizedPose); vrm.update(1 / 30); vrm.scene.updateMatrixWorld(true);
         const elapsed = performance.now() - start; vrmTimes.push(elapsed); vrmCompute += elapsed; actualVrmUpdates++;
         vrm.scene.traverse(node => { transformsFinite &&= node.matrixWorld.elements.every(finite); });
       }
-      productionCompute.push(output.pose3d.computeMs + (count % 3 === 0 ? output.compact59.computeMs : 0) + vrmCompute);
+      productionCompute.push(output.hybrid59Depth.computeMs + vrmCompute);
       count++;
     }
-    const tracking = Object.fromEntries(models.map(model => [model.role, replays[model.role].finish()]));
-    const partialCases = [{ name: 'upper60Percent', top: 0 }, { name: 'lower60Percent', top: video.height - Math.floor(video.height * .6) }];
+    const tracking = Object.fromEntries(roles.map(role => [role, replays[role].finish()]));
+    const partialCases = [{ name: 'upper60Percent', top: 0, group: 'arms' }, { name: 'lower60Percent', top: video.height - Math.floor(video.height * .6), group: 'legs' }];
     const partial = {};
     for (const item of partialCases) {
-      const height = Math.floor(video.height * .6), size = { width: video.width, height }, partialReplays = Object.fromEntries(models.map(model => [model.role, createReplay(rig, model.role)]));
-      let index = 0, prior = null; const elapsed = [];
+      const height = Math.floor(video.height * .6), size = { width: video.width, height }, partialReplays = Object.fromEntries(roles.map(role => [role, createReplay(rig, role)]));
+      const partialState = { models, detector, tracker: new Pose3DRoiTracker(), decoded3D: null, depthTimestampMs: -Infinity, depthCalls: 0 };
+      let index = 0; const elapsed = [], detectorSamples = [], sources = {};
       for await (const rgb of decodedFrames(videoPath, video, options)) {
         const cropped = rgb.subarray(item.top * video.width * 3, (item.top + height) * video.width * 3);
-        const order = [...models.filter(model => model.role !== 'pose3d'), models.find(model => model.role === 'pose3d')];
-        let initialDetails = null;
-        for (const model of order) {
-          const output = await runModel(model, cropped, size, ort, prior || initialDetails, false);
-          if (model.role === 'compact59') initialDetails = output.keypoints;
-          if (model.role === 'pose3d') { prior = output.keypoints; elapsed.push(output.computeMs); }
-          partialReplays[model.role].observe(output.keypoints, output.decoded, index * 1000 / options.fps, size, item.name + '-' + model.role);
-          partialReplays[model.role].render(index * 1000 / options.fps); partialReplays[model.role].render(index * 1000 / options.fps + 1000 / 30);
+        const timestampMs = index * 1000 / options.fps;
+        const { output, acquisition, cropSource } = await runHybridFrame(partialState, cropped, size, timestampMs, index, ort, false);
+        elapsed.push(output.hybrid59Depth.computeMs); if (acquisition) detectorSamples.push(acquisition); sources[cropSource] = (sources[cropSource] || 0) + 1;
+        for (const role of roles) {
+          partialReplays[role].observe(output[role].keypoints, output[role].decoded, timestampMs, size, item.name + '-' + role);
+          partialReplays[role].render(timestampMs); partialReplays[role].render(timestampMs + 1000 / 30);
         }
         index++;
       }
-      partial[item.name] = { actualRgbCropInferencesPerModel: index, sourceFramesRepeated: false, cropFraction: .6,
-        naturallyRecordedPartialBodyVideo: false, pose3dCompute: times(elapsed), tracking: Object.fromEntries(models.map(model => [model.role, partialReplays[model.role].finish()])), groundTruthAccuracy: null };
+      const results = Object.fromEntries(roles.map(role => [role, partialReplays[role].finish()])), primary = results.hybrid59Depth;
+      const moving = primary.movement.movingInputBones.filter(name => name.endsWith(item.group === 'arms' ? 'Arm' : 'Leg'));
+      const checks = { current2DCallsForEveryFrame: index === count, depthCallsAt5Hz: partialState.depthCalls === Math.ceil(index / 3), acceptedBodyMeanAtLeast4: primary.acceptedBody13.mean >= 4,
+        atLeast2TargetLimbsOn60PercentOfFrames: primary.tracking.groups[item.group].fractionWithAtLeast2 >= .6,
+        targetGroupCompletelyLostOnAtMost20Percent: primary.tracking.groups[item.group].completelyLostFraction <= .2,
+        rawMovingTargetGroupRetained: moving.length > 0 && moving.every(name => primary.movement.retainedInputBones.includes(name)),
+        finiteRetarget: Object.values(results).every(result => result.finiteTransforms) };
+      partial[item.name] = { actualDecodedCropFrames: index, current2DInferencesPerModel: index, learnedDepthInferences: partialState.depthCalls, sourceFramesRepeated: false, cropFraction: .6,
+        naturallyRecordedPartialBodyVideo: false, targetLimbGroup: item.group, hybridCompute: times(elapsed), detector: acquisitionReport(detectorSamples, index / options.fps), cropSources: sources,
+        tracking: results, groundTruthAccuracy: null, readiness: { passed: Object.values(checks).every(Boolean), checks } };
     }
-    const mechanics = rootMechanics(rig), current = tracking.pose3d;
-    const executionChecks = { actualDecodedFrames: count >= options.minFrames, allThreeModelsRun: models.every(model => model.inference.length === count), actualVrmUpdates: actualVrmUpdates === count * 2, actualSpringUpdates: springUpdates >= actualVrmUpdates,
+    const mechanics = rootMechanics(rig), current = tracking.hybrid59Depth;
+    const executionChecks = { actualDecodedFrames: count >= options.minFrames, allThreeModelsRunAtScheduledRates: models.every(model => model.inference.length === (model.role === 'pose3d' ? Math.ceil(count / 3) : count)), actualDetectorInference: detector.inference.length > 0,
+      detectorCadenceAtMost2Hz: detector.inference.length <= Math.ceil(count / options.fps * 2), actualVrmUpdates: actualVrmUpdates === count * 2, actualSpringUpdates: springUpdates >= actualVrmUpdates,
       finiteActualVrm: transformsFinite, finiteRetarget: Object.values(tracking).every(result => result.finiteTransforms), perspectiveRootMechanics: mechanics.passed };
     const readinessChecks = { acceptedBodyMeanAtLeast7Of13: current.acceptedBody13.mean >= 7,
       atLeast4TrackedLimbsOn60PercentOfRenderFrames: current.tracking.fractionWithAtLeast4Limbs >= .6,
       rawMovingInputRetained: current.movement.allMovingInputBonesRetained,
       learnedDepthNotFlattened: current.depth.jointZSpread.p95 > .05,
-      rootFitAvailableOnHalfOfFrames: current.depth.validRootFraction >= .5 };
-    const report = { schema: 'vrc-headless-pose3d-v1', status: Object.values(executionChecks).every(Boolean) ? 'completed' : 'failed', sourceCommit: process.env.GITHUB_SHA || null, runId: process.env.GITHUB_RUN_ID || null,
+      rootFitAvailableOnHalfOfFrames: current.depth.validRootFraction >= .5,
+      upperBodyPartialCoverageAndMovement: partial.upper60Percent.readiness.passed,
+      lowerBodyPartialCoverageAndMovement: partial.lower60Percent.readiness.passed };
+    const report = { schema: 'vrc-headless-pose3d-v2', status: Object.values(executionChecks).every(Boolean) ? 'completed' : 'failed', sourceCommit: process.env.GITHUB_SHA || null, runId: process.env.GITHUB_RUN_ID || null,
       input: { kind: options.video ? 'privateEphemeralVideo' : 'pinnedOfficialPublicVideo', publicSource: options.video ? null : PUBLIC_VIDEO.url, publicSha256: options.video ? null : PUBLIC_VIDEO.sha256,
         decodedFrames: count, sampledFps: options.fps, sampledSeconds: count / options.fps, frameImagesRetained: false, perFrameCoordinatesRetained: false },
       environment: { runtime: 'onnxruntime-node', version: ort.env.versions?.node || '1.22.0', node: process.version, executionProvider: 'CPUExecutionProvider', threads: options.threads, logicalCpus: cpus().length, cpu: cpus()[0]?.model },
-      executionChecks, models: Object.fromEntries(models.map(model => [model.role, { id: model.spec.id, sha256: model.spec.sha256, bytes: model.spec.bytes || null, inference: times(model.inference), preprocessing: times(model.preprocessing), postprocessing: times(model.postprocessing), warmupCallsExcluded: 3 }])),
+      executionChecks, primaryPipeline: { id: 'hybrid59Depth', primaryXY: 'compact59', xyHz: 15, depth: 'pose3d', depthHz: 5, maximumDepthAgeMs: 300, detectorMaximumHz: 2, bodyRoiSharedWithBaselines: true },
+      models: Object.fromEntries([...models, detector].map(model => [model.role, { id: model.spec.id, sha256: model.spec.sha256, bytes: model.spec.bytes || null, inference: times(model.inference), preprocessing: times(model.preprocessing), postprocessing: times(model.postprocessing), warmupCallsExcluded: 3 }])),
+      detector: acquisitionReport(acquisitionSamples, count / options.fps), cropSources, depthFusion: times(fusionTimes),
       tracking, partialBodyRgbCrops: partial,
-      productionCompute: { ...times(productionCompute), definition: 'Sum of measured 15 Hz learned body XYZ preprocessing/inference/output decoding, every third 15 Hz frame uses standard59 detail landmarks (5 Hz), and two actual VRM updates per video frame (30 Hz). Additional reference/comparison/cropped-case calls excluded. Video decode, retarget/filter math, rendering and face/foot auxiliary inference excluded; not end-to-end latency.' },
+      productionCompute: { ...times(productionCompute), definition: 'Sum of measured 15 Hz standard59 XY preprocessing/inference/output decoding, learned XYZ at every third video frame (5 Hz), low-cadence learned person detector (initial/lost/partial, at most 2 Hz), depth fusion, and two actual VRM updates per video frame (30 Hz). Reference133 and partial-case comparison calls excluded. Video decode, retarget/filter math, rendering and face/foot auxiliary inference excluded; not end-to-end latency.' },
       vrm: { humanoidBones: Object.keys(rig.bones).length, updateCalls: actualVrmUpdates, springUpdateCalls: springUpdates, updates: times(vrmTimes), finiteTransforms: transformsFinite, rendererUsed: false },
       rootMechanics: mechanics,
       deploymentReadiness: { passed: Object.values(executionChecks).every(Boolean) && Object.values(readinessChecks).every(Boolean), checks: readinessChecks,
-        interpretation: 'Execution and observability screen on this fixture only. This is not labelled 3D pose accuracy, not proof for the private video, and not a Stage 4 approval.' },
+        interpretation: 'Full-frame AND real RGB partial-crop observability/movement screen on this fixture only. This is not labelled 3D pose accuracy, not proof for the private video, and not a Stage 4 approval.' },
       accuracy: null, gpuUtilization: null,
-      limitations: ['Unlabelled video coverage is not anatomical accuracy.', 'Reference133 agreement is not ground truth.', 'The learned model emits root-relative XYZ; absolute camera distance is a perspective estimate.', 'Input is a supplied person ROI with tracking recrop; no learned person detector is included.', 'Model order is fixed to match initial detail-seeded crop dependencies; this is not a randomized balanced latency comparison.', 'No freeze or lost-frame metric can establish motion quality by itself.'] };
+      limitations: ['Unlabelled video coverage is not anatomical accuracy.', 'Reference133 agreement is not ground truth.', 'The learned model emits root-relative XYZ; absolute camera distance is a perspective estimate.', 'Compact59 retains current XY; learned depth can fill missing XY for at most 300 ms and is separately timestamped.', 'Detector virtual centre/radius points control ROI only, never observed body joints.', 'Baselines share the detector/tracking crop; comparison with earlier full-image crops is not a controlled model-only accuracy comparison.', 'Model order is fixed to match production dependencies; this is not a randomized balanced latency comparison.', 'No freeze or lost-frame metric can establish motion quality by itself.'] };
     await mkdir(dirname(resolve(options.output)), { recursive: true }); await writeFile(options.output, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
     console.log(JSON.stringify({ status: report.status, decodedFrames: count, observedBody13Mean: current.acceptedBody13.mean, trackingAtLeast4LimbsFraction: current.tracking.fractionWithAtLeast4Limbs, completelyLostFraction: current.tracking.completelyLostFraction, deploymentReadiness: report.deploymentReadiness.passed, mediaOutput: false }));
     if (report.status !== 'completed') process.exitCode = 1;
-  } finally { console.warn = originalWarn; for (const model of models) await model.session.release().catch(() => {}); await rm(workspace, { recursive: true, force: true }); }
+  } finally { console.warn = originalWarn; for (const model of [...models, ...(detector ? [detector] : [])]) await model.session.release().catch(() => {}); await rm(workspace, { recursive: true, force: true }); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

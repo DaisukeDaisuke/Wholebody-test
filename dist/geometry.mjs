@@ -265,15 +265,25 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
  * uncalibrated monocular root translation is a visual estimate, never a
  * calibrated physical tracker. Neither body confidence nor XYZ is flattened. */
 export function estimateLearnedMonocularPose(observation, suppliedCamera = null, options = {}) {
-  const pose = estimateMonocularPose(observation, suppliedCamera, options);
   const points = observation?.keypoints || [], threshold = options.minScore ?? .25;
+  // The 2D fallback must stay planar: never run the old anthropometric depth
+  // solver on a mixture of learned camera-Z and unobserved depth branches.
+  const planar = points.map(point => { const p = { ...point }; delete p.relativeZ; delete p.relativeZm; return p; });
+  const pose = estimateMonocularPose({ ...observation, keypoints: planar }, suppliedCamera, options);
+  if (pose.units === 'body-height') for (const joint of pose.joints) {
+    if (finite3(joint.position)) joint.position = joint.position.map(v => v * (options.bodyHeightM || 1.7));
+    if (finite3(joint.imagePlanePosition)) joint.imagePlanePosition = joint.imagePlanePosition.map(v => v * (options.bodyHeightM || 1.7));
+  }
   for (let id = 0; id < pose.joints.length; id++) {
     const point = points[id];
     if (!finite3(point?.modelPosition) || point.observable === false || !(point.score >= threshold)) continue;
     const [x, y, z] = point.modelPosition;
     pose.joints[id] = { id, position: [x, -y, -z], imagePlanePosition: [x, -y, 0], score: clamp(point.score),
       depthConfidence: point.depthConfidence ?? point.score, source: 'inferredMonocular', modelRelativeZ: true,
-      depthAmbiguous: false, ageMs: 0, observable2D: true, observedAtMs: observation.timestampMs };
+      depthObservedAtMs: point.depthObservedAtMs ?? observation.timestampMs,
+      depthAgeMs: point.depthAgeMs ?? 0, depthAmbiguous: false,
+      ageMs: Math.max(0, observation.timestampMs - (point.observedAtMs ?? observation.timestampMs)),
+      observable2D: true, observedAtMs: point.observedAtMs ?? observation.timestampMs };
   }
   // Detail landmarks retain their observed image-plane displacement, anchored
   // to the newly estimated wrist. Their finger Z remains explicitly unknown.
@@ -300,8 +310,9 @@ export function estimateLearnedMonocularPose(observation, suppliedCamera = null,
   pose.previewRoot = { valid, position: valid ? [fit.positionCamera[0], -fit.positionCamera[1], -fit.positionCamera[2]] : null,
     metric: false, source: 'learnedMonocularPerspective', observedAtMs: observation.timestampMs,
     reprojectionRmsPx: fit?.reprojectionRmsPx ?? null, calibratedIntrinsics: fit?.calibratedIntrinsics === true };
-  pose.diagnostics = { ...pose.diagnostics, method: 'learned-xyz-and-perspective-root', depthAmbiguous: false,
-    monocularOrientationAmbiguous: false, bodyHeight: options.bodyHeightM || 1.7,
+  const learnedJointCount = pose.joints.filter(j => j.modelRelativeZ).length;
+  pose.diagnostics = { ...pose.diagnostics, method: 'learned-xyz-and-perspective-root', depthAmbiguous: learnedJointCount === 0,
+    monocularOrientationAmbiguous: learnedJointCount === 0, bodyHeight: options.bodyHeightM || 1.7,
     learned3DJointCount: pose.joints.filter(j => j.modelRelativeZ).length,
     rootTranslationEstimated: valid, absoluteDistanceGroundTruth: false };
   return refreshPoseMetadata(pose);

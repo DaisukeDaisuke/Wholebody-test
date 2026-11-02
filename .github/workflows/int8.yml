@@ -1,0 +1,108 @@
+name: Compact59 full INT8 candidate
+on:
+  push:
+    branches: [compact-vrc-20261102-7fe4fac1]
+    paths: ['.github/workflows/int8.yml', 'ci/int8-publication.py', 'training/quantize_stable.py']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: compact59-int8-7fe4fac1-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  calibrate-evaluate-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      HF_HUB_DISABLE_PROGRESS_BARS: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      HF_HUB_DISABLE_IMPLICIT_TOKEN: '1'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: colab/requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: artifacts/compact59
+          key: compact59-trained-v1-9ed63fc278b4e0daefbaaef92ba44c2dcd89b9f5b69a47ae96a7c4c8bf722b93
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: artifacts/fast59
+          key: fast59-trained-v1-b41fb2dae145d7c697b4bcb9cd9967bd5b966fd2bc3bd9281de0979079cf016c
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/compact59
+          key: compact59-public-v1-${{ runner.os }}
+      - name: Install the verified CPU dependency contract
+        run: |
+          python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install huggingface_hub==0.36.0
+          python colab/bootstrap.py --root "$GITHUB_WORKSPACE"
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/.python-packages" >> "$GITHUB_ENV"
+      - name: Confirm the fixed public evaluation split
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib
+          path = pathlib.Path('artifacts/fast59/public-split.json')
+          assert hashlib.sha256(path.read_bytes()).hexdigest() == '2e1cab84af5c1ab7174bc177a5aca79d165aa72696940f6d37f55321fbcd0b36'
+          split = json.loads(path.read_text())
+          assert [len(split[name + '_image_ids']) for name in ('train', 'validation', 'test')] == [768, 128, 192]
+          print('Pinned public split: 768 train / 128 validation / 192 test; 128 train images calibrate INT8')
+          PY
+      - name: Calibrate both INT8 candidates and evaluate the fixed selection
+        run: >-
+          python training/quantize_stable.py
+          --output artifacts/int8 --cache .cache/compact59
+          --baseline-model artifacts/compact59/compact59.onnx
+          --baseline-manifest artifacts/compact59/manifest.json
+          --baseline-metrics artifacts/compact59/metrics.json
+          --shared-split artifacts/fast59/public-split.json
+          --execution-environment actions --device cpu
+          --calibration-count 128 --threads 2
+      - name: Publish the candidate and verify anonymous downloads
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python ci/int8-publication.py --input artifacts/int8 --output artifacts/int8-publication
+      - name: Record actual selection and adoption status
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path('artifacts/int8/metrics.json')
+          if path.is_file():
+              data = json.loads(path.read_text())
+              baseline, candidate = data['previous_compact59'], data['int8']
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+                  out.write('## Compact59 INT8 candidate\n\n')
+                  out.write('Public still images: calibration 128, validation 128, test 192. Node and motion-video adoption remain separate.\n\n')
+                  out.write('| Measure | FP32 | Selected INT8 |\n|---|---:|---:|\n')
+                  out.write(f"| All-joint PCK@0.05 | {baseline['accuracy']['all']['labelled']['pck_005']:.6f} | {candidate['accuracy']['all']['labelled']['pck_005']:.6f} |\n")
+                  out.write(f"| CPU median ms | {baseline['latency']['median_ms']:.3f} | {candidate['latency']['median_ms']:.3f} |\n")
+                  out.write(f"| ONNX bytes | {baseline['onnx_bytes']} | {candidate['onnx_bytes']} |\n\n")
+                  out.write('Quality/speed eligibility: ' + str(data['acceptance']['production_eligible']) + '. Application default unchanged.\n')
+          PY
+      - name: Retain only model files and aggregate public evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compact59-int8-candidate-${{ github.sha }}
+          path: |
+            artifacts/int8/compact59-int8.onnx
+            artifacts/int8/manifest.json
+            artifacts/int8/metrics.json
+            artifacts/int8/public-split.json
+            artifacts/int8/selection-policy.json
+            artifacts/int8/selection.json
+            artifacts/int8/validation-candidates.json
+            artifacts/int8-publication/publication.json
+            artifacts/int8-publication/manifest.json
+          if-no-files-found: warn
+          retention-days: 14

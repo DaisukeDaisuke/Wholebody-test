@@ -242,6 +242,15 @@ export function retargetPose(pose, rig, options = {}) {
       // COCO supplies no toe articulation. Toes inherit the foot in their rest
       // configuration; no invented curl is presented as a measured rotation.
       if (rest[toeName]) outputBones[toeName] = { valid: false, source: 'inferredAnatomy', score: 0, articulationStatus: 'unobserved' };
+    } else if (all([footJs[0], footJs[1], footJs[3]]) && relativeDepth([footJs[0], footJs[1], footJs[3]]) && rest[footName]) {
+      // The learned body observes an ankle, heel and foot-index point. These
+      // define a foot plane without inventing a separately observed little toe.
+      const [ankle, toe, , heel] = footJs, forward = unit(sub(toe.position, heel.position));
+      const upHint = sub(ankle.position, heel.position), restUp = restTorso?.y || [0, 1, 0];
+      const restForward = reference(toeName) ? sub(reference(toeName), reference(footName)) : restTorso?.z;
+      const currentFrame = forward && frame(forward, upHint), restFrame = restForward && frame(restForward, restUp);
+      if (currentFrame && restFrame) setTarget(footName, multiplyQuaternion(multiplyQuaternion(currentFrame.rotation, inverse(restFrame.rotation)), rest[footName].rotation), [ankle, toe, heel], { twistStatus: 'learnedFootPlaneEstimate', toeIndexIsApproximation: true });
+      if (rest[toeName]) outputBones[toeName] = { valid: false, source: 'inferredAnatomy', score: 0, articulationStatus: 'unobserved' };
     } else if (all(footJs) && rest[footName]) {
       const direction = sub(mid(planePosition(footJs[1]), planePosition(footJs[2])), planePosition(footJs[3]));
       if (norm(direction) > EPS) planarFeet[side] = { angle: Math.atan2(direction[1], direction[0]), js: footJs };

@@ -5,20 +5,24 @@ import { estimateMonocularPose, estimateLearnedMonocularPose, fusePose } from '.
 import { validateCalibration } from './calibration.mjs';
 import { BridgeClient } from './bridge-client.mjs';
 import { PoseStabilizer } from './pose-stability.mjs';
-import { createPose3DCrop, pose3dCanvasTransform, pose3dRgbaToTensor, decodePose3D, mergePose3DKeypoints } from './pose3d.mjs';
+import { pose3dCanvasTransform, pose3dRgbaToTensor, decodePose3D, fuseBodyDepth } from './pose3d.mjs';
+import { Pose3DRoiTracker, bodyRoiFromCrop, createPersonDetectorTransform, personDetectorRgbaToTensor, decodePersonDetector } from './person-detector.mjs';
 
 const $=id=>document.getElementById(id), finite=v=>Number.isFinite(v), clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
 ort.env.wasm.wasmPaths=new URL('./vendor/',import.meta.url).href;
 ort.env.wasm.numThreads=1;
 ort.env.logLevel='warning';
-let manifest=null,body=null,body3D=null,parts=null,running=false,loading=false,generation=0,selected=null,view=null,viewPromise=null;
+let manifest=null,body=null,body3D=null,personDetector=null,parts=null,running=false,loading=false,generation=0,selected=null,view=null,viewPromise=null;
 let cameraCalibration=[],neutralFace={},lastFace=null,lastPose=null,sourceCounter=0,frameCounter=0,lastMetricsAt=performance.now();
 let actualBackend='—',lastBodyMs=null,bodyCalls=0,activeBody=null,inFlight=null,sourceSync={};
 const sources=[],timings=[],bodyTimes=[],partTimes=[],readTimes=[];
+const depthTimes=[],detectorTimes=[];let depthCalls=0,detectorCalls=0;
 const preprocess=document.createElement('canvas');preprocess.width=192;preprocess.height=256;
 const preprocessContext=preprocess.getContext('2d',{willReadFrequently:true});
 const preprocess3D=document.createElement('canvas');preprocess3D.width=preprocess3D.height=256;
 const preprocess3DContext=preprocess3D.getContext('2d',{willReadFrequently:true});
+const detectorCanvas=document.createElement('canvas');detectorCanvas.width=detectorCanvas.height=224;
+const detectorContext=detectorCanvas.getContext('2d',{willReadFrequently:true});
 const bridge=new BridgeClient({onStatus:s=>{$('bridge-status').textContent=({connected:'接続済み。校正データを読み込んでください。',calibrated:'校正済み。新しい有効姿勢を送出します。',stale:'観測が古くなったためトラッカーを無効化しました。',disconnected:'未接続',connecting:'接続中…'}[s.state])||s.reason||(s.udpPacketsSent!=null?`送信 ${s.udpPacketsSent} パケット・有効 ${s.enabledTrackers} 台` : s.state);}});
 function notify(message,error=false){$('notice').textContent=message;$('notice').classList.toggle('error',error);}
 function status(message){$('model-status').textContent=message;}
@@ -46,6 +50,7 @@ async function prepareModels(){
       else if(manifest.recommendedBody==='fast')choice.value='fast';
     }
     const learned3D=$('model-choice').value==='pose3d';
+    $('backend').disabled=learned3D;if(learned3D)$('backend').value='wasm';
     const requested=$('mode').value==='wholebody'&&!learned3D?$('backend').value:'wasm', spec=manifest.bodies?.[$('model-choice').value]||manifest.body;
     if(actualBackend!==requested||activeBody?.sha256!==spec.sha256){if(body)await body.release();body=null;timings.length=bodyTimes.length=partTimes.length=0;bodyCalls=0;lastBodyMs=null;}
     activeBody=spec;
@@ -61,7 +66,9 @@ async function prepareModels(){
     if($('mode').value==='wholebody'&&learned3D){
       if(!manifest.pose3d)throw new Error('3D身体モデルが配布されていません。');
       if(!body3D){status('3D身体モデルを取得しています…');body3D=await ort.InferenceSession.create(await modelBytes(manifest.pose3d.url,manifest.pose3d.sha256),{executionProviders:['wasm'],graphOptimizationLevel:'all'});}
-      $('model-detail').textContent=`3D身体 ${(manifest.pose3d.bytes/1048576).toFixed(2)} MB · 15 Hz上限 · 手の詳細 5 Hz`;
+      if(!manifest.personDetector)throw new Error('人物の再検出モデルが配布されていません。');
+      if(!personDetector){status('人物の再検出モデルを取得しています…');personDetector=await ort.InferenceSession.create(await modelBytes(manifest.personDetector.url,manifest.personDetector.sha256),{executionProviders:['wasm'],graphOptimizationLevel:'all'});}
+      $('model-detail').textContent='59点 最大15回/秒 · 奥行き 最大5回/秒 · ロスト時の再検出 最大2回/秒';
     }
     if(!parts)parts=new PartModels(ort,manifest.parts,{executionProviders:['wasm']});
     const mode=$('mode').value;
@@ -83,12 +90,12 @@ function createSource({file,stream,label}){
   const bar=document.createElement('div');bar.className='source-title';const title=document.createElement('span');title.textContent=`${id} · ${label||file?.name||'カメラ'}`;const close=document.createElement('button');close.textContent='閉じる';bar.append(title,close);
   const media=document.createElement('div');media.className='source-media';const video=document.createElement('video');video.muted=true;video.playsInline=true;video.preload='metadata';const overlay=document.createElement('canvas');media.append(video,overlay);root.append(bar,media);
   const frame=document.createElement('canvas');
-  const source={id,root,video,frame,frameContext:frame.getContext('2d'),overlay,context:overlay.getContext('2d'),stream,roi:null,points:null,observation:null,face:null,feet:{},stabilizer:new PoseStabilizer(),lastFace:-Infinity,lastFoot:-Infinity,lastDetails:-Infinity,details:null,decoded3D:null,rawKeypoints:null,lastMediaTime:-Infinity,lastFrameAt:-Infinity,frameCaptureAt:0};
+  const source={id,root,video,frame,frameContext:frame.getContext('2d'),overlay,context:overlay.getContext('2d'),stream,roi:null,points:null,observation:null,face:null,feet:{},stabilizer:new PoseStabilizer(),roiTracker:new Pose3DRoiTracker(),lastFace:-Infinity,lastFoot:-Infinity,lastDetails:-Infinity,lastDepth:-Infinity,depthDecoded:null,details:null,decoded3D:null,rawKeypoints:null,lastMediaTime:-Infinity,lastFrameAt:-Infinity,frameCaptureAt:0};
   if(file){source.url=URL.createObjectURL(file);video.src=source.url;const controls=document.createElement('div');controls.className='source-video-controls';const play=document.createElement('button');play.className='secondary';play.textContent='再生';const seek=document.createElement('input');seek.type='range';seek.min=0;seek.max=1;seek.step=.01;seek.value=0;seek.setAttribute('aria-label','動画の再生位置');const time=document.createElement('output');time.textContent='0:00';controls.append(play,seek,time);root.append(controls);play.onclick=()=>video.paused?video.play().catch(fail):video.pause();video.addEventListener('play',()=>play.textContent='停止');video.addEventListener('pause',()=>play.textContent='再生');video.addEventListener('loadedmetadata',()=>seek.max=video.duration);video.addEventListener('timeupdate',()=>{seek.value=video.currentTime;time.textContent=`${Math.floor(video.currentTime/60)}:${String(Math.floor(video.currentTime%60)).padStart(2,'0')}`;});seek.oninput=()=>{video.currentTime=Number(seek.value);source.lastMediaTime=-Infinity;source.observation=null;clearPose();};}
   else video.srcObject=stream;
   video.addEventListener('pause',()=>{if(source===selected)view?.setPaused(true);});
   video.addEventListener('play',()=>{if(source===selected)view?.setPaused(false);});
-  video.addEventListener('seeking',()=>{source.stabilizer.reset();source.observation=null;source.lastMediaTime=source.lastDetails=-Infinity;source.details=source.decoded3D=source.rawKeypoints=null;});
+  video.addEventListener('seeking',()=>{source.stabilizer.reset();source.roiTracker.reset();source.observation=null;source.lastMediaTime=source.lastDetails=source.lastDepth=-Infinity;source.details=source.decoded3D=source.depthDecoded=source.rawKeypoints=null;});
   video.addEventListener('loadedmetadata',()=>{overlay.width=video.videoWidth;overlay.height=video.videoHeight;draw(source);if(stream||running)video.play().catch(fail);});
   video.addEventListener('error',()=>fail(new Error('この動画をデコードできません。ブラウザ対応のMP4/WebMを選択してください。')));
   if(video.requestVideoFrameCallback){const mark=(now,meta)=>{source.frameCaptureAt=now;source.presentedMediaTime=meta.mediaTime;if(sources.includes(source))video.requestVideoFrameCallback(mark);};video.requestVideoFrameCallback(mark);}
@@ -97,7 +104,7 @@ function createSource({file,stream,label}){
   let anchor=null;
   overlay.onpointerdown=e=>{chooseSource(source);anchor=imagePoint(e);overlay.setPointerCapture(e.pointerId);};
   overlay.onpointermove=e=>{if(!anchor)return;const p=imagePoint(e);source.roi=[Math.min(anchor[0],p[0]),Math.min(anchor[1],p[1]),Math.abs(anchor[0]-p[0]),Math.abs(anchor[1]-p[1])];draw(source);};
-  overlay.onpointerup=()=>{anchor=null;if(source.roi?.[2]<12||source.roi?.[3]<12)source.roi=null;source.stabilizer.reset();source.observation=null;source.lastMediaTime=-Infinity;source.lastFace=source.lastFoot=-Infinity;clearPose();draw(source);};
+  overlay.onpointerup=()=>{anchor=null;if(source.roi?.[2]<12||source.roi?.[3]<12)source.roi=null;source.stabilizer.reset();source.roiTracker.reset();source.depthDecoded=source.decoded3D=source.rawKeypoints=null;source.lastDepth=-Infinity;source.observation=null;source.lastMediaTime=-Infinity;source.lastFace=source.lastFoot=-Infinity;clearPose();draw(source);};
   sources.push(source);$('sources').append(root);chooseSource(source);return source;
 }
 function draw(source){
@@ -111,8 +118,8 @@ function draw(source){
   if(source.face?.valid&&performance.now()-source.lastFace<400){ctx.fillStyle='#d5c8ff';for(const p of source.face.points){ctx.beginPath();ctx.arc(p.x,p.y,1.5*scale,0,Math.PI*2);ctx.fill();}}
   for(const foot of Object.values(source.feet)){if(!foot?.roi||performance.now()-source.lastFoot>600)continue;ctx.strokeStyle='#77e7ca';ctx.lineWidth=2*scale;ctx.strokeRect(...foot.roi);ctx.font=`${14*scale}px sans-serif`;ctx.fillStyle='#a3f8df';ctx.fillText(`${foot.label} ${(foot.confidence*100).toFixed(0)}%`,foot.roi[0],Math.max(18*scale,foot.roi[1]-6*scale));}
 }
-async function runBody(source,roi){
-  const spec=activeBody,h=spec.input.shape[2],w=spec.input.shape[3],crop=cropTransform(roi,[w,h],spec.input.crop.padding);
+async function runBody(source,roi,padding=null){
+  const spec=activeBody,h=spec.input.shape[2],w=spec.input.shape[3],crop=cropTransform(roi,[w,h],padding??spec.input.crop.padding);
   if(preprocess.width!==w||preprocess.height!==h){preprocess.width=w;preprocess.height=h;}
   preprocessContext.fillStyle='#000';preprocessContext.fillRect(0,0,w,h);preprocessContext.drawImage(source.frame,crop.x,crop.y,crop.width,crop.height,0,0,w,h);
   const data=rgbaToTensor(preprocessContext.getImageData(0,0,w,h).data,w,h,spec.input.mean,spec.input.std);
@@ -120,15 +127,20 @@ async function runBody(source,roi){
   try{output=await body.run({[spec.input.name]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodeSimCC(output.simcc_x.data,output.simcc_y.data,crop,59,spec.simcc_split_ratio,spec.decodeWH||crop.inputWH);}
   finally{input.dispose?.();if(output)Object.values(output).forEach(t=>t.dispose?.());}
 }
-async function runBody3D(source,roi){
-  const size={width:source.video.videoWidth,height:source.video.videoHeight};
-  const anchors=source.rawKeypoints||source.details||[];
-  const crop=createPose3DCrop(roi,anchors,size),ctx=preprocess3DContext;
+async function runBody3D(source,crop){
+  const ctx=preprocess3DContext;
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,256,256);
   ctx.setTransform(...pose3dCanvasTransform(crop));ctx.drawImage(source.frame,0,0);ctx.setTransform(1,0,0,1,0,0);
   const input=new ort.Tensor('float32',pose3dRgbaToTensor(ctx.getImageData(0,0,256,256).data),[1,256,256,3]);
   const start=performance.now();let output;
-  try{output=await body3D.run({[body3D.inputNames[0]]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodePose3D(output,crop);}
+  try{output=await body3D.run({[body3D.inputNames[0]]:input});limitedPush(depthTimes,performance.now()-start);depthCalls++;return decodePose3D(output,crop);}
+  finally{input.dispose?.();if(output)Object.values(output).forEach(t=>t.dispose?.());}
+}
+async function runPersonDetector(source,roi){
+  const transform=createPersonDetectorTransform(roi,{width:source.video.videoWidth,height:source.video.videoHeight}),ctx=detectorContext;
+  ctx.fillStyle='#808080';ctx.fillRect(0,0,224,224);ctx.drawImage(source.frame,...transform.roi,transform.padX,transform.padY,transform.scaledWidth,transform.scaledHeight);
+  const input=new ort.Tensor('float32',personDetectorRgbaToTensor(ctx.getImageData(0,0,224,224).data,transform),[1,3,224,224]);let output;
+  try{const start=performance.now();output=await personDetector.run({[personDetector.inputNames[0]]:input});limitedPush(detectorTimes,performance.now()-start);detectorCalls++;return decodePersonDetector(output,transform);}
   finally{input.dispose?.();if(output)Object.values(output).forEach(t=>t.dispose?.());}
 }
 function faceReadout(value){
@@ -174,11 +186,15 @@ async function processFrame(source,token){
   source.frameContext.drawImage(source.video,0,0);
   if(mode==='wholebody'){
     if($('model-choice').value==='pose3d'){
-      // The body has its own model and cannot be blocked by a lost 2D student.
-      if(start-source.lastDetails>=200){const details=await runBody(source,roi);source.details=toCoco133(details,activeBody.coco133_indices||COCO59).map(p=>({...p,observedAtMs:stamp}));source.lastDetails=start;}
-      source.decoded3D=await runBody3D(source,roi);
-      const details=start-source.lastDetails<250?source.details:[];
-      source.rawKeypoints=mergePose3DKeypoints(details||[],source.decoded3D);
+      const size={width:source.video.videoWidth,height:source.video.videoHeight};
+      if(source.roiTracker.shouldDetect(stamp))source.roiTracker.acceptDetections(await runPersonDetector(source,roi),stamp);
+      const crop=source.roiTracker.nextCrop(roi,size,stamp),person=bodyRoiFromCrop(crop,size);
+      const points=await runBody(source,person.roi,person.padding);
+      source.details=toCoco133(points,activeBody.coco133_indices||COCO59).map(p=>({...p,observedAtMs:stamp}));
+      if(stamp-source.lastDepth>=200-1e-6){source.depthDecoded=await runBody3D(source,crop);source.lastDepth=stamp;}
+      const fused=fuseBodyDepth(source.details,source.depthDecoded,stamp,source.lastDepth);
+      source.decoded3D=fused.decoded;source.rawKeypoints=fused.keypoints;
+      source.roiTracker.update({valid:true,keypoints:source.details},crop,stamp);
       source.points=COCO59.map((id,index)=>({...source.rawKeypoints[id],id:index}));
     }else{source.decoded3D=source.rawKeypoints=null;source.points=await runBody(source,roi);}
     didInference=true;if(!running||generation!==token||!sources.includes(source))return;
@@ -227,7 +243,7 @@ async function loop(token){
 async function start(){
   if(!sources.length){notify('動画またはカメラを選択してください。');return;}
   stop();if(inFlight)await inFlight.catch(()=>{});if(!await prepareModels())return;running=true;const token=++generation;$('start').disabled=true;$('stop').disabled=false;$('status-dot').classList.add('on');$('top-status').textContent=`${actualBackend==='webgpu'?'WebGPU':'CPU'} · 推論中`;
-  await initView();view?.setPaused(false);for(const s of sources){s.stabilizer.reset();s.observation=null;s.lastMediaTime=s.lastDetails=-Infinity;s.details=s.decoded3D=s.rawKeypoints=null;await s.video.play().catch(()=>{});}frameCounter=0;lastMetricsAt=performance.now();notify('');void loop(token);
+  await initView();view?.setPaused(false);for(const s of sources){s.stabilizer.reset();s.roiTracker.reset();s.observation=null;s.lastMediaTime=s.lastDetails=s.lastDepth=-Infinity;s.details=s.decoded3D=s.depthDecoded=s.rawKeypoints=null;await s.video.play().catch(()=>{});}frameCounter=0;lastMetricsAt=performance.now();notify('');void loop(token);
 }
 function stop(){running=false;generation++;for(const s of sources)if(!s.stream)s.video.pause();$('start').disabled=loading;$('stop').disabled=true;$('status-dot').classList.remove('on');$('top-status').textContent='一時停止';bridge.stop();}
 async function initView(){if(view)return view;if(viewPromise)return viewPromise;viewPromise=(async()=>{const {createVRMView}=await import('./vrm-view.mjs');view=createVRMView({container:$('avatar-canvas'),onState:s=>$('avatar-status').textContent=s.hasVRM?`${s.fileName} · ${s.appliedBoneCount} ボーン反映`:'VRM未選択',onError:fail});if(lastPose)view.updatePose(lastPose);return view;})();try{return await viewPromise;}catch(e){viewPromise=null;throw e;}}
@@ -235,11 +251,11 @@ async function enumerate(){if(!navigator.mediaDevices?.enumerateDevices)return;c
 $('video-file').onchange=e=>{try{for(const file of e.target.files)createSource({file});}catch(error){fail(error);}e.target.value='';};
 $('camera-add').onclick=async()=>{try{if(sources.length>=3)throw new Error('入力は3件までです。');const device=$('camera-select').value;const stream=await navigator.mediaDevices.getUserMedia({video:{...(device?{deviceId:{exact:device}}:{}),width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60,max:60}},audio:false});createSource({stream,label:stream.getVideoTracks()[0].label});await enumerate();}catch(e){fail(e);}};
 $('start').onclick=()=>void start().catch(fail);$('stop').onclick=stop;
-$('mode').onchange=()=>{stop();for(const s of sources){s.stabilizer.reset();s.points=null;s.face=null;s.feet={};s.observation=null;s.lastFace=s.lastFoot=-Infinity;draw(s);}resetReadouts();clearPose();notify('対象を囲み、開始してください。');};
+$('mode').onchange=()=>{stop();for(const s of sources){s.stabilizer.reset();s.roiTracker.reset();s.points=null;s.face=null;s.feet={};s.observation=null;s.lastFace=s.lastFoot=s.lastDepth=-Infinity;s.depthDecoded=s.decoded3D=s.rawKeypoints=null;draw(s);}resetReadouts();clearPose();notify('対象を囲み、開始してください。');};
 $('backend').onchange=stop;$('model-choice').onchange=()=>{stop();for(const s of sources)s.stabilizer.reset();clearPose();};$('face-enabled').onchange=stop;$('foot-enabled').onchange=stop;
 $('target-fps').oninput=e=>$('fps-value').value=e.target.value;
 $('confidence').oninput=()=>sources.forEach(draw);
-$('reset-roi').onclick=()=>{if(selected){selected.stabilizer.reset();selected.roi=null;selected.observation=null;selected.lastMediaTime=-Infinity;selected.lastFace=selected.lastFoot=-Infinity;clearPose();draw(selected);}};
+$('reset-roi').onclick=()=>{if(selected){selected.stabilizer.reset();selected.roiTracker.reset();selected.depthDecoded=selected.decoded3D=selected.rawKeypoints=null;selected.lastDepth=-Infinity;selected.roi=null;selected.observation=null;selected.lastMediaTime=-Infinity;selected.lastFace=selected.lastFoot=-Infinity;clearPose();draw(selected);}};
 $('neutral-face').onclick=()=>{if(!lastFace?.valid){notify('顔が検出されてから基準を設定してください。');return;}neutralFace={eyeLeftOpen:lastFace.eyeLeftEAR,eyeRightOpen:lastFace.eyeRightEAR,cheekWidthNormalized:lastFace.cheekWidthNormalized};notify('現在の目の開きと頬幅を基準にしました。');};
 $('vrm-file').onchange=async e=>{try{const file=e.target.files[0];if(!file)return;await initView();await view.loadFile(file);view.setPaused(Boolean(selected&&!selected.stream&&selected.video.paused));if(lastFace)view.updateExpressions(lastFace);}catch(error){fail(error);}e.target.value='';};
 $('reset-view').onclick=()=>view?.resetView();
@@ -247,7 +263,7 @@ $('calibration-file').onchange=async e=>{try{const file=e.target.files[0];if(!fi
 $('bridge-connect').onclick=async()=>{try{await bridge.connect({url:$('bridge-url').value,token:$('bridge-token').value});$('bridge-token').value='';}catch(e){fail(e);}};
 $('room-file').onchange=async e=>{try{const file=e.target.files[0];if(file)bridge.calibrate(JSON.parse(await file.text()));}catch(error){fail(error);}e.target.value='';};
 $('export-metrics').onclick=()=>{
-  const result={schema:'compact-vrc-device-metrics-v2',createdAt:new Date().toISOString(),backend:actualBackend,bodyModel:activeBody?.id,modelSha256:activeBody?.sha256,bodyCalls,bodyMedianMs:percentile(bodyTimes,.5),bodyP95Ms:percentile(bodyTimes,.95),fullFrameMedianMs:percentile(timings,.5),fullFrameP95Ms:percentile(timings,.95),partsMedianMs:percentile(partTimes,.5),partsProvider:'wasm',faceMaxHz:10,footMaxHz:5,inputCount:sources.length,inputMode:$('mode').value,settingMaxCallsPerSecond:Number($('target-fps').value),containsVideoOrLandmarks:false,gpuUtilizationMeasured:false,scope:'Observed browser elapsed time. No frame content, file names or landmark traces.'};
+  const result={schema:'compact-vrc-device-metrics-v3',createdAt:new Date().toISOString(),backend:actualBackend,bodyModel:activeBody?.id,modelSha256:activeBody?.sha256,bodyCalls,bodyMedianMs:percentile(bodyTimes,.5),bodyP95Ms:percentile(bodyTimes,.95),depthCalls,depthMedianMs:percentile(depthTimes,.5),depthP95Ms:percentile(depthTimes,.95),detectorCalls,detectorMedianMs:percentile(detectorTimes,.5),detectorP95Ms:percentile(detectorTimes,.95),fullFrameMedianMs:percentile(timings,.5),fullFrameP95Ms:percentile(timings,.95),partsMedianMs:percentile(partTimes,.5),partsProvider:'wasm',faceMaxHz:10,footMaxHz:5,depthMaxHz:5,detectorMaxHz:2,inputCount:sources.length,inputMode:$('mode').value,settingMaxCallsPerSecond:Math.min($('model-choice').value==='pose3d'?15:60,Number($('target-fps').value)),containsVideoOrLandmarks:false,gpuUtilizationMeasured:false,scope:'Observed browser inference elapsed time, excludes VRM rendering. No frame content, file names or landmark traces.'};
   const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='vrc-compact-device-metrics.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 window.addEventListener('pagehide',()=>{stop();bridge.disconnect();for(const s of sources){s.stream?.getTracks().forEach(t=>t.stop());if(s.url)URL.revokeObjectURL(s.url);}view?.dispose();});

@@ -22,10 +22,10 @@ if(!secret){
     await pipeline(Readable.fromWeb(response.body),createWriteStream(path,{mode:0o600}));
     const output=join(directory,'aggregate.json');
     const env={...process.env};delete env.PRIVATE_VIDEO_URL;
-    await new Promise((resolve,reject)=>{const child=spawn(process.execPath,['ci/headless-video.mjs','--video',path,'--max-seconds','180','--output',output],{env,stdio:['ignore','ignore','ignore']});child.once('error',()=>reject(new Error('private-evaluation-failed')));child.once('exit',code=>code===0?resolve():reject(new Error('private-evaluation-failed')));});
+    await new Promise((resolve,reject)=>{const child=spawn(process.execPath,['ci/headless-pose3d.mjs','--video',path,'--max-seconds','180','--output',output],{env,stdio:['ignore','ignore','ignore']});child.once('error',()=>reject(new Error('private-evaluation-failed')));child.once('exit',code=>code===0?resolve():reject(new Error('private-evaluation-failed')));});
     const report=JSON.parse(await readFile(output,'utf8'));
-    await writeFile('artifacts/private-video-status.json',JSON.stringify({status:'passed',privateVideoEvaluated:true,report},null,2)+'\n');
-    console.log('Private video inference and VRM stability: passed. Media and traces were not published.');
+    await writeFile('artifacts/private-video-status.json',JSON.stringify({status:'completed',privateVideoEvaluated:true,trackingReadiness:report.deploymentReadiness?.passed===true,report},null,2)+'\n');
+    console.log('Private video inference completed. See aggregate tracking coverage and loss metrics; execution alone does not establish accuracy.');
   }catch{throw new Error('Private video evaluation failed; source URL and media are suppressed.');}
   finally{await rm(directory,{recursive:true,force:true});}
 }

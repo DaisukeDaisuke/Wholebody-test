@@ -329,9 +329,14 @@ def publish():
         raise PublicationError("unexpected_pose3d_source")
     payloads["body/pose3d.onnx"] = checked_model(args.pose3d_dir, "pose3d.onnx", pose3d)
     payloads["licenses/POSE3D-APACHE-2.0.txt"] = (args.pose3d_dir / "LICENSE-POSE3D.txt").read_bytes()
+    person_detector = read_json(args.pose3d_dir, "person-detector-manifest.json")
+    if person_detector.get("sha256") != "47fd5599d6fa17608f03e0eb0ae230baa6e597d7e8a2c8199fe00abea55a701f":
+        raise PublicationError("unexpected_person_detector_source")
+    payloads["body/person-detector.onnx"] = checked_model(args.pose3d_dir, "person-detector.onnx", person_detector)
+    payloads["licenses/PERSON-DETECTOR-APACHE-2.0.txt"] = (args.pose3d_dir / "LICENSE-PERSON-DETECTOR.txt").read_bytes()
     STAGE = "download_pinned_public_face"
     payloads["parts/pfld68.onnx"] = public_download(FACE_URL, FACE_BYTES, FACE_SHA256, keep=True)
-    for report in (standard, fast, pose3d, parts, standard_report, fast_report, public_parts):
+    for report in (standard, fast, pose3d, person_detector, parts, standard_report, fast_report, public_parts):
         public_values(report, token)
     payloads["evidence/compact59-metrics.json"] = encode_json(standard_report)
     payloads["evidence/fast59-metrics.json"] = encode_json(fast_report)
@@ -352,18 +357,31 @@ def publish():
         # create_repo(exist_ok=True) does not alter existing visibility. Never
         # expose unrelated contents by changing an already-private repository.
         raise PublicationError("existing_target_repository_is_private")
+    def guarded_commit(payload, message):
+        # Preserve other authorized experiment commits when two Actions jobs
+        # publish disjoint files concurrently. Every retry reads the new HEAD.
+        for attempt in range(3):
+            current = api.repo_info(repo_id=repo_id, repo_type="model", revision="main")
+            if current.private:
+                raise PublicationError("existing_target_repository_is_private")
+            try:
+                return api.create_commit(
+                    repo_id=repo_id, repo_type="model", revision="main", parent_commit=current.sha,
+                    operations=[CommitOperationAdd(path_in_repo=name, path_or_fileobj=data)
+                                for name, data in payload.items()],
+                    commit_message=message, num_threads=2)
+            except Exception as error:
+                status = getattr(getattr(error, "response", None), "status_code", None)
+                if status not in (409, 412) or attempt == 2:
+                    raise
+                time.sleep(2 ** attempt)
     card = model_card(fast, standard, fast_report, standard_report, public_parts, repo_id)
-    card += "\n## Learned 3D body path\n\n`body/pose3d.onnx` is the pinned 5,557,238-byte OpenCV Zoo MediaPipe Pose model (Apache-2.0), not a model trained in this project. It predicts hip-relative XYZ landmarks. The application estimates relative root travel by perspective fitting; this is not calibrated absolute position. Body inference is independent of the 2D student and detail inference is scheduled at 5 Hz. Model confidence, actual driven-bone coverage, lost intervals and motion retention must be evaluated together. Smaller rotation p95 alone does not establish tracking quality.\n"
+    card += "\n## Learned depth with Compact59 XY\n\n`body/pose3d.onnx` is the pinned 5,557,238-byte OpenCV Zoo MediaPipe Pose model (Apache-2.0), not a model trained in this project. Its standalone XY underperformed Compact59 on the initial 32-image labelled comparison, so current reliable Compact59 XY stays primary at up to15 Hz; learned relative depth is supplied at up to5 Hz with a300 ms expiry. `body/person-detector.onnx` acquires/reacquires an ROI at up to2 Hz and its virtual landmarks never become observed body joints. Relative root travel is fitted from current2D and learned3D; it is not calibrated absolute position. Confidence, driven-limb coverage, partial-body loss and retained motion must all be reported. Smaller rotation p95 alone does not establish tracking quality.\n"
     if token in card:
         raise PublicationError("credential_value_in_model_card")
     payloads["README.md"] = card.encode("utf-8")
     STAGE = "commit_allowlisted_models_and_aggregate_evidence"
-    commit = api.create_commit(repo_id=repo_id, repo_type="model", revision="main",
-                               parent_commit=information.sha or None,
-                               operations=[CommitOperationAdd(path_in_repo=name, path_or_fileobj=data)
-                                           for name, data in payloads.items()],
-                               commit_message="Publish public-data VRC pose models and measured evaluation",
-                               num_threads=2)
+    commit = guarded_commit(payloads, "Publish public-data VRC pose models and measured evaluation")
     revision = commit.oid
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise PublicationError("unexpected_model_commit")
@@ -379,6 +397,7 @@ def publish():
         published_files.append({"path": name, "url": hub_url(name), **verified})
     standard["url"] = hub_url("body/compact59.onnx")
     pose3d["url"] = hub_url("body/pose3d.onnx")
+    person_detector["url"] = hub_url("body/person-detector.onnx")
     standard["evaluation"] = hub_url("evidence/compact59-metrics.json")
     fast["url"] = hub_url("body/fast59.onnx")
     fast["evaluation"] = hub_url("evidence/fast59-metrics.json")
@@ -391,16 +410,13 @@ def publish():
     recommended = "fast" if fast_is_eligible(fast, fast_report) else "standard"
     manifest = {"schemaVersion": 2, "body": fast if recommended == "fast" else standard,
                 "recommendedBody": recommended, "bodies": {"fast": fast, "standard": standard},
-                "pose3d": pose3d, "parts": parts, "hub": {"repoId": repo_id, "modelRevision": revision,
+                "pose3d": pose3d, "personDetector": person_detector, "parts": parts, "hub": {"repoId": repo_id, "modelRevision": revision,
                                           "publicAnonymousHashVerified": True}}
     public_values(manifest, token)
     metadata = {"models.json": encode_json(manifest), "configs/fast59.json": encode_json(fast),
-                "configs/compact59.json": encode_json(standard), "configs/pose3d.json": encode_json(pose3d), "configs/parts.json": encode_json(parts)}
+                "configs/compact59.json": encode_json(standard), "configs/pose3d.json": encode_json(pose3d), "configs/person-detector.json": encode_json(person_detector), "configs/parts.json": encode_json(parts)}
     STAGE = "commit_immutable_download_manifest"
-    manifest_commit = api.create_commit(
-        repo_id=repo_id, repo_type="model", revision="main", parent_commit=revision,
-        operations=[CommitOperationAdd(path_in_repo=name, path_or_fileobj=data) for name, data in metadata.items()],
-        commit_message="Pin browser model downloads to verified model commit", num_threads=2)
+    manifest_commit = guarded_commit(metadata, "Pin browser model downloads to verified model commit")
     manifest_revision = manifest_commit.oid
     if not re.fullmatch(r"[0-9a-f]{40}", manifest_revision):
         raise PublicationError("unexpected_manifest_commit")

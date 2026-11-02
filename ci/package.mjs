@@ -1,7 +1,7 @@
 import {readFile,writeFile,mkdir,copyFile,rm} from 'node:fs/promises';
 const readJSON=async path=>JSON.parse(await readFile(path,'utf8'));
 const manifest=await readJSON('artifacts/hf/models.json');
-for(const spec of [manifest.body,...Object.values(manifest.bodies),manifest.pose3d,...manifest.parts.models]){
+for(const spec of [manifest.body,...Object.values(manifest.bodies),manifest.pose3d,manifest.personDetector,...manifest.parts.models]){
   const url=new URL(spec.url);
   if(url.origin!=='https://huggingface.co'||!/^\/[^/]+\/[^/]+\/resolve\/[a-f0-9]{40}\/.+\.onnx$/.test(url.pathname)||url.search||! /^[a-f0-9]{64}$/.test(spec.sha256))throw new Error('Expected a pinned, anonymous Hugging Face model URL');
 }

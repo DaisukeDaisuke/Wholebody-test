@@ -15,15 +15,15 @@
 <label class="file-button primary">動画をひらく<input id="video-file" type="file" accept="video/*" multiple></label>
 <div class="camera-row"><select id="camera-select" aria-label="カメラ"><option value="">標準カメラ</option></select><button id="camera-add" class="secondary">追加</button></div>
 <label>部位<select id="mode"><option value="wholebody">全身・手・顔・足</option><option value="foot">足のアップ</option><option value="face">顔のアップ</option></select></label>
-<label>モデル<select id="model-choice"><option value="pose3d" selected>3D身体 + 手の詳細</option><option value="standard">2D 標準59点</option><option value="fast">2D 軽量候補59点</option></select></label>
+<label>モデル<select id="model-choice"><option value="pose3d" selected>59点 + 3D奥行き</option><option value="standard">2D 標準59点</option><option value="fast">2D 軽量候補59点</option></select></label>
 <label>全身の推論<select id="backend"><option value="wasm">CPU / WASM</option><option value="webgpu">WebGPU</option></select></label>
 <label>推論頻度 <output id="fps-value">15</output> 回/秒<input id="target-fps" type="range" min="5" max="60" step="5" value="15"></label>
 <div class="toggle"><input id="face-enabled" type="checkbox" checked><label for="face-enabled">表情 <small>CPU・最大10回/秒</small></label></div>
 <div class="toggle"><input id="foot-enabled" type="checkbox" checked><label for="foot-enabled">足裏・甲・側面 <small>CPU・各足 最大5回/秒</small></label></div>
 <button id="start" class="primary">開始</button><button id="stop" class="secondary" disabled>一時停止</button>
 <p id="model-status" class="status" aria-live="polite">モデル未読込</p>
-<details><summary>範囲・校正</summary><p class="small">映像上をドラッグして人物や部位を囲みます。</p><button id="reset-roi" class="secondary">範囲を全画面へ戻す</button><label>表示閾値<input id="confidence" type="range" min="0.05" max="0.8" step="0.05" value="0.25"></label><label>身長（m）<input id="height" type="number" min="0.5" max="2.6" step="0.01" value="1.70"></label><div class="toggle"><input id="height-confirm" type="checkbox"><label for="height-confirm">実寸を入力済み</label></div><label class="file-button secondary">カメラ校正JSON<input id="calibration-file" type="file" accept="application/json,.json"></label><p id="calibration-status" class="small">未校正</p></details>
-<details><summary>モデル・計測結果</summary><p id="model-detail" class="small"></p><a href="./evidence/fast59-metrics.json" target="_blank">軽量モデルの評価</a><br><a href="./evidence/parts-report.json" target="_blank">顔・足の評価</a><br><a href="./evidence/headless-video.json" target="_blank">Node推論・VRM安定性</a><br><button id="export-metrics" class="secondary">この端末の計測値を保存</button></details>
+<details><summary>範囲・校正</summary><p class="small">映像上をドラッグして人物や部位を囲みます。</p><button id="reset-roi" class="secondary">範囲を全画面へ戻す</button><label>認識閾値<input id="confidence" type="range" min="0.05" max="0.8" step="0.05" value="0.25"></label><label>身長（m）<input id="height" type="number" min="0.5" max="2.6" step="0.01" value="1.70"></label><div class="toggle"><input id="height-confirm" type="checkbox"><label for="height-confirm">実寸を入力済み</label></div><label class="file-button secondary">カメラ校正JSON<input id="calibration-file" type="file" accept="application/json,.json"></label><p id="calibration-status" class="small">未校正</p></details>
+<details><summary>モデル・計測結果</summary><p id="model-detail" class="small"></p><a href="./evidence/fast59-metrics.json" target="_blank">軽量モデルの評価</a><br><a href="./evidence/parts-report.json" target="_blank">顔・足の評価</a><br><a href="./evidence/headless-pose3d.json" target="_blank">Node推論・追跡率・3D姿勢</a><br><a href="./evidence/labelled-body13.json" target="_blank">正解ラベルとの比較</a><br><button id="export-metrics" class="secondary">この端末の計測値を保存</button></details>
 </aside>
 <div class="stage">
 <div class="stage-toolbar"><strong>映像 / VRM</strong><span id="tracking-state">観測待ち</span></div>
@@ -31,7 +31,7 @@
 <div id="sources"></div>
 <div id="avatar-pane"><div class="avatar-tools"><label class="file-button secondary">VRMをひらく<input id="vrm-file" type="file" accept=".vrm,.glb"></label><button id="reset-view" class="secondary">視点を戻す</button></div><div id="avatar-canvas"></div><p id="avatar-status">VRM未選択</p></div>
 </div>
-<div class="measure-strip"><div><span>推論フレーム</span><strong id="measure-fps">—<small> fps</small></strong></div><div><span>全身モデル</span><strong id="measure-body">—<small> ms</small></strong></div><div><span>全処理 p95</span><strong id="measure-p95">—<small> ms</small></strong></div><div><span>有効な点</span><strong id="measure-points">—<small> / 59</small></strong></div></div>
+<div class="measure-strip"><div><span>推論フレーム</span><strong id="measure-fps">—<small> fps</small></strong></div><div><span>全身モデル</span><strong id="measure-body">—<small> ms</small></strong></div><div><span>推論処理 p95</span><strong id="measure-p95">—<small> ms</small></strong></div><div><span>有効な点</span><strong id="measure-points">—<small> / 59</small></strong></div></div>
 <div id="notice" class="notice" role="status"></div>
 </div>
 <aside class="readout panel"><h2>状態</h2><h3>表情</h3><div class="signal"><span>左目の閉じ</span><meter id="eye-left" min="0" max="1" value="0"></meter><output id="eye-left-text">—</output></div><div class="signal"><span>右目の閉じ</span><meter id="eye-right" min="0" max="1" value="0"></meter><output id="eye-right-text">—</output></div><div class="signal"><span>口の開き</span><meter id="mouth" min="0" max="1" value="0"></meter><output id="mouth-text">—</output></div><div class="signal"><span>頬の幅変化</span><meter id="cheek" min="0" max="1" value="0"></meter><output id="cheek-text">—</output></div><button id="neutral-face" class="secondary">現在の顔を基準にする</button>
