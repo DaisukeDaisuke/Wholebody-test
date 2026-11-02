@@ -21,7 +21,7 @@ const SOURCE_3D = new Set(['measuredMultiView', 'estimatedMultiView', 'inferredM
 
 export const STABILITY_DEFAULTS = Object.freeze({
   minScore: .25, enterMargin: .04, borderPixels: 1, smoothingMs: 32,
-  maxTorsoSpeed: 3, maxLimbSpeed: 8, reacquireFrames: 2, resetGapMs: 2500,
+  maxTorsoSpeed: 3, maxLimbSpeed: 8, reacquireFrames: 2, resumeGapMs: 180, resetGapMs: 2500,
 });
 
 function missingPoint(p, id, reason) { return { ...p, id, rawScore: p?.rawScore ?? p?.score ?? 0, score: 0, observable: false, gateReason: reason }; }
@@ -55,18 +55,35 @@ export class PoseStabilizer {
     const width = input.imageSize?.width, height = input.imageSize?.height, imageValid = finite(width) && finite(height) && width > 2 && height > 2;
     const reasons = {}, rejected = new Set();
     const mark = (id, reason) => { if (!rejected.has(id)) { rejected.add(id); reasons[reason] = (reasons[reason] || 0) + 1; } points[id] = missingPoint(points[id], id, reason); };
-    const points = Array.from({ length: 133 }, (_, id) => ({ ...input.keypoints[id], id }));
+    const points = Array.from({ length: 133 }, (_, id) => ({ ...input.keypoints[id], id, continuityEligible: false, shortGapResumed: false, avoidedEnterMargin: false }));
+    const resumeWindow = Math.min(180, opts.resumeGapMs), normalJumpLimit = (id, old, scale) => {
+      const dt = old ? Math.max(0, time - old.time) / 1000 : 0;
+      return scale * (.08 + (TORSO.includes(id) ? opts.maxTorsoSpeed : opts.maxLimbSpeed) * Math.min(dt, .25));
+    };
+    const continuity = (id, p, old, scale) => {
+      const lastObservedAt = old?.observedAtMs ?? old?.time, elapsed = time - lastObservedAt;
+      // Cached 5 Hz XY is not a new observation. Only a new actual image
+      // observation can resume tracking, using time since the last real sample.
+      return !!old && !old.resumeBlockedByJump && !p.derived && finite(lastObservedAt) && elapsed > 0 && elapsed <= resumeWindow &&
+        finite(p.observedAtMs) && Math.abs(p.observedAtMs - time) < 1e-6 && distance(xy(p), old.position) <= normalJumpLimit(id, old, scale);
+    };
     for (let id = 0; id < points.length; id++) {
-      const p = points[id], previous = this.observationStates[id], [x, y] = xy(p);
+      const p = points[id], [x, y] = xy(p);
       if (!point(p) || !finite(p.score) || p.observable === false || NON_OBSERVATIONS.has(p.source)) { mark(id, 'notObserved'); continue; }
-      const threshold = opts.minScore + (previous?.tracked ? 0 : opts.enterMargin);
-      if (p.score < threshold) { mark(id, 'lowConfidence'); continue; }
+      if (p.score < opts.minScore) { mark(id, 'lowConfidence'); continue; }
       if (!imageValid || x < opts.borderPixels || y < opts.borderPixels || x > width - 1 - opts.borderPixels || y > height - 1 - opts.borderPixels) { mark(id, 'outsideImage'); continue; }
       const observedAtMs = finite(p.observedAtMs) && p.observedAtMs <= time ? p.observedAtMs : time;
       if (time - observedAtMs > 250) { mark(id, 'staleDetail'); continue; }
       points[id] = { ...p, x, y, observable: true, observedAtMs, rawScore: p.score };
     }
     const current = id => points[id]?.observable !== false && point(points[id]) && points[id].score > 0;
+    const provisionalScale = torsoScale(points) || this.bodyPixels || (imageValid ? Math.max(width, height) * .65 : 1);
+    for (let id = 0; id < points.length; id++) {
+      if (!current(id)) continue;
+      const p = points[id], old = this.observationStates[id];
+      const resume = !old?.tracked && continuity(id, p, old, provisionalScale);
+      if (!old?.tracked && !resume && p.score < opts.minScore + opts.enterMargin) mark(id, 'lowConfidence');
+    }
     const initialScale = torsoScale(points);
     const scale = initialScale || this.bodyPixels || (imageValid ? Math.max(width, height) * .65 : 1);
     // A collapsed/truncated torso must not manufacture a full-body orientation.
@@ -94,6 +111,7 @@ export class PoseStabilizer {
     for (const [anchor, ids] of [[15, [17, 18, 19]], [16, [20, 21, 22]], [9, Array.from({ length: 21 }, (_, i) => 91 + i)], [10, Array.from({ length: 21 }, (_, i) => 112 + i)]]) {
       if (!current(anchor) && input.inputMode !== 'feet') for (const id of ids) if (current(id)) mark(id, 'parentUnobserved');
     }
+    let shortGapResumedPoints = 0, avoidedEnterMarginPoints = 0, maximumShortGapElapsedMs = 0;
     for (let id = 0; id < points.length; id++) {
       const old = this.observationStates[id];
       if (!current(id)) { if (old) this.observationStates[id] = { ...old, tracked: false, pending: null }; continue; }
@@ -101,23 +119,38 @@ export class PoseStabilizer {
       const fast = !TORSO.includes(id), limit = scale * (.08 + (fast ? opts.maxLimbSpeed : opts.maxTorsoSpeed) * Math.min(dt, .25));
       const jumped = old && dt > 0 && dt < .65 && distance(position, old.position) > limit;
       const returning = old && !old.tracked;
-      if (jumped || returning) {
-        const pending = old.pending;
-        const coherent = pending && time > pending.time && time - pending.time < 650 && distance(position, pending.position) <= Math.max(scale * .16, limit);
-        const count = coherent ? pending.count + 1 : 1;
-        if (count < opts.reacquireFrames) {
-          mark(id, jumped ? 'temporalJump' : 'reacquiring');
-          this.observationStates[id] = { ...old, tracked: false, pending: { position, time, count } };
+      const eligible = continuity(id, p, old, scale), shortResume = returning && !jumped && eligible;
+      let confirmedReacquisition = false;
+      if (jumped || returning && !shortResume) {
+        if (!(p.observedAtMs > (old.observedAtMs ?? old.time))) {
+          mark(id, 'reacquiringCachedObservation');
+          this.observationStates[id] = { ...old, tracked: false };
           continue;
         }
+        const pending = old.pending;
+        const coherent = pending && time >= pending.time && time - (pending.observedAtMs ?? pending.time) < 650 && distance(position, pending.position) <= Math.max(scale * .16, limit);
+        const newActualObservation = pending && p.observedAtMs > (pending.observedAtMs ?? pending.time);
+        const count = coherent ? pending.count + (newActualObservation ? 1 : 0) : 1;
+        if (count < opts.reacquireFrames) {
+          mark(id, jumped ? 'temporalJump' : 'reacquiring');
+          this.observationStates[id] = { ...old, tracked: false, resumeBlockedByJump: !!old.resumeBlockedByJump || !!jumped, pending: { position, time, observedAtMs: p.observedAtMs, count } };
+          continue;
+        }
+        confirmedReacquisition = true;
       }
-      this.observationStates[id] = { position, time, score: p.score, tracked: true, pending: null };
+      points[id] = { ...p, continuityEligible: eligible && !confirmedReacquisition,
+        shortGapResumed: !!shortResume, shortGapElapsedMs: shortResume ? time - (old.observedAtMs ?? old.time) : null,
+        avoidedEnterMargin: !!shortResume && p.score < opts.minScore + opts.enterMargin };
+      if (shortResume) { shortGapResumedPoints++; maximumShortGapElapsedMs = Math.max(maximumShortGapElapsedMs, points[id].shortGapElapsedMs); if (points[id].avoidedEnterMargin) avoidedEnterMarginPoints++; }
+      this.observationStates[id] = { position, time, observedAtMs: p.observedAtMs, score: p.score, tracked: true, pending: null };
     }
     torsoValid = torsoValid && TORSO.every(current);
     const body = torsoScale(points);
     if (torsoValid && body && body > 16) this.bodyPixels = this.bodyPixels ? this.bodyPixels * .94 + body * .06 : body;
     const filtered = { ...input, keypoints: points, observationTimestampMs: time,
-      stability: { observationTimestampMs: time, torsoValid, visibleTorsoPoints: TORSO.filter(current).length, acceptedPoints: points.filter(p => p.observable !== false && p.score > 0).length, rejectedPoints: rejected.size, rejectionReasons: reasons, bodyPixels: this.bodyPixels, state: points.some(p => p.observable !== false && p.score > 0) ? torsoValid ? 'tracking' : 'partial' : 'lost' } };
+      stability: { observationTimestampMs: time, torsoValid, visibleTorsoPoints: TORSO.filter(current).length, acceptedPoints: points.filter(p => p.observable !== false && p.score > 0).length, rejectedPoints: rejected.size, rejectionReasons: reasons, bodyPixels: this.bodyPixels,
+        shortGapResumeWindowMs: resumeWindow, shortGapResumedPoints, avoidedEnterMarginPoints, maximumShortGapElapsedMs,
+        state: points.some(p => p.observable !== false && p.score > 0) ? torsoValid ? 'tracking' : 'partial' : 'lost' } };
     this.lastObservation = filtered; this.lastObservationTime = time;
     return filtered;
   }
@@ -148,7 +181,10 @@ export class PoseStabilizer {
       const rawPosition = j.position.slice();
       j.position = old ? mix(old.position, rawPosition, alpha) : rawPosition;
       if (vector(j.imagePlanePosition) && vector(old?.imagePlanePosition)) j.imagePlanePosition = mix(old.imagePlanePosition, j.imagePlanePosition, alpha);
-      j.observedAtMs = finite(j.observedAtMs) ? Math.min(measuredAt, j.observedAtMs) : measuredAt; j.ageMs = Math.max(0, time - j.observedAtMs); j.observable2D = true;
+      const imagePoint = observation?.keypoints?.[id], imageObservedAt = finite(imagePoint?.observedAtMs) ? imagePoint.observedAtMs : measuredAt;
+      j.observedAtMs = Math.min(measuredAt, finite(j.observedAtMs) ? j.observedAtMs : measuredAt, imageObservedAt);
+      j.ageMs = Math.max(0, time - j.observedAtMs); j.observable2D = true;
+      j.continuityEligible = imagePoint?.continuityEligible === true && Math.abs(j.observedAtMs - measuredAt) < 1e-6;
       this.jointStates[id] = { rawPosition, position: j.position.slice(), imagePlanePosition: j.imagePlanePosition?.slice() || null, time };
     }
     for (const [a, b, ratio] of BODY_SEGMENTS) {

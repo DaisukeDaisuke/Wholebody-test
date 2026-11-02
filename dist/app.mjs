@@ -46,8 +46,8 @@ async function prepareModels(){
     if(!manifest){
       const response=await fetch('./models.json',{cache:'no-cache'});if(!response.ok)throw new Error('学習済みモデルのマニフェストを取得できません。');manifest=await response.json();
       const choice=$('model-choice'),fast=choice.querySelector('option[value="fast"]');
-      if(manifest.recommendedBody==='standard'){fast.disabled=true;fast.textContent='軽量候補（精度基準未達）';choice.value=manifest.pose3d?'pose3d':'standard';}
-      else if(manifest.recommendedBody==='fast')choice.value='fast';
+      if(manifest.recommendedBody==='standard'){fast.disabled=true;fast.textContent='軽量候補（精度基準未達）';if(choice.value==='fast')choice.value=manifest.pose3d?'pose3d':'standard';}
+      if(choice.value==='pose3d'&&!manifest.pose3d)choice.value='standard';
     }
     const learned3D=$('model-choice').value==='pose3d';
     $('backend').disabled=learned3D;if(learned3D)$('backend').value='wasm';
@@ -153,9 +153,10 @@ function resetFaceOnly(){for(const id of ['eye-left','eye-right','mouth','cheek'
 function footReadout(side,value){$(side+'-foot-state').textContent=value?.label||'未観測';$(side+'-foot-score').textContent=value?`${Math.round(value.confidence*100)}% · ${value.valid?'足領域の分類':'不確か'}`:'対象の足領域が必要です';}
 function makeObservation(source,stamp){
   const keypoints=source.rawKeypoints?source.rawKeypoints.map(p=>({...p})):toCoco133(source.points,activeBody.coco133_indices||COCO59);
-  if(source.face?.valid&&performance.now()-source.lastFace<300){const score=source.faceRoiConfidence||.3;source.face.points.forEach((p,i)=>keypoints[23+i]={id:23+i,x:p.x,y:p.y,score,observable:true,source:'observedFace2D'});if(!keypoints[0]?.modelPosition)keypoints[0]={id:0,x:source.face.nose.x,y:source.face.nose.y,score,observable:true};for(const [id,lo,hi] of [[1,42,48],[2,36,42]]){if(keypoints[id]?.modelPosition)continue;const ps=source.face.points.slice(lo,hi);keypoints[id]={id,x:ps.reduce((s,p)=>s+p.x,0)/ps.length,y:ps.reduce((s,p)=>s+p.y,0)/ps.length,score,observable:true,derived:true};}}
-  const sync=sourceSync[source.id];
-  return {sourceId:source.id,inputMode:'wholebody',targetVersion:$('model-choice').value,timestampMs:stamp+(finite(sync?.offsetMs)?sync.offsetMs:0),imageSize:{width:source.video.videoWidth,height:source.video.videoHeight},keypoints,learned3D:source.decoded3D?{confidence:source.decoded3D.confidence,rootFit:source.decoded3D.rootFit}:null,timeUncertaintyMs:sync?.confirmed===true&&finite(sync.uncertaintyMs)?sync.uncertaintyMs:1000};
+  if(source.face?.valid&&performance.now()-source.lastFace<300){const score=source.faceRoiConfidence||.3,observedAtMs=source.faceObservedAtMs??stamp;source.face.points.forEach((p,i)=>keypoints[23+i]={id:23+i,x:p.x,y:p.y,score,observable:true,source:'observedFace2D',observedAtMs});if(!keypoints[0]?.modelPosition)keypoints[0]={id:0,x:source.face.nose.x,y:source.face.nose.y,score,observable:true,observedAtMs};for(const [id,lo,hi] of [[1,42,48],[2,36,42]]){if(keypoints[id]?.modelPosition)continue;const ps=source.face.points.slice(lo,hi);keypoints[id]={id,x:ps.reduce((s,p)=>s+p.x,0)/ps.length,y:ps.reduce((s,p)=>s+p.y,0)/ps.length,score,observable:true,derived:true,observedAtMs};}}
+  const sync=sourceSync[source.id],offset=finite(sync?.offsetMs)?sync.offsetMs:0;
+  if(offset)for(const point of keypoints){if(finite(point.observedAtMs))point.observedAtMs+=offset;if(finite(point.depthObservedAtMs))point.depthObservedAtMs+=offset;}
+  return {sourceId:source.id,inputMode:'wholebody',targetVersion:$('model-choice').value,timestampMs:stamp+offset,imageSize:{width:source.video.videoWidth,height:source.video.videoHeight},keypoints,learned3D:source.decoded3D?{confidence:source.decoded3D.confidence,rootFit:source.decoded3D.rootFit}:null,timeUncertaintyMs:sync?.confirmed===true&&finite(sync.uncertaintyMs)?sync.uncertaintyMs:1000};
 }
 function poseFor(source){
   const o=source.observation,options={bodyHeightM:Number($('height').value),scaleConfirmed:$('height-confirm').checked,minScore:Number($('confidence').value),priorPose:source.stabilizer.priorPose,allowApproximateCalibration:false};
@@ -202,7 +203,7 @@ async function processFrame(source,token){
   else{source.points=null;source.observation=null;}
   if((mode==='face'||mode==='wholebody'&&$('face-enabled').checked)&&start-source.lastFace>=100){
     const candidate=usableRoi(mode==='face'?{roi,confidence:1}:faceRoiFrom59(source.points),source,24);
-    if(candidate){source.face=await parts.runFace(source.frame,candidate.roi,{roiConfidence:candidate.confidence,calibration:neutralFace});didInference=true;source.faceRoiConfidence=candidate.confidence;limitedPush(partTimes,source.face.inferenceMs);source.lastFace=performance.now();}else source.face=null;
+    if(candidate){source.face=await parts.runFace(source.frame,candidate.roi,{roiConfidence:candidate.confidence,calibration:neutralFace});source.faceObservedAtMs=stamp;didInference=true;source.faceRoiConfidence=candidate.confidence;limitedPush(partTimes,source.face.inferenceMs);source.lastFace=performance.now();}else source.face=null;
   }
   if((mode==='foot'||mode==='wholebody'&&$('foot-enabled').checked)&&start-source.lastFoot>=200){
     for(const side of (mode==='foot'?['left']:['left','right'])){

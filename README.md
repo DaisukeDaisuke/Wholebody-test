@@ -4,25 +4,25 @@ VRC向けに必要な関節と表情へ絞った軽量モデルの研究PoC。�
 
 ## 現行版の構成
 
-採用モデルは精度を維持した標準Compact59。最初の低解像度・縮小head実験はCPU時間を減らしたが、独立testでPCK@0.05が約9.9ポイント低下したため不採用とした。実験モデルは比較用の記録として残し、既定モデルへ自動昇格させない。
+既定構成は標準Compact59のXY認識と、低頻度の学習済み3D奥行き。単独3DモデルのXYが元の59点より不正確だったため、信頼できる現在の59点XYを維持する。最初の低解像度・縮小head実験は独立testでPCK@0.05が約9.9ポイント低下し、今回のINT8も手が約5.33ポイント低下したため不採用。実験候補は既定へ昇格させない。
 
-次の学習はColabのCUDA GPUで行う。既存の学習済みheadを維持した小さい入力の候補と、標準59点のINT8候補を比較する。過去実験の画像IDをvalidation/testから除外し、画像キャッシュは返却ZIPへ入れない。GPUでのPyTorch推論とCPUでのONNX推論を別の測定として記録する。
+返却されたColab ZIPは学習失敗のJSONだけで、ONNX・checkpointがなく、破棄された環境の重みは復元できない。返却処理を修正し、途中の回復ONNX・checkpoint、失敗診断、非0終了をActionsで確認した。新しいGPU学習に成功したとは扱わない。
 
 Hugging Faceへの公開とヘッドレスNode.js推論は `compact.yml` で行う。`HF_TOKEN` はActionsの公開ステップだけに渡す。ブラウザとNodeは、公開された重みの固定commit SHAを指定したHFの `/resolve/` URLから認証なしで取得し、SHA-256を検証する。Sitesには重みを同梱しない。`fast59.yml` の長時間CPU学習は自動起動を止めた。
 
-動画とVRMは常に横並び。単眼では胴体の画像平面上の傾きを反映し、観測できないyaw/pitch・絶対root移動を抑制する。範囲外・不自然な骨長・時間跳躍を除外し、腰や肩が見えなくても可視の前腕・下腿は残す。部位単位の短い保持と腕を下げた待機姿勢への復帰、再検出の連続確認、角速度制限を行う。観測がない点をトラッカーの新しい観測として送らない。
+動画とVRMは常に横並び。単眼の身体には学習済み相対XYZを反映し、現在のXYと合わせた透視投影から相対root移動を推定する。未校正の絶対位置を計測済みトラッカーとして送らない。観測できた点、消えた点、駆動できたボーンを別に数える。短い表示保持や角速度制限で回転量が減っても、それを認識精度の改善とは扱わない。
 
-推論はCPU/WASM・全身15Hzが既定で、全身の頻度とWebGPU利用を変更できる。顔はCPU/WASMで最大10Hz、足はCPU/WASMで最大5Hz、有効な領域があるときだけ推論する。VRMは30Hzで1回だけ更新し、一時停止中は視点の変更時だけ再描画する。15Hzは実Node検証と同じ頻度であり、1回のモデル推論時間を短縮したこととは区別する。
+既定構成はCPU/WASMで、59点最大15Hz、奥行き最大5Hz、ロスト時の人物再検出最大2Hz。顔は最大10Hz、足は最大5Hzで有効な領域があるときだけ推論する。VRMは30Hzで更新する。2D比較モードではWebGPUも選べる。頻度制限と1回の推論時間、CPU時間とGPU使用率は区別する。
 
 ## Colab GPU 学習
 
-[GPUノートブックを開く](https://colab.research.google.com/github/DaisukeDaisuke/Wholebody-test/blob/8cae0c0b9243628a3910060a0bdc09d8b04b13e8/colab/VRC_Compact59_GPU_7fe4fac1.ipynb)。学習用ZIPを選択し、GPUランタイムですべてのセルを実行する。2種類の低解像度backbone候補を4000 stepずつ学習し、元解像度を保つINT8候補も2種類比較する。詳しい構成は[colab/README-ja.md](colab/README-ja.md)。返却ファイル名は `VRC_Compact59_Colab_Result_7fe4fac1.zip`。
+[修正版GPUノートブックを開く](https://colab.research.google.com/github/DaisukeDaisuke/Wholebody-test/blob/8cda5c69dcef8c1dde62f3ef91b2fa50ceac3696/colab/VRC_Compact59_GPU_7fe4fac1.ipynb)。修正版学習用ZIPを選び、表示されたstep・batch・microbatchで実行する。途中のONNXとcheckpointも回収し、完了条件を満たす返却は `VRC_Compact59_Colab_Result_7fe4fac1.zip`、失敗時は `VRC_Compact59_Colab_Diagnostic_7fe4fac1.zip` と区別する。詳しい構成は[colab/README-ja.md](colab/README-ja.md)。
 
-[Actions run 41394188181](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41394188181) で、Python 3.13の依存導入、実画像での短い学習更新、ONNX書き出しと数値照合、INT8校正と推論まで確認済み。これはCPUでの実行確認であり、本番のCUDA学習や精度達成を意味しない。
+[Actions run 41398850065](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41398850065) で、CPUの実学習・ONNX書き出し・INT8校正と、失敗時の回復ONNX回収・非0終了まで確認した。これは完全なCUDA学習や新モデルの精度達成を意味しない。
 
 ## 実動画とVRMの検証
 
-[Actions run 41394715364](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41394715364) で、公式公開動画10秒・150フレームを実際に推論し、実VRMを299回更新した。同じ観測からの旧版比較で、骨ローカル回転変化のp95は19.485°/frameから1.753°/frame、最大は180°から30°となった。149描画フレームで観測骨の駆動を保持している。詳細・測定範囲は[RESULTS.md](RESULTS.md)。
+以前の骨ローカル回転p95の減少を「安定性・追従の改善」とした評価は撤回した。認識できずに骨が動かなくなっても回転量は減る。新しい評価は、現在の可視関節、実際に駆動した四肢、ロスト継続、動作の保持を全身・部分表示で分け、正解ラベルに対する2D精度も別に測る。実行がsuccessでも品質の `deploymentReadiness.passed` がfalseなら合格とはしない。最新の数値・未達条件は[RESULTS.md](RESULTS.md)に記載する。
 
 非公開動画はActionsの入力secretが未設定のため未実行。公開動画の結果をその代わりとは扱わない。新しいGPU候補もColabの本学習結果が戻るまで採用しない。
 
@@ -46,7 +46,7 @@ PCK@0.05は192×256人物切り抜き上の距離12.8px以内を正解とする�
 
 ## 使い方
 
-Sitesの専用URLでローカル動画を選ぶ。全身が小さい映像は人物の範囲をドラッグで囲む。「足のアップ」では片足を囲んで足裏・甲・側面を分類する。「顔のアップ」では顔を囲んで表情を読む。モデルを読み込んで開始し、画面下の実測fps・全身推論ms・全処理p95を確認する。
+Sitesの専用URLでローカル動画を選ぶ。全身が小さい映像は人物の範囲をドラッグで囲む。「足のアップ」では片足を囲んで足裏・甲・側面を分類する。「顔のアップ」では顔を囲んで表情を読む。モデルを読み込んで開始し、画面下の実測fps・全身推論ms・推論処理p95を確認する。GPU描画を含む総遅延とは区別する。
 
 端末内のVRMを選ぶと、検出骨格と目閉じ・口開きを反映する。付属アバターやダミー動作は同梱しない。ずんだもん公式モデルは https://booth.pm/ja/items/3733351 から利用規約を確認して取得できる。
 

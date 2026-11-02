@@ -41,9 +41,10 @@ function parseArgs(argv) {
 
 function createReplay(rig, kind) {
   const filter = new PoseStabilizer(), rawCounts = [], acceptedCounts = [], drivenCounts = [], activeFrameAngles = [], targetErrors = [], depthSpreads = [];
-  const boneStats = Object.fromEntries(Object.keys(LIMBS).map(name => [name, { targetFrames: 0, candidateFrames: 0, drivenFrames: 0, retargetStates: {}, targetDirectionRangeDeg: 0, renderedDirectionRangeDeg: 0, firstTarget: null, firstRendered: null }]));
-  const funnel = Object.fromEntries(BODY.map(id => [id, { rawVisibleFrames: 0, observationAcceptedFrames: 0, geometryPositionFrames: 0, stabilizedPositionFrames: 0, learnedDepthFrames: 0, observationRejections: {}, geometryRejections: {}, stability3DRejections: {} }]));
+  const boneStats = Object.fromEntries(Object.keys(LIMBS).map(name => [name, { targetFrames: 0, candidateFrames: 0, drivenFrames: 0, shortGapResumes: 0, shortGapElapsedMs: [], cachedCandidateFrames: 0, cachedObservationPromotions: 0, repeatedSampleConfirmationAdvances: 0, retargetStates: {}, targetDirectionRangeDeg: 0, renderedDirectionRangeDeg: 0, firstTarget: null, firstRendered: null }]));
+  const funnel = Object.fromEntries(BODY.map(id => [id, { rawVisibleFrames: 0, observationAcceptedFrames: 0, geometryPositionFrames: 0, stabilizedPositionFrames: 0, learnedDepthFrames: 0, shortGapResumedFrames: 0, avoidedEnterMarginFrames: 0, shortGapElapsedMs: [], observationRejections: {}, geometryRejections: {}, stability3DRejections: {} }]));
   const rootFitReasons = {}, previewRootReasons = {};
+  let cachedPointResumptions = 0;
   let previous = null, pose = null, rawPose = null, longestLost = 0, lostRun = 0, lostFrames = 0, renderFrames = 0, rootValidFrames = 0;
   const roots = [[], [], []], jointRanges = Array.from({ length: 3 }, () => ({ min: Infinity, max: -Infinity }));
   let finiteTransforms = true, atLeastFour = 0, atLeastSix = 0, allEight = 0;
@@ -66,6 +67,11 @@ function createReplay(rig, kind) {
       if (geometric) item.geometryPositionFrames++; else if (accepted) increment(item.geometryRejections, estimated.joints[id]?.reason);
       if (stabilized) item.stabilizedPositionFrames++; else if (geometric) increment(item.stability3DRejections, pose.joints[id]?.reason);
       if (pose.joints[id]?.modelRelativeZ && stabilized) item.learnedDepthFrames++;
+      if (filtered.keypoints[id]?.shortGapResumed) {
+        item.shortGapResumedFrames++; item.shortGapElapsedMs.push(filtered.keypoints[id].shortGapElapsedMs);
+        if (filtered.keypoints[id].avoidedEnterMargin) item.avoidedEnterMarginFrames++;
+        if (Math.abs(filtered.keypoints[id].observedAtMs - timestampMs) > 1e-6) cachedPointResumptions++;
+      }
     }
     if (isLearned) {
       increment(rootFitReasons, decoded?.rootFit?.valid ? 'valid' : decoded?.rootFit?.reason || 'unavailable');
@@ -91,6 +97,13 @@ function createReplay(rig, kind) {
     for (const [name, [a, b, childName]] of Object.entries(LIMBS)) {
       const bone = result.bones[name], state = boneStats[name];
       if (bone?.lastCandidateMs === pose.observationTimestampMs) state.candidateFrames++;
+      if (bone?.shortGapResumed) { state.shortGapResumes++; state.shortGapElapsedMs.push(bone.shortGapElapsedMs); }
+      const priorBone = previous?.bones?.[name];
+      if (finite(bone?.lastCandidateMs) && bone.lastCandidateMs === priorBone?.lastCandidateMs && bone.recoveryCount > (priorBone?.recoveryCount || 0)) state.repeatedSampleConfirmationAdvances++;
+      if (finite(bone?.observedAtMs) && bone.observedAtMs < pose.observationTimestampMs - 1e-6) {
+        state.cachedCandidateFrames++;
+        if (bone.observed && previous?.bones?.[name]?.observed !== true) state.cachedObservationPromotions++;
+      }
       const trackingState = bone?.trackingState || 'noBone'; state.retargetStates[trackingState] = (state.retargetStates[trackingState] || 0) + 1;
       finiteTransforms &&= !!bone && Array.isArray(bone.rotation) && bone.rotation.every(finite) && Array.isArray(bone.worldRotation) && bone.worldRotation.every(finite);
       const first = rawPose.joints[a], second = rawPose.joints[b];
@@ -107,7 +120,8 @@ function createReplay(rig, kind) {
     previous = result; return result;
   }
   function finish() {
-    const boneDetails = Object.fromEntries(Object.entries(boneStats).map(([name, state]) => { const { firstTarget, firstRendered, ...rest } = state; return [name, { ...rest, trackingCoverageOfTargetFrames: state.targetFrames ? state.drivenFrames / state.targetFrames : null }]; }));
+    const boneDetails = Object.fromEntries(Object.entries(boneStats).map(([name, state]) => { const { firstTarget, firstRendered, shortGapElapsedMs, ...rest } = state; return [name, { ...rest, shortGapElapsedMs: stats(shortGapElapsedMs), trackingCoverageOfTargetFrames: state.targetFrames ? state.drivenFrames / state.targetFrames : null }]; }));
+    const funnelSummary = Object.fromEntries(Object.entries(funnel).map(([id, item]) => { const { shortGapElapsedMs, ...rest } = item; return [id, { ...rest, shortGapElapsedMs: stats(shortGapElapsedMs) }]; }));
     const moving = Object.keys(boneDetails).filter(name => boneDetails[name].targetFrames >= 12 && boneDetails[name].targetDirectionRangeDeg >= 12);
     const retained = moving.filter(name => boneDetails[name].renderedDirectionRangeDeg >= 4 && boneDetails[name].trackingCoverageOfTargetFrames >= .3);
     const rootRanges = roots.map(values => values.length ? Math.max(...values) - Math.min(...values) : null);
@@ -122,7 +136,12 @@ function createReplay(rig, kind) {
         allMovingInputBonesRetained: moving.length > 0 && retained.length === moving.length, anyMovingInputBoneRetained: retained.length > 0, bones: boneDetails, isGroundTruthAccuracy: false },
       depth: { learned3D: isLearned, jointZSpread: stats(depthSpreads), modelJointAxisRanges: jointRanges.map(v => finite(v.min) && finite(v.max) ? v.max - v.min : null),
         validRootFrames: rootValidFrames, validRootFraction: rawCounts.length ? rootValidFrames / rawCounts.length : 0, estimatedRootAxisRanges: rootRanges, absoluteDistanceGroundTruth: false },
-      funnel: { body13: funnel, rootFitReasons, previewRootReasons, interpretation: 'Per-joint aggregate counts through raw image observation, image gates, geometry and 3D stability. Bone candidate/observed counts and retarget states are in movement.bones; no coordinates or frame traces are retained.' }, finiteTransforms };
+      funnel: { body13: funnelSummary, rootFitReasons, previewRootReasons, interpretation: 'Per-joint aggregate counts through raw image observation, image gates, geometry and 3D stability. Bone candidate/observed counts and retarget states are in movement.bones; no coordinates or frame traces are retained.' },
+      continuity: { maximumResumeWindowMs: 180, minimumImageConfidenceUnchanged: .25, initialOrLongLossEnterMarginUnchanged: .04,
+        pointResumes: Object.values(funnel).reduce((sum, p) => sum + p.shortGapResumedFrames, 0), avoidedEnterMargin: Object.values(funnel).reduce((sum, p) => sum + p.avoidedEnterMarginFrames, 0),
+        boneResumes: Object.values(boneStats).reduce((sum, b) => sum + b.shortGapResumes, 0), cachedPointResumptions,
+        cachedBonePromotions: Object.values(boneStats).reduce((sum, b) => sum + b.cachedObservationPromotions, 0),
+        repeatedSampleConfirmationAdvances: Object.values(boneStats).reduce((sum, b) => sum + b.repeatedSampleConfirmationAdvances, 0), actualObservationTimestampUsed: true }, finiteTransforms };
   }
   return { observe, render, finish };
 }
@@ -327,7 +346,8 @@ async function main(options) {
     const mechanics = rootMechanics(rig), current = tracking.hybrid59Depth;
     const executionChecks = { actualDecodedFrames: count >= options.minFrames, allThreeModelsRunAtScheduledRates: models.every(model => model.inference.length === (model.role === 'pose3d' ? Math.ceil(count / 3) : count)), actualDetectorInference: detector.inference.length > 0,
       detectorCadenceAtMost2Hz: detector.inference.length <= Math.ceil(count / options.fps * 2), actualVrmUpdates: actualVrmUpdates === count * 2, actualSpringUpdates: springUpdates >= actualVrmUpdates,
-      finiteActualVrm: transformsFinite, finiteRetarget: Object.values(tracking).every(result => result.finiteTransforms), perspectiveRootMechanics: mechanics.passed };
+      finiteActualVrm: transformsFinite, finiteRetarget: Object.values(tracking).every(result => result.finiteTransforms), perspectiveRootMechanics: mechanics.passed,
+      noCachedObservationPromotion: [tracking, ...Object.values(partial).map(item => item.tracking)].every(results => Object.values(results).every(result => result.continuity.cachedPointResumptions === 0 && result.continuity.cachedBonePromotions === 0 && result.continuity.repeatedSampleConfirmationAdvances === 0)) };
     const readinessChecks = { acceptedBodyMeanAtLeast7Of13: current.acceptedBody13.mean >= 7,
       atLeast4TrackedLimbsOn60PercentOfRenderFrames: current.tracking.fractionWithAtLeast4Limbs >= .6,
       rawMovingInputRetained: current.movement.allMovingInputBonesRetained,

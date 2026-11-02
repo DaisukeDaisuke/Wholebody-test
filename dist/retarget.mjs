@@ -71,7 +71,10 @@ function quality(joints) {
   if (!joints.length) return { source: 'missing', score: 0, ageMs: Infinity };
   const rank = s => SOURCE_ORDER.includes(s) ? SOURCE_ORDER.indexOf(s) : SOURCE_ORDER.length;
   const source = joints.map(j => j?.source || 'missing').sort((a, b) => rank(b) - rank(a))[0];
-  return { source, score: Math.min(...joints.map(j => Number.isFinite(j?.score) ? clamp(j.score, 0, 1) : 0)), ageMs: Math.max(...joints.map(j => Number.isFinite(j?.ageMs) ? j.ageMs : 0)) };
+  const observationTimes = joints.map(j => j?.observedAtMs);
+  return { source, score: Math.min(...joints.map(j => Number.isFinite(j?.score) ? clamp(j.score, 0, 1) : 0)), ageMs: Math.max(...joints.map(j => Number.isFinite(j?.ageMs) ? j.ageMs : 0)),
+    observedAtMs: observationTimes.every(Number.isFinite) ? Math.min(...observationTimes) : null,
+    continuityEligible: joints.every(j => j?.continuityEligible === true) };
 }
 function jointReader(pose, options) {
   return id => {
@@ -132,7 +135,7 @@ export function neutralPoseForRig(rig, { relaxedArmAngleDeg = 10 } = {}) {
  * actualLocalQuaternion = outputDelta * restLocalQuaternion, not the reverse.
  */
 export function retargetPose(pose, rig, options = {}) {
-  const opts = { minScore: .1, maxJointAgeMs: 180, smoothingMs: 45, holdMs: 140, neutralMs: 650, reacquireFrames: 2, maxRootSpeed: 2, relaxedArmAngleDeg: 10, ...options };
+  const opts = { minScore: .1, maxJointAgeMs: 180, smoothingMs: 45, holdMs: 140, neutralMs: 650, reacquireFrames: 2, resumeGapMs: 180, maxRootSpeed: 2, relaxedArmAngleDeg: 10, ...options };
   const { bones: rest, order } = rigData(rig), read = jointReader(pose, opts);
   const neutralRotations = relaxedNeutralRotations(rest, opts.relaxedArmAngleDeg);
   const inputKey = `${pose?.inputMode || ''}:${pose?.sourceId || ''}:${pose?.targetVersion ?? ''}:${pose?.coordinateFrame || ''}:${pose?.worldCalibrationId || ''}:${pose?.units || ''}`;
@@ -290,11 +293,21 @@ export function retargetPose(pose, rig, options = {}) {
     }
     const old = previous?.bones?.[name], neutralRotation = neutralRotations[name], oldDelta = vec(old?.rotation, 4) ? old.rotation : neutralRotation;
     const fresh = !!target && observationFresh && target.ageMs <= opts.maxJointAgeMs;
-    const newMeasurement = fresh && (!Number.isFinite(old?.lastCandidateMs) || measuredAt > old.lastCandidateMs);
+    const actualMeasurementAt = Number.isFinite(target?.observedAtMs) ? Math.min(measuredAt, target.observedAtMs) : measuredAt - (target?.ageMs || 0);
+    const currentMeasurement = fresh && Math.abs(actualMeasurementAt - measuredAt) < 1e-6;
+    const newMeasurement = fresh && (!Number.isFinite(old?.lastCandidateMs) || actualMeasurementAt > old.lastCandidateMs);
     const wasTracking = old?.trackingState === 'tracking' && Number.isFinite(old.lastObservedMs) && now - old.lastObservedMs <= opts.maxJointAgeMs;
-    const recoveryCount = fresh ? wasTracking ? opts.reacquireFrames : (old?.recoveryCount || 0) + (newMeasurement ? 1 : 0) : 0;
-    const observed = fresh && recoveryCount >= opts.reacquireFrames;
-    const lastObservedMs = observed ? measuredAt : old?.lastObservedMs ?? null;
+    const priorActualAt = old?.lastActualObservedMs ?? old?.lastObservedMs, actualGap = actualMeasurementAt - priorActualAt;
+    // Image gates already confirmed normal displacement for every endpoint.
+    // Resume a short gap once, instead of adding a second two-frame wait here.
+    // Repeated cached depth XY cannot satisfy currentMeasurement or advance
+    // newMeasurement, and a jump/long gap retains the ordinary confirmation.
+    const shortGapResumed = !wasTracking && currentMeasurement && target.continuityEligible === true &&
+      Number.isFinite(priorActualAt) && actualGap > 0 && actualGap <= Math.min(180, opts.resumeGapMs) && vec(old?.lastObservedRotation, 4);
+    const pendingRecovery = (old?.recoveryCount || 0) < opts.reacquireFrames ? old?.recoveryCount || 0 : 0;
+    const recoveryCount = fresh ? wasTracking || shortGapResumed ? opts.reacquireFrames : pendingRecovery + (newMeasurement ? 1 : 0) : 0;
+    const observed = fresh && recoveryCount >= opts.reacquireFrames && (wasTracking || currentMeasurement);
+    const lastObservedMs = observed ? actualMeasurementAt : old?.lastObservedMs ?? null;
     const age = Number.isFinite(lastObservedMs) ? Math.max(0, now - lastObservedMs) : Infinity;
     let desired, trackingState, neutralWeight = 0;
     if (observed) {
@@ -324,7 +337,9 @@ export function retargetPose(pose, rig, options = {}) {
       source: observed ? target.source : trackingState === 'holding' ? 'held' : trackingState === 'returning' ? 'returningToNeutral' : 'missing',
       observationSource: observed ? target.source : old?.observationSource || null,
       score: observed ? target.score : 0, ageMs: Number.isFinite(age) ? age : null,
-      trackingState, recoveryCount, lastCandidateMs: fresh ? measuredAt : old?.lastCandidateMs ?? null,
+      trackingState, recoveryCount, lastCandidateMs: fresh ? actualMeasurementAt : old?.lastCandidateMs ?? null,
+      shortGapResumed: !!shortGapResumed && observed, shortGapElapsedMs: shortGapResumed && observed ? actualGap : null,
+      lastActualObservedMs: observed ? actualMeasurementAt : old?.lastActualObservedMs ?? old?.lastObservedMs ?? null,
       lastObservedMs, lastObservedRotation: observed ? delta.slice() : old?.lastObservedRotation || null,
       neutralWeight, neutralRotation, rotation: delta, worldRotation: solved[name] };
   }
