@@ -2,7 +2,7 @@ name: Causal BootsTAPIR conversion and numerical comparison
 on:
   push:
     branches: [main, phase3-20261102-4fc7ff60]
-    paths: ['evaluation/tapir-*.py', 'dist/tapir-codec.mjs', '.github/workflows/tapir.yml']
+    paths: ['evaluation/tapir-export.py', 'dist/tapir-codec.mjs']
   workflow_dispatch:
 permissions:
   contents: read
