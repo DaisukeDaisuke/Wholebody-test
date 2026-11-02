@@ -7,6 +7,7 @@ gradient-update images, is excluded from the new validation and test sets.
 """
 
 import argparse
+import copy
 import importlib.util
 import json
 import math
@@ -14,7 +15,10 @@ import os
 from pathlib import Path
 import platform
 import random
+import re
+import sys
 import time
+import traceback
 
 import cv2
 import numpy as np
@@ -133,6 +137,68 @@ def prepare_splits(args):
     train = download_records(records(train_pool), args.train_count, args.cache)
     validation = download_records(records(val_pool), args.val_count, args.cache)
     return train, validation, records(test_pool), previous_ids
+
+
+def save_shared_split(args, train, validation, test_pool, previous_ids):
+    """Seal public test IDs before training; no test pixels are read here.
+
+    The INT8 experiment can use this same split even if GPU training fails.
+    Replacing a missing test image with a different test image is disallowed.
+    """
+    test = test_pool[:args.test_count]
+    split = {"protocol": "fresh image-disjoint train/validation/test; test never used for selection",
+             "seed": args.seed, "annotation_url": ANNOTATION_URL, "annotation_sha256": ANNOTATION_SHA256,
+             "smoke_test_only": args.smoke_test,
+             "excluded_split_sha256": [sha256(path) for path in args.exclude_split],
+             "image_url_template": "https://s3.amazonaws.com/images.cocodataset.org/val2017/{image_id:012d}.jpg",
+             "previous_experiment_excluded_from_validation_and_test": sorted(previous_ids),
+             "images_or_private_video_in_artifact": False}
+    for name, records in (("train", train), ("validation", validation), ("test", test), ("evaluation", test)):
+        split[name + "_image_ids"] = [record["image"]["id"] for record in records]
+        split[name + "_annotation_ids"] = [record["annotation"]["id"] for record in records]
+    path = args.output / "public-split.json"
+    if path.is_file() and json.loads(path.read_text(encoding="utf-8")) != split:
+        raise ValueError("An existing sealed split differs; preserve it and use a fresh experiment directory")
+    write_json(path, split)
+    return test
+
+
+def save_recovery(model, args, config, step, stage, best_step=None, best_state=None):
+    """Persist actual weights and executable ONNX before/through training.
+
+    Recovery artifacts are explicitly non-production. They do not assert that
+    an incomplete checkpoint passes the final accuracy gate, and are kept out
+    of the normal model publisher. A CPU copy avoids moving live CUDA state.
+    """
+    directory = args.output / "recovery"
+    directory.mkdir(exist_ok=True)
+    name = config["id"]
+    state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+    receipt = {"schema": "vrc-training-recovery-v1", "candidate": name, "config": config,
+               "completed_steps": step, "stage": stage, "best_validation_step": best_step,
+               "production_eligible": False, "test_accuracy_claimed": False,
+               "resume_mode": "weights_only_fine_tuning; optimizer_state_not_saved",
+               "source_commit": os.environ.get("GITHUB_SHA") or os.environ.get("VRC_SOURCE_COMMIT"),
+               "baseline_checkpoint_sha256": sha256(args.baseline_checkpoint),
+               "effective_batch_size": args.batch_size, "micro_batch_size": args.micro_batch_size}
+    checkpoint = directory / (name + ".pth")
+    temporary_checkpoint = directory / (name + ".pending.pth")
+    torch.save({"state_dict": state, "config": config, "recovery": receipt,
+                "best_state_dict": best_state,
+                "architecture": "physical-grid-aligned-original-head-v2"}, temporary_checkpoint)
+    temporary_checkpoint.replace(checkpoint)
+    # A separate file is atomically replaced only after ONNX validation.
+    exported = directory / (name + ".onnx")
+    temporary_onnx = directory / (name + ".pending.onnx")
+    cpu_model = copy.deepcopy(model).cpu().eval()
+    export_model(cpu_model, temporary_onnx, config["width"], config["height"])
+    temporary_onnx.replace(exported)
+    receipt["files"] = [{"path": path.name, "bytes": path.stat().st_size, "sha256": sha256(path)}
+                        for path in (checkpoint, exported)]
+    write_json(directory / (name + ".json"), receipt)
+    del cpu_model
+    print(json.dumps({"recovery_saved": name, "completed_steps": step,
+                      "production_eligible": False}), flush=True)
 
 
 def public_crop(record, width=192, height=256, jitter=None):
@@ -267,8 +333,8 @@ def train_candidate(model, train, validation, args, config):
     warm_features = []
     model.eval()
     with torch.inference_mode():
-        for start in range(0, len(inputs), args.batch_size):
-            warm_features.append(model.aligned_features(inputs[start:start + args.batch_size].to(device)).cpu())
+        for start in range(0, len(inputs), args.micro_batch_size):
+            warm_features.append(model.aligned_features(inputs[start:start + args.micro_batch_size].to(device)).cpu())
     warm_features = torch.cat(warm_features)
     generator = torch.Generator().manual_seed(args.seed + 17)
     curve, validations = [], []
@@ -276,7 +342,7 @@ def train_candidate(model, train, validation, args, config):
 
     def validate(step):
         nonlocal best_score, best_state, best_step
-        measured = accuracy(predict(model, val_inputs, args.batch_size), validation["labels"])
+        measured = accuracy(predict(model, val_inputs, args.micro_batch_size), validation["labels"])
         score = selection_score(measured)
         record = {"step": step, "selection_score": score, "accuracy": measured}
         validations.append(record)
@@ -301,30 +367,47 @@ def train_candidate(model, train, validation, args, config):
             del warm_features
         model.train()
         indices = torch.randint(len(inputs), (args.batch_size,), generator=generator)
-        labels = train["labels"][indices].to(device)
-        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=args.amp):
-            if step < warm_steps:
-                features = warm_features[indices].to(device)
-                feature_loss = torch.zeros((), device=device)
-            else:
-                features = model.aligned_features(inputs[indices].to(device))
-                desired = train["teacher_features"][indices].to(device=device, dtype=torch.float32)
-                feature_loss = F.mse_loss(features.float(), desired) / desired.square().mean().clamp_min(.01)
-            px, py = model.head(features)
-        # Norm/softmax targets and losses stay FP32, including optional AMP runs.
-        px, py = px.float(), py.float()
-        labelled = (labels[..., 2] > 0).float()
-        weights = .2 + .8 * labelled
-        kd = (distribution_loss(px, teacher_x[indices].to(device), weights) +
-              distribution_loss(py, teacher_y[indices].to(device), weights)) / 2
-        gx = gaussian(labels, 384, 0, 1, 4.9)
-        gy = gaussian(labels, 512, 1, 1, 5.66)
-        ground_truth = (distribution_loss(px, gx, labelled) + distribution_loss(py, gy, labelled)) / 2
-        loss = args.kd_weight * kd + (1 - args.kd_weight) * ground_truth + .05 * feature_loss
-        if not bool(torch.isfinite(loss)):
-            raise ValueError("Non-finite training loss; no result will be approved")
         optimizer.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        totals = {"loss": 0., "distillation": 0., "label_loss": 0., "feature_loss": 0.}
+        effective_labelled = (train["labels"][indices, :, 2] > 0).float()
+        labelled_denominator = max(1., float(effective_labelled.sum()))
+        kd_denominator = float((.2 + .8 * effective_labelled).sum())
+        feature_denominator = (float(train["teacher_features"][indices].float().square().mean())
+                               if step >= warm_steps else 1.)
+        # BATCH_SIZE controls an optimizer update, not one GPU allocation.
+        # Validation and warm-feature extraction have the same bounded batch.
+        for offset in range(0, args.batch_size, args.micro_batch_size):
+            micro = indices[offset:offset + args.micro_batch_size]
+            contribution = len(micro) / args.batch_size
+            labels = train["labels"][micro].to(device)
+            with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=args.amp):
+                if step < warm_steps:
+                    features = warm_features[micro].to(device)
+                    feature_loss = torch.zeros((), device=device)
+                else:
+                    features = model.aligned_features(inputs[micro].to(device))
+                    desired = train["teacher_features"][micro].to(device=device, dtype=torch.float32)
+                    feature_loss = F.mse_loss(features.float(), desired) / max(.01, feature_denominator)
+                px, py = model.head(features)
+            # Loss targets remain FP32 even when optional AMP is enabled.
+            px, py = px.float(), py.float()
+            labelled = (labels[..., 2] > 0).float()
+            weights = .2 + .8 * labelled
+            kd = (distribution_loss(px, teacher_x[micro].to(device), weights) +
+                  distribution_loss(py, teacher_y[micro].to(device), weights)) / 2
+            gx = gaussian(labels, 384, 0, 1, 4.9)
+            gy = gaussian(labels, 512, 1, 1, 5.66)
+            ground_truth = (distribution_loss(px, gx, labelled) + distribution_loss(py, gy, labelled)) / 2
+            kd_contribution = kd * (float(weights.sum()) / kd_denominator)
+            label_contribution = ground_truth * (float(labelled.sum()) / labelled_denominator)
+            feature_contribution = feature_loss * contribution
+            loss = args.kd_weight * kd_contribution + (1 - args.kd_weight) * label_contribution + .05 * feature_contribution
+            if not bool(torch.isfinite(loss)):
+                raise ValueError("Non-finite training loss; no result will be approved")
+            scaler.scale(loss).backward()
+            for key, value in (("loss", loss), ("distillation", kd_contribution),
+                               ("label_loss", label_contribution), ("feature_loss", feature_contribution)):
+                totals[key] += float(value.detach())
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         stage_start = 0 if step < warm_steps else warm_steps
@@ -338,14 +421,15 @@ def train_candidate(model, train, validation, args, config):
         scaler.update()
         if step == 0 or (step + 1) % 100 == 0:
             record = {"candidate": config["id"], "step": step + 1,
-                      "loss": float(loss.detach()), "distillation": float(kd.detach()),
-                      "label_loss": float(ground_truth.detach()),
-                      "feature_loss": float(feature_loss.detach()),
+                      **totals,
                       "stage": "head" if step < warm_steps else "full_model"}
             curve.append(record)
             print(json.dumps(record), flush=True)
         if step + 1 == warm_steps or (step + 1) % args.validation_interval == 0 or step + 1 == args.steps:
             validate(step + 1)
+        if step == 0 or (step + 1) % args.checkpoint_interval == 0 or step + 1 == args.steps:
+            save_recovery(model, args, config, step + 1,
+                          "head" if step < warm_steps else "full_model", best_step, best_state)
     model.load_state_dict(best_state, strict=True)
     model.eval()
     best_validation = next(record for record in validations if record["step"] == best_step)
@@ -445,6 +529,7 @@ def main():
     parser.add_argument("--execution-environment", choices=("auto", "actions", "colab"), default="auto")
     parser.add_argument("--amp", action="store_true", help="Optional CUDA mixed precision; default is FP32")
     parser.add_argument("--smoke-test", action="store_true", help="Actions-only non-production execution check")
+    parser.add_argument("--prepare-split-only", action="store_true", help="Seal public IDs without model training or test inference")
     parser.add_argument("--train-count", type=int, default=768)
     parser.add_argument("--val-count", type=int, default=128)
     parser.add_argument("--test-count", type=int, default=192)
@@ -452,6 +537,9 @@ def main():
     parser.add_argument("--warmup-steps", type=int, default=400)
     parser.add_argument("--validation-interval", type=int, default=400)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--micro-batch-size", type=int, default=8,
+                        help="Maximum images per CUDA allocation; larger effective batches accumulate gradients")
+    parser.add_argument("--checkpoint-interval", type=int, default=100)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261105)
     parser.add_argument("--head-learning-rate", type=float, default=2e-4)
@@ -464,17 +552,32 @@ def main():
         raise ValueError("Smoke execution requires at least 8 images per split and at most 8 steps")
     if args.steps <= args.warmup_steps or args.warmup_steps < 0 or args.validation_interval < 1 or args.batch_size < 1:
         raise ValueError("Full-model fine-tuning and a positive validation interval are required")
+    if args.batch_size > 256 or not 1 <= args.micro_batch_size <= 16 or args.checkpoint_interval < 1:
+        raise ValueError("Use batch_size 1..256 and micro_batch_size 1..16; the recommended settings are 32 and 8")
+    args.micro_batch_size = min(args.micro_batch_size, args.batch_size)
     args.output.mkdir(parents=True, exist_ok=True)
     args.cache.mkdir(parents=True, exist_ok=True)
     candidate_root = args.output / "candidates"
     candidate_root.mkdir(exist_ok=True)
     device, runtime = configure_runtime(args)
     started = time.perf_counter()
+    runtime.update({"effective_batch_size": args.batch_size, "micro_batch_size": args.micro_batch_size,
+                    "gradient_accumulation_steps": math.ceil(args.batch_size / args.micro_batch_size)})
+    print(json.dumps({"batch_plan": {key: runtime[key] for key in
+                      ("effective_batch_size", "micro_batch_size", "gradient_accumulation_steps")}}), flush=True)
+    train_records, val_records, test_pool, previous_ids = prepare_splits(args)
+    test_pool = save_shared_split(args, train_records, val_records, test_pool, previous_ids)
+    if args.prepare_split_only:
+        print(json.dumps({"public_split_sealed": True, "test_pixels_read": False}), flush=True)
+        return
     baseline, baseline_manifest = load_baseline(args.baseline_checkpoint)
+    for config in CANDIDATES:
+        initial = initialize_student(baseline, config)
+        save_recovery(initial, args, config, 0, "initialized_not_trained")
+        del initial
     baseline.to(device)
     checkpoint = fetch(TEACHER_URL, args.cache / "dw-tt_ucoco.pth", TEACHER_SHA256)
     teacher = load_teacher(checkpoint).to(device)
-    train_records, val_records, test_pool, previous_ids = prepare_splits(args)
     train = teacher_cache(teacher, baseline, train_records, True, args.seed)
     validation = teacher_cache(teacher, baseline, val_records, False, args.seed)
     teacher_val = accuracy((validation["teacher_x"], validation["teacher_y"]), validation["labels"])
@@ -553,7 +656,7 @@ def main():
         raise ValueError("The previous experiment overlaps validation/test")
     test = teacher_cache(teacher, baseline, test_records, False, args.seed)
     test_inputs = student_inputs(test, config)
-    selected_outputs = predict(model, test_inputs, args.batch_size)
+    selected_outputs = predict(model, test_inputs, args.micro_batch_size)
     model_path = args.output / "fast59.onnx"
     teacher_path = args.cache / "teacher133.onnx"
     full_images = image_examples(test_records, 192, 256)
@@ -591,6 +694,8 @@ def main():
                 "runtime": runtime,
                 "steps_per_candidate": args.steps, "warmup_head_steps": args.warmup_steps,
                 "full_model_steps": args.steps - args.warmup_steps, "batch_size": args.batch_size,
+                "micro_batch_size": args.micro_batch_size,
+                "gradient_accumulation_steps": math.ceil(args.batch_size / args.micro_batch_size),
                 "seed": args.seed, "distillation_weight": args.kd_weight,
                 "feature_distillation_weight": .05, "batchnorm_statistics_frozen": True,
                 "backbone_learning_rate": args.backbone_learning_rate,
@@ -682,4 +787,27 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        # Persist the concrete exception while the process still knows it.
+        # No raw environment, full traceback, image, or feature tensor enters
+        # the handoff; secret values/URLs/absolute paths are redacted.
+        message = re.sub(r"https?://\S+", "[url]", str(error))
+        message = re.sub(r"\b(?:hf_|ghp_|github_pat_)[A-Za-z0-9_]+", "[credential]", message)
+        message = re.sub(r"(?i)(token|password|secret|authorization)\s*[:=]\s*\S+", r"\1=[redacted]", message)
+        message = re.sub(r"(?<![A-Za-z0-9])/(?:[^\s/]+/)*[^\s/]+", "[path]", message)
+        category = "cuda_out_of_memory" if isinstance(error, torch.cuda.OutOfMemoryError) else "training_exception"
+        failure = {"schema": "vrc-training-failure-v1", "exceptionType": type(error).__name__,
+                   "category": category, "message": message[:3000],
+                   "frames": [{"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
+                              for frame in traceback.extract_tb(error.__traceback__)[-8:]],
+                   "privateInputsIncluded": False}
+        try:
+            output_arg = Path(sys.argv[sys.argv.index("--output") + 1]) if "--output" in sys.argv else Path("artifacts/fast59")
+            output_arg.mkdir(parents=True, exist_ok=True)
+            write_json(output_arg / "failure.json", failure)
+        except Exception:
+            pass
+        print(json.dumps({"training_failure": failure}), flush=True)
+        raise
