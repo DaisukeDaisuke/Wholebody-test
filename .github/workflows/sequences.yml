@@ -1,13 +1,5 @@
 name: Hand multiview and recorded motion evidence
 on:
-  push:
-    paths:
-      - 'scripts/evaluate-hanco.py'
-      - 'scripts/fetch_freemocap.py'
-      - 'scripts/verify-geometry.mjs'
-      - 'dist/geometry.js'
-      - 'dist/tracking.js'
-      - '.github/workflows/sequences.yml'
   workflow_dispatch:
 permissions:
   contents: read

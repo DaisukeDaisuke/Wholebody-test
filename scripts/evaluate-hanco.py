@@ -20,6 +20,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / ".evaluation-cache" / "hanco"
 SOURCE = "https://lmb.informatik.uni-freiburg.de/data/HanCo/HanCo_tester.zip"
+SOURCE_SHA256 = "ba3403b1997a06881341953de8d24d3e630169a9ef7b8bd279300bf10ef84603"
 SOURCE_PAGE = "https://lmb.informatik.uni-freiburg.de/resources/datasets/HanCo.en.html"
 SOURCE_CODE = "https://github.com/lmb-freiburg/contra-hand/blob/main/show_dataset.py"
 FPS = 5
@@ -47,6 +48,8 @@ def tester_archive(timeout=60):
             temporary.unlink(missing_ok=True)
     with path.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if digest != SOURCE_SHA256:
+        raise ValueError("HanCo tester differs from the source measured in the first Actions run")
     return path, {"url": SOURCE, "bytes": path.stat().st_size, "sha256": digest}
 
 
@@ -217,6 +220,135 @@ def summarize_errors(errors, np):
             "pck_10px": float(np.mean(values <= 10)) if len(values) else None}
 
 
+def save_and_evaluate(internal, public, report, out):
+    """The cached input alone contains calibration/reference coordinate arrays."""
+    out.mkdir(parents=True, exist_ok=True)
+    input_path = CACHE / "evaluation-input.json"
+    input_path.write_text(json.dumps(internal, allow_nan=False), encoding="utf-8")
+    (out / "observations.json").write_text(json.dumps(public, allow_nan=False), encoding="utf-8")
+    report_path = out / "report.json"
+    report["ok"] = False
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+    geometry_path = out / "geometry.json"
+    subprocess.run(["node", str(ROOT / "scripts" / "verify-geometry.mjs"), "--sequence-input", str(input_path),
+                    "--sequence-out", str(geometry_path)], cwd=ROOT, check=True, timeout=120)
+    report["geometry"] = json.loads(geometry_path.read_text(encoding="utf-8"))
+    report["ok"] = True
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+
+
+def reuse_observations(args):
+    """Re-score the exact earlier image predictions; never invoke a model.
+
+    Only the official archive supplies M/K and the MANO-fit scoring reference.
+    Pair selection is delegated to the product-JavaScript bridge, which sees
+    only model observations and cameras during the first ten warm-up frames.
+    """
+    import numpy as np
+
+    public = json.loads(args.reuse_observations.read_text(encoding="utf-8"))
+    previous = json.loads(args.reuse_report.read_text(encoding="utf-8"))
+    if public.get("schemaVersion") != 1 or public.get("dataset") != "HanCo Tester" or not previous.get("ok"):
+        raise ValueError("Re-use requires a successful HanCo tester artifact with schema 1 observations")
+    if previous.get("source", {}).get("sha256") != SOURCE_SHA256 or public.get("fps") != FPS:
+        raise ValueError("Previous observations do not use the pinned HanCo tester and 5 Hz timing")
+    path, source = tester_archive(args.timeout)
+    sequence = int(public["sequence"])
+    if args.sequence is not None and args.sequence != sequence:
+        raise ValueError("Requested sequence differs from the image-inference artifact")
+    indices = list(range(args.start, args.start + args.frames))
+    if indices != previous["dataset"]["frames"]:
+        raise ValueError("Re-use must retain the exact earlier frame interval")
+    by_name = {condition["name"]: condition for condition in public["conditions"]}
+    required = ["two_views", "eight_views", "two_views_one_image_masked", "eight_views_one_image_masked"]
+    if any(name not in by_name for name in required):
+        raise ValueError("The original fixed pair and masked/unmasked conditions must all be retained")
+    references, camera_maps, validated = {}, {}, []
+    native_bones = []
+    with zipfile.ZipFile(path) as archive:
+        _, _, _, views, metadata = archive_index(archive, sequence)
+        if views != list(range(8)):
+            raise ValueError("Eight HanCo candidate views are required for the placement diagnostic")
+        for ordinal, frame in enumerate(indices):
+            calibration = json.loads(archive.read(find_member(archive, f"calib/{sequence:04d}/{frame:08d}.json")))
+            camera_maps[frame] = {f"cam{view}": camera_contract(calibration, view, np) for view in views}
+            has_fit = metadata_flag(metadata, "has_fit", sequence, frame)
+            is_valid = has_fit and metadata_flag(metadata, "is_valid", sequence, frame)
+            reference = None
+            if has_fit:
+                reference = np.asarray(json.loads(archive.read(find_member(archive, f"xyz/{sequence:04d}/{frame:08d}.json"))), dtype=float)
+                if reference.shape != (21, 3) or not np.isfinite(reference).all():
+                    raise ValueError(f"Invalid HanCo reference at frame {frame}")
+                native_bones.append(float(np.linalg.norm(reference[9] - reference[0])))
+            if is_valid:
+                validated.append(ordinal)
+            references[frame] = ([{"id": 112 + joint, "xyz": point.tolist(), "valid": True}
+                                  for joint, point in enumerate(reference)] if is_valid else [])
+        eligible = [index for index in validated if index >= 2
+                    and all(metadata_flag(metadata, "has_fit", sequence, indices[index - back]) for back in [1, 2])]
+    if not eligible or indices[eligible[0]] != previous["artificial_all_view_gap"]["frame"]:
+        raise ValueError("The reference-selected gap differs from the first evaluation")
+    if not native_bones or not .02 < float(np.median(native_bones)) < .2:
+        raise ValueError("Reference sizes disagree with the inherited metre convention")
+    conditions = []
+    for name in required:
+        condition = by_name[name]
+        if [frame["index"] for frame in condition["frames"]] != indices:
+            raise ValueError(f"Re-used condition {name} has a different frame interval")
+        frames = []
+        expected_views = {"cam0", "cam3"} if name.startswith("two_views") else {f"cam{view}" for view in views}
+        for frame in condition["frames"]:
+            index = frame["index"]
+            time_ms = index * 1000 / FPS
+            if frame["timeMs"] != time_ms:
+                raise ValueError("The recorded inference timestamps differ from the dataset timing")
+            seen = set()
+            for point in frame["observations"]:
+                identity = (point["sourceId"], point["id"])
+                if (identity in seen or point["sourceId"] not in expected_views or point["id"] not in range(112, 133)
+                        or point["timeMs"] != time_ms or not all(math.isfinite(point[key]) for key in ["u", "v", "score"])
+                        or not 0 <= point["score"] <= 1):
+                    raise ValueError("The re-used image observations violate the hand/camera/time contract")
+                seen.add(identity)
+            if len(seen) != len(expected_views) * 21:
+                raise ValueError("The original predictions must retain every point, including score-zero points")
+            frames.append({**frame, "cameras": camera_maps[index], "groundTruth": references[index],
+                           "referenceManuallyValidated": bool(references[index])})
+        conditions.append({"name": name, "frames": frames})
+    file_hashes = {}
+    for label, input_path in [("observations", args.reuse_observations), ("report", args.reuse_report)]:
+        with input_path.open("rb") as stream:
+            file_hashes[label] = hashlib.file_digest(stream, "sha256").hexdigest()
+    prior_geometry = previous["geometry"]
+    inference_commit = previous.get("image_inference_git_sha", previous["git_sha"])
+    provenance = {**prior_geometry.get("provenance", {}), "imageInferenceCommit": inference_commit,
+                  "reusedArtifactJsonSha256": file_hashes, "additionalImageInferenceRuns": 0}
+    selection = {"sourceCondition": "eight_views", "warmupFrameCount": 10,
+                 "jointIds": list(range(112, 133)),
+                 "name": "selected_two_views_from_warmup",
+                 "scope": "Placement diagnostic among eight recorded candidates, not automatic placement of a two-camera app."}
+    internal = {"schemaVersion": 1, "dataset": "HanCo Tester", "sequence": f"{sequence:04d}", "fps": FPS,
+                "referenceKind": prior_geometry["referenceKind"], "coordinateUnit": "meter",
+                "metricGroups": {"hands": list(range(112, 133))}, "dropJointIds": list(range(112, 133)),
+                "dropFrameCount": 1, "dropStartIndex": eligible[0],
+                "dropScenarioName": "all_hand_views_observation_drop",
+                "dropSelection": "First manually validated frame with two preceding fitted frames, unchanged from the first run",
+                "provenance": provenance, "scope": prior_geometry["scope"],
+                "limitations": prior_geometry["limitations"] + [selection["scope"]],
+                "cameras": camera_maps[indices[0]], "conditions": conditions, "pairSelection": selection}
+    report = {key: value for key, value in previous.items() if key not in {"geometry", "ok"}}
+    report.update({"git_sha": os.environ.get("GITHUB_SHA"), "mode": "reused-real-cropped-hand-multiview",
+                   "image_inference_git_sha": inference_commit, "reuse_input_json_sha256": file_hashes,
+                   "additional_image_inference_runs": 0, "source": source,
+                   "timing_origin": "CPU image timings are from the original image-inference run, not this geometry-only evaluation.",
+                   "pair_selection": selection})
+    public["reuse"] = {"imageInferenceCommit": inference_commit, "additionalImageInferenceRuns": 0}
+    save_and_evaluate(internal, public, report, args.out)
+    print(json.dumps({"hanco_reuse_complete": True, "sequence": sequence, "frames": len(indices),
+                      "manually_validated_frames": len(validated), "additional_image_inference_runs": 0}), flush=True)
+    return 0
+
+
 def evaluate(args):
     import cv2
     import numpy as np
@@ -371,18 +503,7 @@ def evaluate(args):
                               "Fixed gray rectangles and omitted observations are artificial corruption, not labeled natural occlusion.",
                               "No body, instep or toe reference is included; browser throughput is not measured.",
                               "Original images, references and calibration arrays are excluded from public artifacts."]}
-    args.out.mkdir(parents=True, exist_ok=True)
-    input_path = CACHE / "evaluation-input.json"
-    input_path.write_text(json.dumps(internal, allow_nan=False), encoding="utf-8")
-    (args.out / "observations.json").write_text(json.dumps(public, allow_nan=False), encoding="utf-8")
-    report_path = args.out / "report.json"
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
-    geometry_path = args.out / "geometry.json"
-    subprocess.run(["node", str(ROOT / "scripts" / "verify-geometry.mjs"), "--sequence-input", str(input_path),
-                    "--sequence-out", str(geometry_path)], cwd=ROOT, check=True, timeout=120)
-    report["geometry"] = json.loads(geometry_path.read_text(encoding="utf-8"))
-    report["ok"] = True
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+    save_and_evaluate(internal, public, report, args.out)
     print(json.dumps({"hanco_complete": True, "sequence": sequence, "frames": len(indices),
                       "manually_validated_frames": len(validated), "conditions": list(condition_views)}), flush=True)
     return 0
@@ -395,11 +516,17 @@ def main():
     parser.add_argument("--frames", type=int, default=40)
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--reuse-observations", type=Path)
+    parser.add_argument("--reuse-report", type=Path)
     parser.add_argument("--out", type=Path, default=ROOT / "artifacts" / "hanco")
     args = parser.parse_args()
     if not 30 <= args.frames <= 60 or args.start < 0:
         parser.error("Use 30..60 consecutive frames and a nonnegative first frame")
-    return probe(args) if args.probe else evaluate(args)
+    if bool(args.reuse_observations) != bool(args.reuse_report):
+        parser.error("Re-use requires both --reuse-observations and --reuse-report")
+    if args.probe:
+        return probe(args)
+    return reuse_observations(args) if args.reuse_observations else evaluate(args)
 
 
 if __name__ == "__main__":

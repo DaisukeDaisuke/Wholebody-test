@@ -14,7 +14,7 @@ const sources=['a','b'].map(id=>({id,video:$('video-'+id),canvas:$('view-'+id),s
 const state={running:false,processing:false,loading:false,needsReload:false,records:[],logs:[],timings:[],runBegan:0,processed:0,peer:{},signal:null,coordinateFrame:'world',coordinateId:'world',fusion:null,lastFreshWall:0,lastFusionTime:0,lastDecayWall:0};
 for(const s of sources){s.video.hidden=false;s.video.className='source-video';s.video.setAttribute('aria-hidden','true');}
 for(const m of BODY_MODELS){const option=document.createElement('option');option.value=m.id;option.textContent=m.name;$('model').append(option);}
-$('model').value='rtmw-l';
+$('model').value='rtmw-l-384';
 function status(message,kind=''){ $('status').textContent=message;$('status-dot').className='dot '+kind; }
 function log(message){state.logs.push(new Date().toLocaleTimeString('ja-JP')+' '+message);state.logs=state.logs.slice(-80);$('event-log').textContent=state.logs.join('\n');}
 function fail(error){const message=error?.message||String(error);$('alert').hidden=false;$('alert').textContent=message;status('処理を確認してください','error');log(message);}
@@ -264,6 +264,7 @@ async function loadEvidence(){
     if(Array.isArray(report.rows))evidenceTable(container,['構成','体の平均誤差','足の平均誤差','手の平均誤差','手PCK20'],report.rows.map(row=>[row.name,row.bodyPx,row.footPx,row.handPx,row.handPck20]));
     const note=document.createElement('p');note.textContent=report.limitations||'';container.append(note);
     if(report.runUrl)evidenceLink(container,report.runUrl,'この画像評価のActions実行 ↗');
+    if(report.baselineRunUrl){container.append(document.createTextNode(' · '));evidenceLink(container,report.baselineRunUrl,'通常版と軽量版の実行 ↗');}
     for(const experiment of report.experiments||[]){const heading=document.createElement('h3');heading.textContent=experiment.title;container.append(heading);
       const description=document.createElement('p');description.textContent=experiment.description;container.append(description);
       if(experiment.columns&&experiment.rows)evidenceTable(container,experiment.columns,experiment.rows);

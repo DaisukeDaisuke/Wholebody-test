@@ -1,0 +1,54 @@
+name: HanCo fixed-pair selection from recorded inference
+on:
+  push:
+    paths:
+      - 'scripts/evaluate-hanco.py'
+      - 'scripts/verify-geometry.mjs'
+      - 'dist/geometry.js'
+      - 'dist/tracking.js'
+      - '.github/workflows/hanco-reuse.yml'
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Successful run containing the original image inference
+        default: '41378383880'
+      source_artifact:
+        description: Exact artifact name from that run
+        default: hanco-evaluation-e9bc84483c88884c7b88ed9589eb069a6070a903
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hanco-reuse-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  hanco_reuse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read the completed image-inference artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact || 'hanco-evaluation-e9bc84483c88884c7b88ed9589eb069a6070a903' }}
+          run-id: ${{ inputs.source_run || '41378383880' }}
+          github-token: ${{ github.token }}
+          path: .evaluation-cache/hanco-prior
+      - name: Install the reference-data array reader
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6
+      - name: Select a fixed camera pair from warmup observations
+        run: python scripts/evaluate-hanco.py --reuse-observations .evaluation-cache/hanco-prior/observations.json --reuse-report .evaluation-cache/hanco-prior/report.json --frames 40 --start 0 --out artifacts/hanco
+      - name: Save geometry comparison and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanco-pair-selection-${{ github.sha }}
+          path: artifacts/hanco/*.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -114,6 +114,89 @@ console.log(JSON.stringify(report, null, 2));
 // only aggregate errors, coverage and provenance are written into the artifact.
 const cli = process.argv.slice(2);
 const option = name => {const at = cli.indexOf(name); return at < 0 ? null : cli[at + 1];};
+
+function selectPairFromWarmup(data) {
+  const config = data.pairSelection;
+  const source = data.conditions.find(condition => condition.name === config.sourceCondition);
+  assert.ok(source, 'The declared pair-selection source condition must exist');
+  const count = config.warmupFrameCount;
+  assert.ok(Number.isInteger(count) && count >= 2 && count < source.frames.length);
+  const jointIds = [...new Set(config.jointIds)];
+  assert.ok(jointIds.length > 0 && jointIds.every(id => Number.isInteger(id) && id >= 0 && id < 133));
+  const warmup = source.frames.slice(0, count);
+  const cameraIds = [...new Set(warmup.flatMap(frame => Object.keys(frame.cameras || data.cameras || {})))].sort();
+  assert.ok(cameraIds.length >= 2);
+  const denominator = count * jointIds.length;
+  const candidates = [];
+  // Only camera calibration, times and image predictions enter this selection.
+  // Reference coordinates and positional errors are never consulted.
+  for (let a = 0; a < cameraIds.length; a++) for (let b = a + 1; b < cameraIds.length; b++) {
+    const pair = [cameraIds[a], cameraIds[b]], selectedIds = new Set(pair);
+    let confidenceSum = 0, valid = 0, angleSum = 0, reprojectionSum = 0, baselineSum = 0, baselineCount = 0;
+    const invalidReasons = {};
+    for (const frame of warmup) {
+      const cameras = frame.cameras || data.cameras;
+      const centres = pair.map(id => cameras?.[id]?.worldFromCamera?.translation);
+      if (centres.every(v => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite))) {
+        baselineSum += Math.hypot(...centres[0].map((v, axis) => v - centres[1][axis]));
+        baselineCount++;
+      }
+      const grouped = new Map();
+      for (const observation of frame.observations) {
+        if (!selectedIds.has(String(observation.sourceId))) continue;
+        if (!grouped.has(observation.id)) grouped.set(observation.id, []);
+        grouped.get(observation.id).push(observation);
+      }
+      for (const id of jointIds) {
+        const result = triangulateJoint(grouped.get(id) || [], cameras, {referenceTimeMs: frame.timeMs});
+        if (result.valid) {
+          valid++;
+          confidenceSum += result.confidence;
+          angleSum += result.rayAngleDeg;
+          reprojectionSum += result.reprojectionErrorPx;
+        } else {
+          const reason = result.reason || 'unknown';
+          invalidReasons[reason] = (invalidReasons[reason] || 0) + 1;
+        }
+      }
+    }
+    candidates.push({cameraIds: pair, score: confidenceSum / denominator,
+      jointFrames: denominator, validJointFrames: valid, validFraction: valid / denominator,
+      meanBaselineM: baselineCount ? baselineSum / baselineCount : null,
+      meanRayAngleDegAvailable: valid ? angleSum / valid : null,
+      meanReprojectionErrorPxAvailable: valid ? reprojectionSum / valid : null, invalidReasons});
+  }
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const left = a.cameraIds.join('|'), right = b.cameraIds.join('|');
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  const selected = candidates[0], selectedIds = new Set(selected.cameraIds);
+  const conditionName = config.name || 'selected_two_views_from_warmup';
+  assert.ok(!data.conditions.some(condition => condition.name === conditionName));
+  const dropStart = source.dropStartIndex ?? data.dropStartIndex;
+  if (dropStart != null) assert.ok(dropStart >= count, 'Pair-selection warmup must finish before the evaluated drop');
+  const prepareFrame = (frame, index, filterViews) => ({...frame,
+    observations: filterViews ? frame.observations.filter(o => selectedIds.has(String(o.sourceId))) : frame.observations,
+    groundTruth: index < count ? [] : frame.groundTruth,
+  });
+  data.conditions.push({...source, name: conditionName, scoringStartIndex: count,
+    frames: source.frames.map((frame, index) => prepareFrame(frame, index, true))});
+  data.conditions.push({...source, name: `${source.name}_after_warmup`, scoringStartIndex: count,
+    frames: source.frames.map((frame, index) => prepareFrame(frame, index, false))});
+  return {
+    sourceCondition: source.name, warmupFrameCount: count,
+    firstWarmupFrame: warmup[0].index, lastWarmupFrame: warmup.at(-1).index,
+    firstScoredFrame: source.frames[count].index,
+    objective: 'Sum of product triangulation confidence / all declared joint-frames in the warmup.',
+    tieBreak: 'Lexicographic camera IDs.', referenceUsedForSelection: false,
+    selectedCameraIds: selected.cameraIds, selectedScore: selected.score,
+    selectedPairHasSupport: selected.validJointFrames > 0,
+    scoring: 'Warmup observations initialize history; their reference points are excluded from the added comparisons.',
+    candidates,
+  };
+}
+
 async function evaluateSequence(inputPath, outputPath) {
   const data = JSON.parse(await readFile(inputPath, 'utf8'));
   assert.equal(data.schemaVersion, 1);
@@ -121,6 +204,8 @@ async function evaluateSequence(inputPath, outputPath) {
   assert.ok(!data.coordinateUnit || ['m', 'metre', 'meter'].includes(data.coordinateUnit),
     'Evaluation coordinates must have a documented fixed conversion to metres');
   const direct3d = data.inputMode === '3d-points';
+  assert.ok(!(direct3d && data.pairSelection), 'Camera-pair selection requires image observations');
+  const pairSelection = data.pairSelection ? selectPairFromWarmup(data) : null;
   const dataset = data.dataset || 'CMU Panoptic';
   const metricGroups = data.metricGroups || {
     body: Array.from({length: 17}, (_, i) => i), hands: Array.from({length: 42}, (_, i) => i + 91),
@@ -151,7 +236,7 @@ async function evaluateSequence(inputPath, outputPath) {
       input: direct3d ? 'Published aligned 3D series; no image inference is run by this evaluator.' : 'Real-image model observations.',
       tracking: 'dist/tracking.js OcclusionTracker',
       holdLast: 'Causal last accepted input coordinate; expires at the product free-prediction age for each joint group.'},
-    cameraIds: [...cameraIds], metricGroups, provenance: data.provenance || null,
+    cameraIds: [...cameraIds], metricGroups, provenance: data.provenance || null, pairSelection,
     scope: data.scope || (direct3d
       ? `${dataset} recorded 3D observations compared with its supplied reference. Only the product causal tracker is exercised.`
       : `${dataset} real-image observations and supplied calibrated 3D reference. Reference kind is reported separately.`),
@@ -220,6 +305,8 @@ async function evaluateSequence(inputPath, outputPath) {
       'The declared drop interval needs prior history and must lie within the sequence');
     const result = {name: condition.name, frameCount: condition.frames.length,
       firstFrame: condition.frames[0].index, lastFrame: condition.frames.at(-1).index,
+      cameraIds: direct3d ? [] : [...new Set(condition.frames.flatMap(frame => frame.observations.map(o => String(o.sourceId))))].sort(),
+      scoringStartIndex: condition.scoringStartIndex || 0,
       artificialDrop: {firstFrame: condition.frames[dropStart].index,
         lastFrame: condition.frames[dropStart + dropCount - 1].index, frameCount: dropCount,
         removedJointIds: [...dropIds], selection: data.dropSelection || 'Fixed central interval, independent of prediction error.',
@@ -299,7 +386,7 @@ async function evaluateSequence(inputPath, outputPath) {
   }
   await mkdir(dirname(outputPath), {recursive: true});
   await writeFile(outputPath, `${JSON.stringify(measured, null, 2)}\n`, 'utf8');
-  console.log(JSON.stringify({kind: measured.kind, sequence: measured.sequence,
+  console.log(JSON.stringify({kind: measured.kind, sequence: measured.sequence, pairSelection: measured.pairSelection,
     conditions: measured.conditions.map(({scenarios, ...rest}) => ({...rest,
       scenarios: Object.fromEntries(Object.entries(scenarios).map(([name, {frameMetrics, ...metrics}]) => [name, metrics])),
     })),
