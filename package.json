@@ -1,0 +1,7 @@
+{
+  "name": "wholebody-video-tracking",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-local video tracking with pretrained body, hand and wholebody models"
+}

@@ -35,6 +35,19 @@ jobs:
           fi
           python -m py_compile scripts/publish_models.py
           if test -f scripts/evaluate_video.py; then python -m py_compile scripts/evaluate_video.py; fi
+          python -m py_compile scripts/check_public_assets.py
+          node --check bridge/server.mjs
+      - name: Verify projection and depth against known geometric coordinates
+        run: node scripts/check_geometry.mjs
+      - name: GET pinned public CDN modules and resolve UTF-8 import references
+        run: python scripts/check_public_assets.py --static-directory dist --output artifacts/public-assets.json
+      - name: Retain deployment asset verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: wholebody-public-assets-${{ github.sha }}
+          path: artifacts/public-assets.json
+          if-no-files-found: error
+          retention-days: 14
   models:
     name: Verify upstream inference and publish model-only assets to Hugging Face
     runs-on: ubuntu-24.04
