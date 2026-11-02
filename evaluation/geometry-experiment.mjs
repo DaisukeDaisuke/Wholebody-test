@@ -92,6 +92,32 @@ experiment('manual-camera-is-explicitly-approximate', () => {
   return { passed: validated.valid && !camera.calibrated && camera.calibrationMethod === 'manualEstimate', validRotationAndCamera: validated.valid, errors: validated.errors, calibrationMethod: camera.calibrationMethod };
 });
 
+experiment('measured-height-keeps-relative-depth-metres-without-calibrated-intrinsics', () => {
+  const points = blankPoints(), focal = Math.max(imageSize.width, imageSize.height);
+  const hipX = Math.sqrt((.105 * 1.7) ** 2 - .1 ** 2) / 2;
+  const reference = [[5, [-.19125, -.493, .04]], [6, [.19125, -.493, -.04]],
+    [11, [-hipX, 0, -.05]], [12, [hipX, 0, .05]],
+    [13, [-.09, .4165, .03]], [14, [.09, .4165, .03]],
+    [15, [-.09, .8347, .06]], [16, [.09, .8347, .06]]];
+  for (const [id, [x, y, relativeZ]] of reference) points[id] = {
+    x: focal * x / (3 + relativeZ) + imageSize.width / 2,
+    y: focal * y / (3 + relativeZ) + imageSize.height / 2,
+    score: .9, observable: true, relativeZ,
+  };
+  const input = observation('a', 1000, points), options = { bodyHeightM: 1.7, scaleConfirmed: true };
+  const uncalibrated = estimateMonocularPose(input, null, options);
+  const knownK = { ...cameras[0], K: [focal, focal, imageSize.width / 2, imageSize.height / 2] };
+  const calibrated = estimateMonocularPose(input, knownK, options);
+  const maxCameraPositionDifferenceM = Math.max(...reference.map(([id]) => distance(uncalibrated.cameraPositions[id], calibrated.cameraPositions[id])));
+  const relativeHipDepthM = uncalibrated.cameraPositions[12][2] - uncalibrated.cameraPositions[11][2];
+  return { passed: maxCameraPositionDifferenceM < 1e-8 && Math.abs(relativeHipDepthM - .1) < 1e-8 &&
+           !uncalibrated.metric && !uncalibrated.root.valid && uncalibrated.root.position === null &&
+           uncalibrated.root.distanceStatus === 'uncalibrated' && uncalibrated.units === 'm-relative-estimate',
+           maxCameraPositionDifferenceM, expectedRelativeHipDepthM: .1, relativeHipDepthM,
+           uncalibratedUnits: uncalibrated.units, uncalibratedDistanceStatus: uncalibrated.root.distanceStatus,
+           scope: 'Numerical unit-consistency fixture; unknown camera K still does not produce calibrated absolute distance.' };
+});
+
 experiment('timestamp-and-uncertainty-rejection', () => {
   const a = blankPoints(), b = blankPoints();
   for (const [id, point] of [[11, [-.1, .2, 3]], [12, [.1, .2, 3]]]) { a[id] = pixel(point, 0); b[id] = pixel(point, 1); }

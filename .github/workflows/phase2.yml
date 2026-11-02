@@ -49,6 +49,8 @@ jobs:
         run: node evaluation/codec-parity.mjs --fixture evaluation/results/codec-fixture --output evaluation/results/codec-parity.json
       - name: Compare the shipped person detector codec to actual ONNX outputs
         run: node evaluation/detector-codec-parity.mjs
+      - name: Measure the frozen policy on 32 previously unused validation images
+        run: python evaluation/holdout-evaluate.py --output evaluation/results/holdout-report.json --cache .cache/wholebody --max-images 32 --threads 2
       - name: Evaluate calibrated geometry and observed temporal sequences
         run: node evaluation/geometry-experiment.mjs
       - name: Measure occlusion recovery against captured Panoptic 3D sequences
@@ -64,6 +66,9 @@ jobs:
           cp evaluation/results/panoptic-report.json dist/evaluation/panoptic-report.json
           cp evaluation/results/detector-report.json dist/evaluation/detector-report.json
           cp evaluation/results/detector-codec-parity.json dist/evaluation/detector-codec-parity.json
+          cp evaluation/results/holdout-report.json dist/evaluation/holdout-report.json
+          cp evaluation/results/holdout-report.md dist/evaluation/holdout-report.md
+          cp evaluation/results/holdout-selection.json dist/evaluation/holdout-selection.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

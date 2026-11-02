@@ -50,205 +50,8 @@ async function readJson(file) {
 }
 
 async function loadEvaluationPanel() {
-  const container = $('evaluation-content');
-  const button = $('refresh-evaluation');
-  button.disabled = true;
-  const paths = ['report.json', 'codec-parity.json', 'geometry-report.json', 'panoptic-report.json', 'foot-report.json', 'detector-report.json'];
-  const element = (tag, text, className) => {
-    const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;
-  };
-  const percent = (value) => Number.isFinite(value) && value >= 0 && value <= 1 ? `${(100 * value).toFixed(1)}%` : '—';
-  const signedPoints = (value) => Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${(100 * value).toFixed(1)} pt` : '—';
-  const check = (parent, label, value, style = '') => {
-    const row = element('div', undefined, 'evaluation-check'); row.append(element('span', label), element('strong', value, style)); parent.append(row);
-  };
-  const table = (headers, rows) => {
-    const wrapper = element('div', undefined, 'evaluation-table-wrap'), body = element('tbody'), grid = element('table', undefined, 'evaluation-table');
-    const head = element('thead'), titles = element('tr'); headers.forEach((text) => titles.append(element('th', text))); head.append(titles); grid.append(head, body);
-    rows.forEach((cells) => {
-      const row = element('tr'); cells.forEach((value) => row.append(typeof value === 'object' && value.nodeType ? value : element('td', value))); body.append(row);
-    });
-    wrapper.append(grid); return wrapper;
-  };
-  try {
-    const results = await Promise.all(paths.map(async (path) => {
-      const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
-      try {
-        const response = await fetch(`./evaluation/${path}`, { signal: controller.signal, cache: 'no-cache', credentials: 'same-origin' });
-        if (response.status === 404) return { path, status: 'pending' };
-        if (!response.ok) return { path, status: 'unavailable', message: `HTTP ${response.status}` };
-        const data = await response.json();
-        if (!data || typeof data !== 'object') throw new Error('Invalid report');
-        return { path, status: 'available', data };
-      } catch (error) { return { path, status: 'unavailable', message: error.name === 'AbortError' ? '読込タイムアウト' : '読込失敗' }; }
-      finally { clearTimeout(timer); }
-    }));
-    const [main, codec, geometry, panoptic, foot, detector] = results;
-    const content = document.createDocumentFragment();
-    if (main.status !== 'available') content.append(element('p', main.status === 'pending' ? '評価結果の配信待ち' : `実画像の評価結果を読めません（${main.message}）。`, 'evaluation-summary'));
-    else {
-      const report = main.data, dataset = report.dataset || {};
-      const size = Number.isFinite(dataset.images) && Number.isFinite(dataset.people) ? `実画像 ${dataset.images} 枚 · ${dataset.people} 人物` : '実画像の評価結果';
-      content.append(element('p', size, 'evaluation-summary'));
-      if (dataset.name) content.append(element('p', dataset.name, 'help-text'));
-      const rows = [];
-      const hasSelective = Object.values(report.metrics || {}).some((metrics) => metrics?.hand_selective);
-      const method = hasSelective ? 'hand_selective' : 'hand_refined';
-      const differences = hasSelective ? report.handSelectiveDifference : report.handRefinementDifference;
-      for (const [condition, label] of [['clean', '通常画像'], ['hand', '手を遮蔽'], ['foot', '足を遮蔽'], ['torso', '体幹を遮蔽']]) {
-        const metrics = report.metrics?.[condition]; if (!metrics) continue;
-        const before = metrics.wholebody?.hand?.pck020, after = metrics[method]?.hand?.pck020;
-        const reported = differences?.[condition]?.pck020RefinedMinusBaseline;
-        const delta = Number.isFinite(reported) ? reported : Number.isFinite(before) && Number.isFinite(after) ? after - before : null;
-        const deltaCell = element('td', signedPoints(delta), Number.isFinite(delta) && delta > 0 ? 'evaluation-delta-positive' : Number.isFinite(delta) && delta < 0 ? 'evaluation-delta-negative' : '');
-        rows.push([label, `${percent(before)} → ${percent(after)}`, deltaCell, percent(metrics.wholebody?.foot?.pck020)]);
-      }
-      if (rows.length) content.append(table(['PCK@0.2', hasSelective ? '手：本体 → 選択採用' : '手：本体 → 再推論', '差', '足：本体'], rows));
-      else content.append(element('p', '対応する手・足のPCK集計がありません。', 'help-text'));
-      const clean = report.metrics?.clean?.wholebody;
-      if (Number.isFinite(clean?.hand?.points) && Number.isFinite(clean?.foot?.points)) content.append(element('p', `通常画像の分母：手 ${clean.hand.points} 点 / 足 ${clean.foot.points} 点。小規模な診断用標本です。`, 'help-text'));
-      if (hasSelective) {
-        content.append(element('p', '選択採用：手の再推論が不安定な場合、全身モデルの点を保持します。', 'help-text'));
-        if (String(report.handSelectivePolicy?.evaluationStatus || '').includes('not independent')) content.append(element('p', 'この小標本の失敗例を参照して採用条件を設計しています。別データでの改善は未確認です。', 'evaluation-basis'));
-        const detail = element('details'), comparisonRows = [];
-        detail.append(element('summary', '従来の手の再推論と、選択採用を比較'));
-        for (const [condition, label] of [['clean', '通常画像'], ['hand', '手を遮蔽'], ['foot', '足を遮蔽'], ['torso', '体幹を遮蔽']]) {
-          const metrics = report.metrics?.[condition]; if (!metrics) continue;
-          const legacy = metrics.hand_refined?.hand?.pck020, selected = metrics.hand_selective?.hand?.pck020;
-          comparisonRows.push([label, percent(metrics.wholebody?.hand?.pck020), percent(legacy), percent(selected), signedPoints(Number.isFinite(legacy) && Number.isFinite(selected) ? selected - legacy : null)]);
-        }
-        detail.append(table(['手 PCK@0.2', '本体', '従来再推論', '選択採用', '従来との差'], comparisonRows)); content.append(detail);
-      }
-      content.append(element('p', '手は注釈BBoxの長辺、足は注釈点の最大広がりで誤差を正規化。低信頼点も分母に含みます。遮蔽行は矩形マスクを追加した静止画です。', 'help-text'));
-      content.append(element('p', 'この表の人物領域は正解BBox。自動検出を含む精度や、実動画での追跡精度とは別です。', 'evaluation-basis'));
-      const initialization = report.initializationExperiment;
-      if (initialization?.metrics && Array.isArray(initialization.methodOrder)) {
-        const detail = element('details'), rows = [];
-        detail.append(element('summary', '正解BBoxを使わない全画面からの初期化'));
-        const names = { full_frame: '全画面', full_frame_hand_refined: '全画面＋従来の手', full_frame_hand_selective: '全画面＋手の選択採用', predicted_person_crop: '予測した人物範囲', predicted_person_crop_hand_refined: '予測した人物範囲＋従来の手', predicted_person_crop_hand_selective: '予測した人物範囲＋手の選択採用' };
-        for (const method of initialization.methodOrder) {
-          const metrics = initialization.metrics[method]; if (!metrics) continue;
-          rows.push([names[method] || method, percent(metrics.body?.pck020), percent(metrics.hand?.pck020), percent(metrics.foot?.pck020)]);
-        }
-        if (Number.isFinite(initialization.images)) detail.append(element('p', `${initialization.images} 画像。全画面 → 予測人物範囲 → 手の切り出し。`, 'help-text'));
-        detail.append(table(['PCK@0.2', '身体', '手', '足'], rows));
-        detail.append(element('p', '同じ静止画を2回処理した初期化の診断です。別人を選んだ場合も固定した対象との誤差に含みます。実動画の追従は未検証です。', 'help-text'));
-        content.append(detail);
-      }
-      if (report.maskedPointMetrics) {
-        const detail = element('details'), rows = [];
-        detail.append(element('summary', '隠した点だけの成績'));
-        for (const [condition, label, part] of [['hand', '手の遮蔽点', 'hand'], ['foot', '足の遮蔽点', 'foot'], ['torso', '体幹マスク内の手', 'hand']]) {
-          const metrics = report.maskedPointMetrics[condition], before = metrics?.wholebody?.[part], after = metrics?.[method]?.[part];
-          if (!before) continue;
-          rows.push([label, Number.isFinite(before.points) ? String(before.points) : '—', percent(before.pck020), percent(after?.pck020)]);
-        }
-        detail.append(table(['対象', '点数', '本体', hasSelective ? '選択採用後' : '手の再推論後'], rows)); content.append(detail);
-      }
-      const date = report.createdAt ? new Date(report.createdAt) : null;
-      if (date && Number.isFinite(date.getTime())) content.append(element('p', `計測：${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' }).format(date)} JST${typeof report.gitCommit === 'string' ? ` · ${report.gitCommit.slice(0, 8)}` : ''}`, 'help-text'));
-    }
-    const detectorDetail = element('details'); detectorDetail.open = true;
-    detectorDetail.append(element('summary', '人物の自動検出から開始：実画像の精度'));
-    if (detector.status === 'available' && detector.data.metrics?.detected_person) {
-      const report = detector.data, rows = [];
-      const appendMethod = (label, metric) => {
-        if (!metric) return;
-        rows.push([label, percent(metric.body?.pck020), percent(metric.hand?.pck020), percent(metric.foot?.pck020)]);
-      };
-      if (report.fullFrameComparison?.sameTargets === true) {
-        const fullFrame = report.fullFrameComparison.metrics || {};
-        appendMethod('全画面から開始', fullFrame.full_frame);
-        if (fullFrame.full_frame_hand_selective) appendMethod('全画面＋手の選択採用', fullFrame.full_frame_hand_selective);
-        else appendMethod('全画面＋従来の手', fullFrame.full_frame_hand_refined);
-      }
-      appendMethod('人物検出＋RTMW', report.metrics.detected_person);
-      appendMethod('人物検出＋従来の手', report.metrics.detected_person_hand_refined);
-      appendMethod('人物検出＋手の選択採用', report.metrics.detected_person_hand_selective);
-      if (Number.isFinite(report.dataset?.images) && Number.isFinite(report.dataset?.people)) detectorDetail.append(element('p', `${report.dataset.images} 画像 · ${report.dataset.people} 人物。自動検出の最大枠を入力し、画像ごとの最大注釈人物を固定して採点。`, 'help-text'));
-      detectorDetail.append(table(['開始方法 · PCK@0.2', '身体', '手', '足'], rows));
-      const baseline = report.metrics.detected_person;
-      if (Number.isFinite(baseline.hand?.points) && Number.isFinite(baseline.foot?.points)) check(detectorDetail, '採点した手 / 足の点数', `${baseline.hand.points} / ${baseline.foot.points}`);
-      if (Number.isFinite(baseline.hand?.invalidPredictionCount) && Number.isFinite(baseline.foot?.invalidPredictionCount)) check(detectorDetail, '未検出等の無効予測（手 / 足）', `${baseline.hand.invalidPredictionCount} / ${baseline.foot.invalidPredictionCount}`);
-      if (Array.isArray(report.cases) && report.cases.length) check(detectorDetail, '人物枠を検出した画像', `${report.cases.filter((item) => item.chosen != null).length} / ${report.cases.length}`);
-      detectorDetail.append(element('p', '推論の人物選択に正解BBoxは使いません。未検出や別人を選んだ誤差も分母に残します。正解BBoxを入力する評価とは別の経路です。', 'help-text'));
-      detectorDetail.append(element('p', '小標本での診断です。手の採用条件は同じ標本の失敗例から設計しており、独立データの改善・実動画の追従・WebGPU速度は未検証です。', 'evaluation-basis'));
-      if (report.fullFrameComparison && report.fullFrameComparison.sameTargets !== true) detectorDetail.append(element('p', '全画面開始の評価とは採点対象が一致しないため、この表では比較していません。', 'help-text'));
-      if (typeof report.gitCommit === 'string') detectorDetail.append(element('p', `人物検出評価のソース：${report.gitCommit.slice(0, 8)}`, 'help-text'));
-    } else check(detectorDetail, '人物検出からの手・足精度', detector.status === 'pending' ? '未評価 · 評価結果の配信待ち' : detector.status === 'available' ? '未評価 · 測定済みの集計がありません' : '未評価 · 結果を読み込めません', 'pending');
-    content.append(detectorDetail);
-    const checks = element('details'); checks.append(element('summary', '実装の参照比較と遮蔽補完の検証'));
-    if (codec.status === 'available') {
-      check(checks, '前処理・復号の参照比較', codec.data.passed === true ? '一致条件を通過' : codec.data.passed === false ? '不一致あり' : '判定記載なし', codec.data.passed === false ? 'failed' : '');
-      const max = codec.data.comparison?.coordinates?.maxAbs;
-      if (Number.isFinite(max)) check(checks, '復号座標の最大差', `${max.toExponential(2)} px`);
-    } else check(checks, '前処理・復号の参照比較', codec.status === 'pending' ? '評価結果の配信待ち' : '結果を読み込めません', 'pending');
-    if (geometry.status === 'available') {
-      const experiments = Array.isArray(geometry.data.experiments) ? geometry.data.experiments : [];
-      check(checks, '幾何演算の数値fixture', experiments.length ? `${experiments.filter((item) => item.passed === true).length} / ${experiments.length} 条件通過` : geometry.data.passed === true ? '条件を通過' : '結果JSONを参照', geometry.data.passed === false ? 'failed' : '');
-      checks.append(element('p', '既知座標を使う数式の確認です。カメラの認識精度を測った値ではありません。', 'help-text'));
-    } else check(checks, '幾何演算の数値fixture', geometry.status === 'pending' ? '評価結果の配信待ち' : '結果を読み込めません', 'pending');
-    if (panoptic.status === 'available' && panoptic.data.status === 'measured') {
-      const data = panoptic.data, count = data.dataset?.evaluatedFrameCount;
-      check(checks, '公開運動ラベルでの遮蔽補完', Number.isFinite(count) ? `${count} フレーム` : '評価結果あり');
-      if (data.dataset?.name) checks.append(element('p', `${data.dataset.name}${data.dataset.sequence ? ` · ${data.dataset.sequence}` : ''}`, 'help-text'));
-      const rows = (data.experiments || []).map((experiment) => [experiment.label || `${experiment.nominalGapMs} ms`,
-        Number.isFinite(experiment.tracker?.mpjpeM) ? `${(experiment.tracker.mpjpeM * 1000).toFixed(1)} mm` : '—',
-        Number.isFinite(experiment.holdLastVisible?.mpjpeM) ? `${(experiment.holdLastVisible.mpjpeM * 1000).toFixed(1)} mm` : '—']);
-      if (rows.length) checks.append(table(['人工的な欠測', '補完のMPJPE', '最後の位置を保持'], rows));
-      checks.append(element('p', '記録された3D運動ラベルを隠して補完を測定。映像から隠れた部位を認識する精度の検証ではありません。', 'help-text'));
-    } else {
-      const status = panoptic.data?.status;
-      check(checks, '公開運動ラベルでの遮蔽補完', panoptic.status === 'pending' ? '評価結果の配信待ち' : status === 'unavailable' ? 'データ取得不可・未完了' : status === 'insufficient-label-coverage' ? '有効ラベルが不足' : '評価結果を確認できません', 'pending');
-    }
-    if (foot.status === 'available' && foot.data.status === 'measured' && foot.data.metrics) {
-      const report = foot.data, detail = element('details');
-      detail.append(element('summary', '足の専門モデル：実画像での比較結果'));
-      if (Number.isFinite(report.dataset?.images) && Number.isFinite(report.dataset?.people)) detail.append(element('p', `${report.dataset.images} 画像 · ${report.dataset.people} 人物。母趾・小趾・踵・足首の8点モデル。`, 'help-text'));
-      const label = (method) => method === 'rtmw_l' ? 'RTMW-l 本体' : method.split('/').map((part) => ({
-        'focus-foot8-one2many': 'FOCUS one2many', 'focus-foot8-one2one': 'FOCUS one2one',
-        person_crop: '人物範囲', predicted_foot_crop: '予測足範囲', selective: '選択採用', direct: '直接採用'
-      })[part] || part).join(' / ');
-      const rows = [], clean = report.metrics.clean || {}, base = clean.rtmw_l?.foot;
-      const methods = Object.keys(clean).sort((a, b) => a === 'rtmw_l' ? -1 : b === 'rtmw_l' ? 1 : a.localeCompare(b));
-      for (const method of methods) {
-        const metric = clean[method]?.foot; if (!metric) continue;
-        const reported = report.footRefinementDifference?.clean?.[method]?.pck020RefinedMinusBaseline;
-        const delta = Number.isFinite(reported) ? reported : Number.isFinite(metric.pck020) && Number.isFinite(base?.pck020) ? metric.pck020 - base.pck020 : null;
-        const deltaCell = element('td', method === 'rtmw_l' ? '基準' : signedPoints(delta), Number.isFinite(delta) && delta > 0 ? 'evaluation-delta-positive' : Number.isFinite(delta) && delta < 0 ? 'evaluation-delta-negative' : '');
-        rows.push([label(method), percent(metric.pck020), deltaCell, percent(report.maskedPointMetrics?.foot?.[method]?.foot?.pck020)]);
-      }
-      detail.append(table(['足 PCK@0.2', '通常画像', '本体との差', '隠した足点'], rows));
-      if (Number.isFinite(base?.points)) detail.append(element('p', `通常画像の足の分母：${base.points} 点。低信頼・未検出も分母に残し、元の全身モデルと同じ尺度で比較します。`, 'help-text'));
-      const recommendation = report.recommendation;
-      if (recommendation && typeof recommendation.adoptForDiagnosticUse === 'boolean') {
-        check(detail, '評価スクリプトの提案', recommendation.adoptForDiagnosticUse ? '診断用候補として採用' : '診断用の採用を推奨せず', recommendation.adoptForDiagnosticUse ? '' : 'pending');
-        if (recommendation.method) detail.append(element('p', label(recommendation.method), 'help-text'));
-        if (Number.isFinite(recommendation.additionalCorrectCleanPoints)) check(detail, '候補の追加正解点（通常画像）', `${recommendation.additionalCorrectCleanPoints >= 0 ? '+' : ''}${recommendation.additionalCorrectCleanPoints} 点`);
-      }
-      detail.append(element('p', 'この比較は専門モデルの診断です。推論画面での採用、5本の足指の関節精度、実動画の精度を示しません。', 'help-text'));
-      if (report.dataset?.trainingOverlapExcluded === false) detail.append(element('p', '学習データとの重複は未除外です。独立した検証データの結果ではありません。', 'evaluation-basis'));
-      if (typeof report.gitCommit === 'string') detail.append(element('p', `足モデル評価のソース：${report.gitCommit.slice(0, 8)}`, 'help-text'));
-      checks.append(detail);
-    } else if (foot.status === 'available') {
-      check(checks, '足の専門モデル', '未評価 · 測定済みの集計がありません', 'pending');
-    } else check(checks, '足の専門モデル', foot.status === 'pending' ? '未評価 · 評価結果の配信待ち' : '未評価 · 結果を読み込めません', 'pending');
-    checks.append(element('p', 'コードの検証通過だけで、実用精度を達成したとは判定しません。実カメラの動画精度と利用者のWebGPU速度は別の測定が必要です。', 'help-text'));
-    content.append(checks);
-    const links = element('div', undefined, 'evaluation-links');
-    const labels = ['実画像JSON', '参照比較JSON', '幾何演算JSON', '運動補完JSON', '足モデルJSON', '人物検出JSON'];
-    results.forEach((result, index) => { if (result.status !== 'available') return; const link = element('a', labels[index]); link.href = `./evaluation/${result.path}`; link.target = '_blank'; link.rel = 'noreferrer'; links.append(link); });
-    if (/^\d+$/.test(String(main.data?.workflowRunId || ''))) {
-      const run = element('a', 'Actions run ↗'); run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${main.data.workflowRunId}`; run.target = '_blank'; run.rel = 'noreferrer'; links.append(run);
-    }
-    if (/^\d+$/.test(String(foot.data?.workflowRunId || '')) && foot.data.workflowRunId !== main.data?.workflowRunId) {
-      const run = element('a', '足モデルのActions run ↗'); run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${foot.data.workflowRunId}`; run.target = '_blank'; run.rel = 'noreferrer'; links.append(run);
-    }
-    if (/^\d+$/.test(String(detector.data?.workflowRunId || '')) && detector.data.workflowRunId !== main.data?.workflowRunId) {
-      const run = element('a', '人物検出のActions run ↗'); run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${detector.data.workflowRunId}`; run.target = '_blank'; run.rel = 'noreferrer'; links.append(run);
-    }
-    content.append(links); container.replaceChildren(content);
-  } finally { button.disabled = false; }
+  const module = await import('./evaluation-ui.mjs');
+  return module.loadEvaluationPanel();
 }
 
 if (new URLSearchParams(location.search).get('mode') === 'camera') initSender();
@@ -324,8 +127,8 @@ async function initReceiver() {
     initializing: true, preparingOffline: false, modeChanging: false, loadCanceled: false,
     sources: new Map(), observations: new Map(), cameras: [], fused: null,
     records: [], totalFrames: 0, recentTimes: [], latencies: [], lastObservationAt: 0,
-    lastFusedTimestamp: 0, lastMissingTick: 0, sceneDirty: true,
-    selectedModel: null, backend: null, loadedPersonDetection: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
+    lastFusedTimestamp: 0, lastMissingTick: 0, latestPoseTimeDomain: null, latestPoseUpdatedAtMs: null, sceneDirty: true,
+    selectedModel: null, backend: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
     view: { yaw: .33, pitch: .17, zoom: 1, center: [0, 0, 0], extent: 1, initialized: false, metric: false }
   };
   let modulesPromise;
@@ -357,6 +160,7 @@ async function initReceiver() {
     $('model-select').disabled = operation;
     $('backend-select').disabled = operation;
     $('person-detection').disabled = operation || state.running || state.processing;
+    $('foot-refinement').disabled = operation || state.running || state.processing;
     $('hand-refinement').disabled = operation;
   }
   async function waitForInferenceIdle() {
@@ -367,11 +171,20 @@ async function initReceiver() {
     }
   }
   function trackerOptions() { return { predictionMs: clamp(numberInput('prediction-ms', 180), 0, 500), holdMs: clamp(numberInput('hold-ms', 1200), 0, 5000), priorMs: Math.max(1200, clamp(numberInput('hold-ms', 1200), 0, 5000) + 1800) }; }
+  function fixedDepth() {
+    const depth = numberInput('root-depth', NaN);
+    return Number.isFinite(depth) && depth > .1 && depth < 30 ? depth : null;
+  }
+  function validateDepthLock() {
+    if (!$('root-depth-fixed').checked || fixedDepth() !== null) return;
+    $('root-depth-fixed').checked = false;
+    toast('距離の固定には、0.1 mより大きく30 m未満の数値を入力してください。', true);
+  }
   function fusionOptions() {
     return { minScore: numberInput('score-threshold', .25), syncToleranceMs: numberInput('sync-tolerance-ms', 45),
       maxTimeUncertaintyMs: 20, maxReprojectionErrorPx: 8, bodyHeightM: numberInput('body-height', 1.7),
       scaleConfirmed: $('height-confirmed').checked,
-      ...($('root-depth-fixed').checked ? { rootDepthM: numberInput('root-depth', undefined) } : {}),
+      ...($('root-depth-fixed').checked && fixedDepth() !== null ? { rootDepthM: fixedDepth() } : {}),
       priorPose: state.tracker?.lastPose, boneLengths: state.tracker?.getBoneLengths() || {} };
   }
 
@@ -380,7 +193,7 @@ async function initReceiver() {
       kind: null, epoch: 0, stream: null, peer: null, url: null, filename: null, fileIdentity: null,
       pending: null, pool: [], requestId: null, requestKind: null, roi: null, roiStart: null, draftRoi: null, targetVersion: 0, selection: null,
       boardPoints: [], frameCount: 0, lastCaptureTime: null, frameIntervals: [], lastPresentationAt: 0,
-      lastMediaTime: null, lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false };
+      lastMediaTime: null, lastVideoMediaTimeMs: null, videoFrameIntervals: [], lastObservation: null, clock: null, audit: null, inviteLink: null, failed: false };
     state.sources.set(id, source);
     $(`source-${id}-file`).onchange = safe(async (event) => {
       const file = event.target.files?.[0];
@@ -427,11 +240,7 @@ async function initReceiver() {
       startWatching(source);
       if (source.kind === 'video' && source.video.paused && state.running) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
     });
-    source.video.addEventListener('seeked', () => {
-      state.tracker?.reset(); state.observations.clear();
-      source.pending = null;
-      if (state.running && source.kind === 'video') captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
-    });
+    source.video.addEventListener('seeked', () => { if (source.kind === 'video') { source.lastVideoMediaTimeMs = null; resetTiming(); } });
     source.video.addEventListener('error', () => {
       $(`source-${id}-state`).textContent = '映像を読み込めません';
       toast(`入力 ${id.toUpperCase()}：この動画形式をブラウザで再生できません。`, true);
@@ -454,6 +263,7 @@ async function initReceiver() {
     source.url = null; source.kind = null; source.pending = null; source.pool = []; source.lastObservation = null;
     source.roi = null; source.selection = null; source.roiStart = null; source.draftRoi = null; source.targetVersion = 0; source.boardPoints = [];
     source.frameCount = 0; source.lastCaptureTime = null; source.frameIntervals = []; source.lastMediaTime = null;
+    source.lastVideoMediaTimeMs = null; source.videoFrameIntervals = [];
     source.clock = null; source.audit = null; source.inviteLink = null; source.failed = false;
     state.observations.delete(source.id); state.tracker?.reset();
     source.overlay.getContext('2d').clearRect(0, 0, source.overlay.width, source.overlay.height);
@@ -543,6 +353,15 @@ async function initReceiver() {
       if (source.epoch !== epoch || !source.kind) return;
       source.requestId = null;
       const frame = metadata || { mediaTime: source.video.currentTime, presentationTime: now };
+      if (source.kind === 'video' && metadata && Number.isFinite(metadata.mediaTime)) {
+        const mediaMs = metadata.mediaTime * 1000;
+        const interval = source.lastVideoMediaTimeMs === null ? null : mediaMs - source.lastVideoMediaTimeMs;
+        if (!source.video.seeking && interval > 0 && interval < 500) {
+          source.videoFrameIntervals.push(interval);
+          if (source.videoFrameIntervals.length > 30) source.videoFrameIntervals.shift();
+        }
+        source.lastVideoMediaTimeMs = source.video.seeking ? null : mediaMs;
+      }
       if (metadata || source.lastMediaTime !== frame.mediaTime) {
         source.lastPresentationAt = now; source.frameCount++;
         source.lastMediaTime = frame.mediaTime;
@@ -560,8 +379,12 @@ async function initReceiver() {
   function frameTiming(source, now, metadata) {
     if (source.kind === 'video') {
       const confirmed = $('video-sync-confirmed').checked;
+      const frameInterval = median(source.videoFrameIntervals);
+      const uncertainty = frameInterval === null ? 16.67 : frameInterval / 2;
       return { timestampMs: (metadata.mediaTime ?? source.video.currentTime) * 1000 + (source.id === 'b' ? numberInput('video-offset-ms', 0) : 0),
-        timeUncertaintyMs: confirmed ? .5 : Infinity, timeDomain: 'media', timeSource: confirmed ? 'manually-aligned-media-time' : 'unaligned-media-time', mediaTimeMs: (metadata.mediaTime ?? source.video.currentTime) * 1000 };
+        timeUncertaintyMs: confirmed ? uncertainty : Infinity, timeDomain: 'media', timeSource: confirmed ? 'manually-aligned-media-time-estimate' : 'unaligned-media-time',
+        uncertaintyBasis: !confirmed ? 'manual-alignment-unconfirmed' : frameInterval === null ? 'fallback-half-frame-16.67ms-manual-error-not-calibrated-not-a-guarantee' : 'half-adjacent-rvfc-mediaTime-interval-manual-error-not-calibrated-not-a-guarantee',
+        mediaTimeMs: (metadata.mediaTime ?? source.video.currentTime) * 1000 };
     }
     const capture = metadata.captureTime;
     if (Number.isFinite(capture) && capture > 0 && capture <= now + 1000) {
@@ -608,9 +431,16 @@ async function initReceiver() {
         if (!state.running || generation !== state.generation || source.epoch !== frame.epoch) continue;
         const targetVersion = source.targetVersion;
         const result = await state.engine.estimate(frame.canvas, { sourceId: source.id, timestampMs: frame.timestampMs,
-          roi: source.roi?.slice() || null, handRefinement: $('hand-refinement').checked });
-        if (generation !== state.generation || source.epoch !== frame.epoch) continue;
+          roi: source.roi?.slice() || null, handRefinement: $('hand-refinement').checked, footRefinement: $('foot-refinement').checked });
+        if (generation !== state.generation || source.epoch !== frame.epoch) { state.engine.resetSource?.(source.id); continue; }
         if (source.targetVersion !== targetVersion) { state.engine.resetSource?.(source.id); continue; }
+        if (result.personDetection?.targetReset === true) {
+          state.observations.delete(source.id); state.tracker?.reset(); state.fused = null;
+          state.sceneDirty = true; state.view.initialized = false;
+          for (const axis of ['x', 'y', 'z']) $(`root-${axis}`).textContent = '—';
+          $('scene-empty').hidden = false; $('root-status').textContent = '人物を再選択 · 新しい姿勢を推定中';
+          $('coordinate-state').textContent = '相対ポーズ · 更新待ち';
+        }
         const finishedAtMs = performance.now();
         const observation = { ...result, sourceId: source.id, timestampMs: frame.timestampMs, timeUncertaintyMs: frame.timeUncertaintyMs,
           timeDomain: frame.timeDomain, timeSource: frame.timeSource, uncertaintyBasis: frame.uncertaintyBasis,
@@ -665,6 +495,7 @@ async function initReceiver() {
     if (observation.timeDomain === 'media' && (!$('video-sync-confirmed').checked || (a.fileIdentity && a.fileIdentity === b.fileIdentity))) candidates = [observation];
     const fused = state.geometry.fusePose(candidates, state.cameras, { ...fusionOptions(), timestampMs: observation.timestampMs });
     state.fused = state.tracker.update(fused, observation.timestampMs);
+    state.latestPoseTimeDomain = observation.timeDomain; state.latestPoseUpdatedAtMs = performance.now();
     state.lastFusedTimestamp = observation.timestampMs;
     state.sceneDirty = true;
     updatePoseReadout();
@@ -826,9 +657,62 @@ async function initReceiver() {
     $('scene-empty').hidden = pose.joints.some((joint) => finitePosition(joint.position));
     if (!state.view.initialized || state.view.metric !== Boolean(pose.metric)) initializeView();
     const diagnostic = pose.diagnostics || {};
-    const synchronized = diagnostic.synchronizedSources?.length || 0;
-    $('sync-state').textContent = diagnostic.calibrationFrameMismatch ? '校正の座標系が不一致' : synchronized >= 2 ? `${synchronized}視点 / 差 ${Number(diagnostic.maxSkewMs || 0).toFixed(1)} ms` : state.observations.size > 1 ? '未同期 / 単眼を使用' : '1視点';
+    updateSyncState();
     if (diagnostic.calibrationFrameMismatch) $('root-status').textContent += ' · 2台を同じ板と原点で校正してください';
+  }
+
+  function synchronizationStatus() {
+    const result = (reason, label, detail = label) => ({ reason, label, detail });
+    const sources = Array.from(state.sources.values()).filter((source) => source.kind), now = performance.now();
+    if (sources.length < 2) return result('singleView', sources.length ? '1視点 · 単眼推定' : '入力待機');
+    const recorded = sources.filter((source) => source.kind === 'video');
+    if (recorded.length && recorded.length !== sources.length) return result('mixedTimeDomains', '動画とライブの時刻は統合不可');
+    if (recorded.length > 1) {
+      if (recorded[0].fileIdentity === recorded[1].fileIdentity) return result('sameVideo', '同じ動画は2視点に使えません');
+      if (!$('video-sync-confirmed').checked) return result('videoTimeUnconfirmed', '動画の対応時刻が未確認');
+    }
+    const absent = sources.filter((source) => !state.observations.has(source.id));
+    if (absent.length) return result('awaitingObservation', `入力 ${absent.map((source) => source.id.toUpperCase()).join('・')} の推論待ち`);
+    const observations = sources.map((source) => state.observations.get(source.id));
+    const stale = sources.filter((source, i) => source.kind !== 'video' && state.running && (now - observations[i].inferredAtMs > 1500 || now - source.lastPresentationAt > 500));
+    if (stale.length || state.fused?.diagnostics?.reason === 'noNewFrames') return result('staleObservation', `入力 ${stale.length ? stale.map((source) => source.id.toUpperCase()).join('・') : 'A・B'} の新しい観測待ち`);
+    if (new Set(observations.map((item) => item.timeDomain)).size > 1) return result('mixedTimeDomains', '撮影時刻の基準が不一致');
+    const uncertain = observations.filter((item) => !Number.isFinite(item.timeUncertaintyMs) || item.timeUncertaintyMs < 0 || item.timeUncertaintyMs > 20);
+    if (uncertain.length) return result('uncertainCaptureTime', `入力 ${uncertain.map((item) => item.sourceId.toUpperCase()).join('・')} の撮影時刻が不確か`, '撮影時刻が取得できない、または時計・フレーム間隔の不確かさが20 msを超えています。');
+    const skew = Math.abs(observations[0].timestampMs - observations[1].timestampMs), tolerance = numberInput('sync-tolerance-ms', 45);
+    const span = skew + observations[0].timeUncertaintyMs + observations[1].timeUncertaintyMs;
+    if (!Number.isFinite(span) || span > tolerance) return result('timeSkewExceeded', `時刻差＋誤差 ${Number.isFinite(span) ? span.toFixed(0) : '—'} > ${tolerance} ms`, '動画の対応時刻と再生位置を合わせてください。単眼推定を使用しています。');
+    const cameras = sources.map((source) => state.cameras.find((camera) => camera.id === source.id));
+    const uncalibrated = sources.filter((_source, i) => !cameras[i] || (cameras[i].calibrated !== true && cameras[i].calibrationMethod !== 'manualEstimate'));
+    if (uncalibrated.length) return result('cameraCalibrationMissing', `入力 ${uncalibrated.map((source) => source.id.toUpperCase()).join('・')} のカメラ校正なし`);
+    if (new Set(cameras.map((camera) => camera.worldCalibrationId || 'configured-world')).size > 1 || state.fused?.diagnostics?.calibrationFrameMismatch) return result('calibrationFrameMismatch', '校正の座標系が不一致', '2台を同じ板・原点・座標軸で校正してください。');
+    try {
+      if (cameras.some((camera, i) => !state.calibrationModule.cameraAtImageSize(camera, observations[i].imageSize))) return result('calibrationImageSizeMismatch', '校正と映像の縦横比が不一致');
+    } catch { return result('invalidCalibration', 'カメラ校正の値が不正'); }
+    const diagnostic = state.fused?.diagnostics || {};
+    if (diagnostic.triangulatedJointCount > 0 && state.fused.joints.some((joint) => ['measuredMultiView', 'estimatedMultiView'].includes(joint.source) && finitePosition(joint.position))) return result('multiView', `2視点3D / 差 ${skew.toFixed(1)} ms`);
+    const undetected = observations.filter((item) => item.personDetection?.selection === 'not-detected');
+    if (undetected.length) return result('personNotDetected', `入力 ${undetected.map((item) => item.sourceId.toUpperCase()).join('・')} の人物が未検出`);
+    if (!Array.from({ length: 133 }, (_, i) => i).some((i) => observations.every((item) => visible(item.keypoints[i])))) return result('noCommonJoints', '2台で共通の観測点なし');
+    return result('geometryRejected', '視線・再投影条件で棄却', '単眼推定を使用しています。人物の一致とカメラの向き・校正を確認してください。');
+  }
+  function updateSyncState() {
+    const status = synchronizationStatus();
+    $('sync-state').textContent = status.label; $('sync-state').title = status.detail;
+    return status;
+  }
+  function resetTiming() {
+    state.generation++; state.tracker?.reset(); state.observations.clear();
+    state.fused = null; state.sceneDirty = true; state.view.initialized = false; state.lastObservationAt = 0;
+    state.latestPoseTimeDomain = null; state.latestPoseUpdatedAtMs = null;
+    for (const source of state.sources.values()) {
+      source.pending = null; source.lastObservation = null; state.engine?.resetSource?.(source.id);
+      updateTargetState(source); drawOverlay(source);
+      if (state.running && source.kind === 'video' && source.video.paused) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
+    }
+    for (const axis of ['x', 'y', 'z']) $(`root-${axis}`).textContent = '—';
+    $('scene-empty').hidden = false; $('root-status').textContent = '新しい設定を反映した推論待ち';
+    $('coordinate-state').textContent = '相対ポーズ · 待機中'; updateSyncState();
   }
 
   function initializeView() {
@@ -927,8 +811,9 @@ async function initReceiver() {
   }
 
   function updateDiagnostics() {
+    const synchronization = updateSyncState();
     $('diagnostics').textContent = JSON.stringify({ model: state.selectedModel, backend: state.backend, inputCount: Array.from(state.sources.values()).filter((source) => source.kind).length,
-      offline: state.offline, networkAudit: state.networkAudit,
+      offline: state.offline, networkAudit: state.networkAudit, synchronization,
       calibration: state.cameras.map((camera) => ({ id: camera.id, calibrated: camera.calibrated, method: camera.calibrationMethod })),
       inputs: Array.from(state.sources.values()).filter((source) => source.kind).map((source) => ({ id: source.id, kind: source.kind,
         frameSize: [source.video.videoWidth, source.video.videoHeight], frameTime: source.lastObservation?.timeSource,
@@ -940,7 +825,7 @@ async function initReceiver() {
 
   function setCamera(camera) {
     state.cameras = [...state.cameras.filter((current) => current.id !== camera.id), camera];
-    state.tracker?.reset(); state.view.initialized = false;
+    resetTiming();
     $('calibration-state').textContent = `${state.cameras.filter((current) => current.calibrated).length} 台を校正`;
     updateDiagnostics();
   }
@@ -950,7 +835,10 @@ async function initReceiver() {
       const value = await readJson(event.target.files?.[0]), result = state.calibrationModule.validateCalibration(value);
       if (!result.valid) throw new Error(result.errors.join('\n'));
       if (result.cameras.some((camera) => !['a', 'b'].includes(camera.id))) throw new Error('校正のidは入力に合わせて "a" または "b" にしてください。');
-      state.cameras = result.cameras; state.tracker?.reset(); state.view.initialized = false;
+      if (Number.isFinite(value.bodyHeightM) && value.bodyHeightM >= .6 && value.bodyHeightM <= 2.4) {
+        $('body-height').value = String(value.bodyHeightM); $('height-confirmed').checked = value.scaleConfirmed === true;
+      } else if (value.scaleConfirmed === false) $('height-confirmed').checked = false;
+      state.cameras = result.cameras; resetTiming();
       $('calibration-state').textContent = `${state.cameras.filter((camera) => camera.calibrated).length} 台を校正`;
       toast('校正ファイルを読み込みました。'); updateDiagnostics();
     });
@@ -999,9 +887,9 @@ async function initReceiver() {
   }
 
   createSource('a'); createSource('b'); bindCalibration();
-  $('person-detection').onchange = () => {
+  for (const [id, label] of [['person-detection', '人物検出'], ['foot-refinement', '足先補正']]) $(id).onchange = () => {
     for (const source of state.sources.values()) { targetChanged(source); updateTargetState(source); drawOverlay(source); }
-    if (state.engine) engineStatus('idle', '設定変更', '次の開始時に人物検出の設定を反映します。');
+    if (state.engine) engineStatus('idle', '設定変更', `次の開始時に${label}の設定を反映します。`);
   };
   $('refresh-evaluation').onclick = safe(loadEvaluationPanel);
   loadEvaluationPanel().catch(() => { $('evaluation-content').textContent = '評価結果を読み込めませんでした。'; });
@@ -1013,8 +901,8 @@ async function initReceiver() {
     try {
       await ensureModules();
       if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
-      const bodyModel = $('model-select').value, backend = $('backend-select').value, personDetection = $('person-detection').checked;
-      if (!state.engine || bodyModel !== state.selectedModel || backend !== state.backend || state.loadedOffline !== state.offline || state.loadedPersonDetection !== personDetection) {
+      const bodyModel = $('model-select').value, backend = $('backend-select').value, personDetection = $('person-detection').checked, footRefinement = $('foot-refinement').checked;
+      if (!state.engine || bodyModel !== state.selectedModel || backend !== state.backend || state.loadedOffline !== state.offline || state.loadedPersonDetection !== personDetection || state.loadedFootRefinement !== footRefinement) {
         await state.engine?.dispose?.();
         if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
         state.engine = new state.engineModule.PoseEngine({ onProgress: ({ stage, progress, message }) => {
@@ -1023,9 +911,9 @@ async function initReceiver() {
           $('load-progress').hidden = !Number.isFinite(progress);
           if (Number.isFinite(progress)) $('load-progress').value = clamp(progress > 1 ? progress / 100 : progress, 0, 1);
         } });
-        await state.engine.load({ bodyModel, handRefinement: $('hand-refinement').checked, personDetection, backend, offline: state.offline });
+        await state.engine.load({ bodyModel, handRefinement: $('hand-refinement').checked, personDetection, footRefinement, backend, offline: state.offline });
         if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
-        state.selectedModel = bodyModel; state.backend = backend; state.loadedOffline = state.offline; state.loadedPersonDetection = personDetection;
+        state.selectedModel = bodyModel; state.backend = backend; state.loadedOffline = state.offline; state.loadedPersonDetection = personDetection; state.loadedFootRefinement = footRefinement;
       }
       state.tracker = new state.geometry.TemporalPoseTracker(trackerOptions());
       state.observations.clear(); state.latencies = []; state.recentTimes = []; state.running = true;
@@ -1099,14 +987,21 @@ async function initReceiver() {
   $('score-threshold').oninput = () => { $('score-threshold-label').value = numberInput('score-threshold', .25).toFixed(2); for (const source of state.sources.values()) drawOverlay(source); };
   $('show-face').onchange = () => { for (const source of state.sources.values()) drawOverlay(source); state.sceneDirty = true; };
   for (const id of ['prediction-ms', 'hold-ms']) $(id).onchange = () => { if (state.tracker) state.tracker.options = { ...state.tracker.options, ...trackerOptions() }; };
-  for (const id of ['body-height', 'height-confirmed', 'root-depth', 'root-depth-fixed', 'video-offset-ms', 'video-sync-confirmed']) $(id).onchange = () => { state.tracker?.reset(); state.observations.clear(); };
+  $('root-depth').oninput = () => {
+    if ($('root-depth-fixed').checked && fixedDepth() === null) { validateDepthLock(); resetTiming(); }
+  };
+  for (const id of ['body-height', 'height-confirmed', 'root-depth', 'root-depth-fixed']) $(id).onchange = () => {
+    if (id === 'root-depth' || id === 'root-depth-fixed') validateDepthLock();
+    resetTiming();
+  };
+  for (const id of ['video-offset-ms', 'video-sync-confirmed', 'sync-tolerance-ms']) $(id).onchange = resetTiming;
   $('align-video-now').onclick = () => {
     const a = state.sources.get('a'), b = state.sources.get('b');
     if (a.kind !== 'video' || b.kind !== 'video') return toast('2本の同時撮影動画を開いてください。', true);
     if (a.fileIdentity === b.fileIdentity) return toast('同じ動画の複製は2視点として使えません。', true);
     a.video.pause(); b.video.pause();
     $('video-offset-ms').value = String(Math.round((a.video.currentTime - b.video.currentTime) * 1000));
-    $('video-sync-confirmed').checked = true; state.tracker?.reset(); state.observations.clear();
+    $('video-sync-confirmed').checked = true; resetTiming();
     toast('現在表示している2フレームを同時刻として記録しました。');
   };
   $('play-video-pair').onclick = safe(async () => {
@@ -1129,8 +1024,12 @@ async function initReceiver() {
     const { priorPose, ...options } = fusionOptions();
     downloadJson(`wholebody-session-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
       schemaVersion: 1, application: 'Wholebody Studio / Phase 2', exportedAt: new Date().toISOString(), startedAt: state.startedAt,
-      model: state.selectedModel, backend: state.backend, handRefinement: $('hand-refinement').checked, personDetection: state.loadedPersonDetection, offline: state.offline, networkAudit: state.networkAudit,
+      model: state.selectedModel, backend: state.backend, handRefinement: $('hand-refinement').checked, personDetection: state.loadedPersonDetection, footRefinement: state.loadedFootRefinement, offline: state.offline, networkAudit: state.networkAudit,
       cameras: state.cameras, options, trackerOptions: trackerOptions(), totalFrames: state.totalFrames,
+      latestPose: state.fused, latestPoseTimestampMs: state.fused?.timestampMs ?? null,
+      latestPoseTimeDomain: state.fused ? state.latestPoseTimeDomain : null,
+      latestPoseUpdatedAtPerformanceMs: state.fused ? state.latestPoseUpdatedAtMs : null,
+      snapshotAtPerformanceMs: performance.now(), synchronization: synchronizationStatus(),
       timingNotes: 'captureTime is a browser estimate. Null uncertainty means synchronization was not established. mediaTime is only aligned when explicitly confirmed.',
       footNotes: 'Big toe, little toe, heel are model landmarks. Other toes and toe articulation are anatomical priors, not observed independent toe joints.',
       sources: Array.from(state.sources.values()).map((source) => ({ id: source.id, kind: source.kind, imageSize: { width: source.video.videoWidth, height: source.video.videoHeight }, roi: source.roi, clock: source.clock, networkAudit: source.audit })),
@@ -1149,8 +1048,10 @@ async function initReceiver() {
     if (state.running && !state.processing && state.fused && state.lastObservationAt && now - state.lastObservationAt > 200 && now - state.lastMissingTick > 100) {
       const live = Array.from(state.sources.values()).some((source) => ['camera', 'peer'].includes(source.kind));
       if (live) {
-        const missing = { ...state.fused, joints: state.fused.joints.map((joint) => ({ id: joint.id, position: null, score: 0, source: 'missing' })) };
+        const missing = { ...state.fused, joints: state.fused.joints.map((joint) => ({ id: joint.id, position: null, score: 0, source: 'missing' })),
+          diagnostics: { ...state.fused.diagnostics, reason: 'noNewFrames', synchronizedSources: [], triangulatedJointCount: 0 } };
         state.fused = state.tracker.update(missing, state.lastFusedTimestamp + now - state.lastObservationAt);
+        state.latestPoseUpdatedAtMs = now;
         state.lastMissingTick = now; state.sceneDirty = true; updatePoseReadout();
       }
     }

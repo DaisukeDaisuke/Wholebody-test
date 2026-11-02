@@ -1,6 +1,6 @@
 const VERSION='wholebody-app-20261102-v1';
 const SETTINGS='wholebody-settings-v1';
-const APP_FILES=['./','./index.html','./styles.css','./app.mjs','./webrtc.mjs','./inference.mjs','./pose-codec.mjs','./resize-codec.mjs','./foot-codec.mjs','./detector-codec.mjs','./models.mjs','./geometry.mjs','./calibration.mjs','./offline.mjs'];
+const APP_FILES=['./','./index.html','./styles.css','./app.mjs','./evaluation-ui.mjs','./webrtc.mjs','./inference.mjs','./pose-codec.mjs','./resize-codec.mjs','./foot-codec.mjs','./detector-codec.mjs','./models.mjs','./geometry.mjs','./calibration.mjs','./offline.mjs'];
 const RUNTIME='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const RUNTIME_FILES=['ort.webgpu.min.mjs','ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'];
 let closedPromise;
@@ -31,7 +31,7 @@ self.addEventListener('message',event=>{
           if(localResponse.ok)await cache.put(local,localResponse);
           else {const url=RUNTIME+name,response=await fetch(url,{credentials:'omit'});if(!response.ok)throw new Error('Runtime preparation failed: '+name);await cache.put(url,response);}
         }
-        for(const name of ['report.json','codec-parity.json','geometry-report.json','panoptic-report.json','foot-report.json','detector-report.json']){
+        for(const name of ['report.json','codec-parity.json','geometry-report.json','panoptic-report.json','foot-report.json','detector-report.json','holdout-report.json']){
           const url=new URL('./evaluation/'+name,self.registration.scope).href;
           try{const response=await fetch(url);if(response.ok)await cache.put(url,response);}catch{}
         }

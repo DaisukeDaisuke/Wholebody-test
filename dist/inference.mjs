@@ -1,5 +1,7 @@
 import {cropTransform,rgbaToTensor,decodeSimCC,predictedHandBox,handRefinementDecision} from './pose-codec.mjs';
 import {MODEL_SPECS,REFINEMENT_MANIFEST} from './models.mjs';
+import {detectorTransform,detectorTensor,decodePersons,boxIou} from './detector-codec.mjs';
+import {footTransform,footTensor,decodeFootCandidates,associateFeet,applyFootAssociation} from './foot-codec.mjs';
 export {BODY_MODELS} from './models.mjs';
 export {BODY_EDGES,HAND_EDGES,FOOT_EDGES} from './pose-codec.mjs';
 
@@ -51,12 +53,14 @@ async function resolveSpec(id,offline) {
 export class PoseEngine {
   constructor({onProgress=()=>{}}={}){this.onProgress=onProgress;this.sessions=new Map();this.trackers=new Map();this.busy=false;this.offline=false;this.abort=new AbortController();}
   notify(stage,progress,message){this.onProgress({stage,progress,message});}
-  async load({bodyModel='rtmw-l',handRefinement=true,backend='webgpu',offline=false}={}){
-    this.offline=offline;this.backend=backend;this.bodyId=bodyModel;this.handRefinement=handRefinement;this.abort=new AbortController();
+  async load({bodyModel='rtmw-l',handRefinement=true,personDetection=true,footRefinement=false,backend='webgpu',offline=false}={}){
+    this.offline=offline;this.backend=backend;this.bodyId=bodyModel;this.handRefinement=handRefinement;this.personDetection=personDetection;this.footRefinement=footRefinement;this.abort=new AbortController();
     if(backend==='webgpu'&&!navigator.gpu)throw new Error('この推論画面にはWebGPU対応のPCブラウザが必要です。WASMは比較用として明示的に選択できます。');
     this.notify('runtime',null,'推論ランタイムを読み込み');this.ort=await loadRuntime(offline);
     await this.loadModel(bodyModel);
+    if(personDetection)await this.loadModel('person-yolox-tiny-416');
     if(handRefinement)await this.loadModel('hand5');
+    if(footRefinement)await this.loadModel('focus-foot8-one2many');
     this.notify('ready',1,'モデル準備完了');return this;
   }
   async loadModel(id){
@@ -80,8 +84,9 @@ export class PoseEngine {
     const actualHash=await sha256(bytes);
     if(spec.sha256&&actualHash!==spec.sha256){await (await openCache())?.delete(spec.url);throw new Error(id+' のSHA-256が配布仕様と一致しません。');}
     this.notify(id,null,'推論セッションを初期化');
-    const session=await this.ort.InferenceSession.create(bytes,{executionProviders:[this.backend],graphOptimizationLevel:'all'});
-    const record={session,spec:{...spec,actualHash,hashVerified:!!spec.sha256}};
+    const provider=spec.kind==='personDetector'?'wasm':this.backend;
+    const session=await this.ort.InferenceSession.create(bytes,{executionProviders:[provider],graphOptimizationLevel:'all'});
+    const record={session,spec:{...spec,actualHash,hashVerified:!!spec.sha256,executionProvider:provider}};
     this.sessions.set(id,record);return record;
   }
   readFrame(source){
@@ -100,6 +105,36 @@ export class PoseEngine {
     try{result=await session.run({[session.inputNames[0]]:tensor});return decodeSimCC(result,transform,spec);}
     finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
   }
+  async detectPersons(image){
+    const {session,spec}=this.sessions.get('person-yolox-tiny-416')||await this.loadModel('person-yolox-tiny-416');
+    const transform=detectorTransform(image,spec.inputWH),tensor=new this.ort.Tensor('float32',detectorTensor(image,transform),[1,3,spec.inputWH[1],spec.inputWH[0]]);
+    let result;try{result=await session.run({[session.inputNames[0]]:tensor});return decodePersons(result,transform,spec);}
+    finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
+  }
+  async selectPersonBox(sourceId,image,roi,timestampMs){
+    if(roi)return {bbox:roi.slice(),personDetection:{enabled:this.personDetection,detected:null,selectedBox:roi.slice(),candidateCount:0,selection:'manual-roi'}};
+    const previous=this.trackers.get(sourceId),recent=previous&&timestampMs>=previous.timestampMs&&timestampMs-previous.timestampMs<=700;
+    if(!this.personDetection){const bbox=this.trackedBox(sourceId,image.width,image.height,null,timestampMs);return {bbox,personDetection:{enabled:false,detected:null,selectedBox:bbox,candidateCount:0,selection:recent?'tracked-person':'full-frame'}};}
+    if(recent&&previous.frames%30!==0)return {bbox:previous.box,personDetection:{enabled:true,detected:true,selectedBox:previous.box,candidateCount:previous.candidateCount||1,selection:'tracked-person'}};
+    if(!recent)this.trackers.delete(sourceId);
+    const candidates=await this.detectPersons(image);
+    if(!candidates.length){this.trackers.delete(sourceId);return {bbox:null,personDetection:{enabled:true,detected:false,selectedBox:null,candidateCount:0,selection:'not-detected',backend:'wasm'}};}
+    let selected=candidates[0],selection='largest-person',targetReset=!!previous&&!recent;
+    if(recent){const overlap=candidates.map(candidate=>({candidate,iou:boxIou(previous.box,candidate.bboxXYWH)})).sort((a,b)=>b.iou-a.iou);if(overlap[0].iou>=.1){selected=overlap[0].candidate;selection='overlap-with-previous';}}
+    if(recent&&selection==='largest-person'){this.trackers.delete(sourceId);targetReset=true;}
+    return {bbox:selected.bboxXYWH,personDetection:{enabled:true,detected:true,selectedBox:selected.bboxXYWH,candidateCount:candidates.length,selection,targetReset,score:selected.score,backend:'wasm'}};
+  }
+  async refineFeet(image,box,points){
+    const {session,spec}=this.sessions.get('focus-foot8-one2many')||await this.loadModel('focus-foot8-one2many');
+    const [x,y,w,h]=box,transform=footTransform(image,[x-w*.125,y-h*.125,w*1.25,h*1.25]);
+    const tensor=new this.ort.Tensor('float32',footTensor(image,transform),[1,3,640,640]);
+    let result;try{
+      result=await session.run({[session.inputNames[0]]:tensor});
+      const association=associateFeet(decodeFootCandidates(Object.values(result)[0],spec,transform),points);
+      const acceptedCocoIndices=applyFootAssociation(points,association,{blend:true});
+      return {modelId:spec.id,policyId:association.policyId,blendWeight:.5,roi:transform.cropXYWH,acceptedCocoIndices,candidateCount:association.candidateCountEvaluated,selectedCandidateIndex:association.selected?.candidate.candidateIndex??null};
+    }finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
+  }
   trackedBox(sourceId,width,height,roi,timestampMs){
     if(roi)return roi.slice();
     const tracker=this.trackers.get(sourceId);
@@ -108,7 +143,7 @@ export class PoseEngine {
   }
   updateTracker(sourceId,points,image,timestampMs){
     const reliable=points.slice(0,23).filter(p=>p.score>.4&&Number.isFinite(p.x+p.y));
-    const prev=this.trackers.get(sourceId);
+    const stored=this.trackers.get(sourceId),prev=stored&&timestampMs>=stored.timestampMs&&timestampMs-stored.timestampMs<=700?stored:null;
     if(reliable.length<8){this.trackers.delete(sourceId);return;}
     const xs=reliable.map(p=>p.x),ys=reliable.map(p=>p.y),left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
     // Wide margin includes head and toes omitted by sparse low-confidence predictions.
@@ -117,12 +152,14 @@ export class PoseEngine {
     const box=prev?fresh.map((v,i)=>v*.7+prev.box[i]*.3):fresh;
     this.trackers.set(sourceId,{box,timestampMs,frames:(prev?.frames||0)+1});
   }
-  async estimate(source,{sourceId='a',timestampMs=performance.now(),timeUncertaintyMs=0,roi=null,handRefinement=this.handRefinement}={}){
+  async estimate(source,{sourceId='a',timestampMs=performance.now(),timeUncertaintyMs=0,roi=null,handRefinement=this.handRefinement,footRefinement=this.footRefinement}={}){
     if(this.busy)throw new Error('PoseEngine executes one frame at a time. Keep the newest frame per input.');
     if(!this.sessions.has(this.bodyId))throw new Error('先にモデルを読み込んでください。');
     this.busy=true;const started=performance.now();
     try{
-      const image=this.readFrame(source),bbox=this.trackedBox(sourceId,image.width,image.height,roi,timestampMs),bodyStart=performance.now();
+      const image=this.readFrame(source),detectorStart=performance.now(),{bbox,personDetection}=await this.selectPersonBox(sourceId,image,roi,timestampMs),detectorMs=performance.now()-detectorStart;
+      if(!bbox)return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox:[0,0,image.width,image.height],keypoints:Array.from({length:133},(_,id)=>({id,x:0,y:0,score:0,rawScore:0,observable:false,source:'missing'})),refinements:[],personDetection,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{detectorMs,bodyMs:0,handsMs:0,feetMs:0,totalMs:performance.now()-started},depthKind:'none'};
+      const bodyStart=performance.now();
       const points=await this.run(this.bodyId,image,bbox),bodyMs=performance.now()-bodyStart;
       const handsStart=performance.now(),refinements=[];
       if(handRefinement){
@@ -133,9 +170,13 @@ export class PoseEngine {
           refinements.push({side,roi:handBox,...decision});
         }
       }
+      const handsMs=performance.now()-handsStart,feetStart=performance.now();
+      const footRefinements=footRefinement?await this.refineFeet(image,bbox,points):null;
+      const feetMs=performance.now()-feetStart;
       for(const point of points){point.observable=point.observable&&point.x>=0&&point.y>=0&&point.x<image.width&&point.y<image.height;}
       this.updateTracker(sourceId,points,image,timestampMs);
-      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{bodyMs,handsMs:performance.now()-handsStart,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
+      if(this.trackers.has(sourceId))this.trackers.get(sourceId).candidateCount=personDetection.candidateCount;
+      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,footRefinements,personDetection,scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{detectorMs,bodyMs,handsMs,feetMs,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
     }finally{this.busy=false;}
   }
   async dispose(){this.abort.abort();for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();}

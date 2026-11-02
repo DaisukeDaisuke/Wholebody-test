@@ -1,7 +1,23 @@
 # Wholebody Studio — フェーズ2
-映像から全身133点・手指・足先を推定するブラウザPoC。実装対象は動画PoCと2端末によるLAN内リアルタイムまで。
+
+映像から全身133点・手指・足先を推定するPoC。動画入力と2端末によるLAN内推論までを実装する。
+
+- アプリ: https://wholebody-phase2-4fc7ff60.daisukedaisuke389137.chatgpt.site
+- このチャット専用Sites ID: `appgprj_6ae7eb88f8188191b37ad05a226f16b5`
+- 専用ブランチ: `phase2-20261102-4fc7ff60`
+- 操作手順: [docs/usage.md](docs/usage.md)
+- モデル選定と一次資料: [docs/model-research.md](docs/model-research.md)
+- 足と実録動作の測定範囲: [docs/phase2-results.md](docs/phase2-results.md)
+
 ## 実装
-全身モデルはRTMW-l、単眼の相対3DモデルはRTMW3D-X、軽量比較は既存RTMPose-s FP32を選べる。手指は元解像度の映像から予測ROIを切り出し、RTMPose Hand5で再推論する。映像や姿勢をクラウドへ送る経路は設けていない。
+YOLOX-tinyで人物を特定し、初回は最大の人物、以後は直前の対象と重なる候補を追う。手動で囲った人物範囲を優先し、人物未検出を欠測として扱う。
+
+全身モデルはRTMW-l、単眼の相対3DモデルはRTMW3D-X、軽量比較は既存RTMPose-s FP32を選べる。手指は元解像度の映像から予測ROIを切り出し、RTMPose Hand5で再推論する。手首との位置関係、手首と指のモデル出力、切り出し境界への集中を判定し、条件を満たす候補だけを採用する。異なるモデルのrawスコアの大小を比べて置き換えない。
+
+足の比較経路はFOCUS one2manyの8点出力を利用する。人物全体の範囲を入力し、同側の膝・足首との位置整合と足の長さを確認して、採用された足先6点を元の推定と50%ずつ混ぜる。足首の推定位置は置き換えない。足だけの切り出しや候補の単純な置き換えは実画像で悪化したため、失敗結果も残している。足補正は既定OFFの比較機能である。
+
+モデル実行はPC上で行い、映像や姿勢をクラウドへ送る経路は設けていない。人物検出のNMSを含む処理はWASM、身体・手・足の推論は選択したWebGPU/WASMを使う。検出器は初回・再捕捉時だけ実行する。
+
 2カメラでは元画像座標・カメラ内部外部パラメータ・時刻の対応から三角測量し、再投影誤差・視線交角・正深度で外れ値を棄却する。単眼位置は骨長・相対深度・弱い時系列事前分布から推定し、校正済み多視点の位置と区別する。
 遮蔽中は短時間の速度予測と手首・足首等に連動する姿勢保持を使う。経過時間に応じて信頼度を落とし、観測に復帰した点と補完された点を区別する。
 足は左右の母趾・小趾・踵と足首から甲の向きを求める。5本の足指は幾何学的な補完であり、それぞれの足指の曲げを独立に画像から観測したものではない。
@@ -19,12 +35,23 @@
 evaluation/benchmark.pyはMMPose公式の小規模COCO-WholeBody実画像と注釈を使い、全身・手・足別PCK、画素誤差、hand5追加前後、人工遮蔽時の変化を保存する。人物BBoxは正解を利用する診断実験であり、自動検出込みの評価ではない。手ROIは予測点のみから作成する。
 evaluation/codec-parity.mjsは実画像のRGBテンソルと実SimCC出力を使い、出荷するJavaScript前後処理を独立したOpenCV/ONNX Runtime経路と比較する。
 evaluation/geometry-experiment.mjsは既知の数値条件で校正・三角測量・時刻棄却・前後移動を検査する。数値条件での合格を実カメラの精度達成とは呼ばない。
+
+`evaluation/detector-evaluate.py`は人物検出から全身・手の再推論までを通し、4画像の事前固定対象を採点する。検出の最大候補を使い、正解人物箱を推論に渡さない。`evaluation/foot-evaluate.py`は足モデルの全候補方式と人工遮蔽時の回帰を比較する。
+
+`evaluation/holdout-evaluate.py`は公式COCO-WholeBody v1.0検証注釈のSHA-256を固定し、調整に使用した4画像を除いた32画像を推論前に確定する。人物検出経路と正解人物箱を使う参考経路を分け、通常・手遮蔽・足遮蔽の条件で全採点点を分母に残す。これはルール設計に未使用だった画像での検証であり、既製モデルの全学習データとの重複を排除した主張ではない。画像ID・選択規則・注釈ハッシュはレポートに含める。
+
+`evaluation/panoptic-experiment.mjs`は公開された実録3D動作を取得する。Panopticが取得できない場合はCMUの公式ASF/AMCを使用し、実録の体幹・四肢位置から100/300/1000msだけ観測を消して、補完誤差と単純な位置保持との差を計測する。カメラ画像からの誤差や、指・足指の時系列精度を測ったものではない。
+
+Actions成果物には通常画像と遮蔽条件の数値、画素誤差、未検出数、採否理由を残す。画面のActions実測欄は生成されたJSONだけを表示し、取得できなかったものを未評価として表示する。
+
 CPUでのモデル実行時間はGPUやWebGPUの速度ではない。小標本のPCKはCOCO全体のAPではない。ユーザーの遮蔽映像や2端末での定量精度は、対応する基準位置を持つ実データで別途判定する。
 ## モデルの配信
 Actionsが公式ONNXを無変換で取得し、SHA-256と入出力仕様を記録する。Hugging FaceのRabbitDaisuke/Wholebody-Refinement-onnxへアップロードするには、対象リポジトリへのwrite権限を持つHF_TOKENをGitHub Actionsのsecretに設定する。HUGGINGFACE_TOKEN、HUGGINGFACE_HUB_TOKENにも対応する。
-重みはGitHub本体やActions成果物へ大量複製せず、Hugging Faceへ配置する。Actions成果物は実測結果と静的アプリに限定し、保存期限は7日とする。
+人物検出器は同じApache-2.0リポジトリの`person/`へ配置する。FOCUSは元の学習済み重みを検証してONNXへ変換し、AGPL-3.0の`RabbitDaisuke/Foot-Refinement-onnx`へ配置する。変換jobにはアップロードtokenを渡さず、公開jobを分ける。アプリは公開済みrevisionとSHA-256を固定し、取得時に整合性を検査する。
+
+重みはHugging Faceへ配置する。足の変換結果を公開jobへ渡す一時成果物、実測結果、静的アプリのActions保存期限は7日とする。配布アプリの評価JSONと再現用コードはリポジトリとSites版に保存する。
 ## 出典とライセンス
-アプリのオリジナルコードは既存リポジトリのUnlicenseに従う。MMPoseのモデルとコードはApache-2.0、ONNX RuntimeはMIT、fflateはMIT。評価画像は各画像のライセンスに従い、公開する加工画像はCC BYの画像だけに限定する。
+アプリのオリジナルコードは既存リポジトリのUnlicenseに従う。MMPoseのモデルとコードはApache-2.0、FOCUSの学習済みYOLO由来モデルはAGPL-3.0、ONNX RuntimeはMIT。評価画像は各画像のライセンスに従い、公開する加工画像はCC BYの画像だけに限定する。
 モデルと技術の一次資料はdocs/model-research.mdに記載する。
 ## フェーズの境界
 この実装はフェーズ2まで。SteamVRドライバ、OSC送出、VRChatへの指ボーン反映、カメラ購入は行わない。

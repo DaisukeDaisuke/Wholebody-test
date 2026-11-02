@@ -176,6 +176,10 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const previousHeight = previousSizes.length >= 3 ? clamp(median(previousSizes), .5, 2.6) : null;
   const metric = hasIntrinsics && (knownScale || explicitDepth || (recentPrior && previousHeight !== null));
   const height = knownScale ? opts.bodyHeightM : previousHeight || (explicitDepth ? (Number.isFinite(opts.bodyHeightM) ? opts.bodyHeightM : 1.7) : 1);
+  // Relative skeleton units and calibrated absolute position are separate.
+  // A measured body height supplies metre-scale bones even without known K;
+  // RTMW3D's metre-valued relative depths must keep those same units.
+  const bodyScaleInMetres = knownScale || explicitDepth || previousHeight !== null;
   const virtualFocal = Math.max(imageSize.width, imageSize.height);
   const c = camera || { K: [virtualFocal, virtualFocal, imageSize.width / 2, imageSize.height / 2], distortion: [0, 0, 0, 0, 0] };
   const rays = Array.from({ length: 133 }, (_, i) => {
@@ -196,7 +200,7 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const rootRelativeZ = median([points[11]?.relativeZ ?? points[11]?.relativeZm, points[12]?.relativeZ ?? points[12]?.relativeZm]) || 0;
   const relativeDepths = Array.from({ length: 133 }, (_, i) => {
     const z = points[i]?.relativeZ ?? points[i]?.relativeZm;
-    return Number.isFinite(z) ? (z - rootRelativeZ) * (metric ? 1 : 1 / 1.7) : null;
+    return Number.isFinite(z) ? (z - rootRelativeZ) * (bodyScaleInMetres ? 1 : 1 / 1.7) : null;
   });
   const depthFit = explicitDepth ? { depth: opts.rootDepthM, boneCount: 0, priorOnly: false } : fitRootDepth(points, rays, relativeDepths, height, initialDepth, recentPrior ? priorRoot[2] : null, opts);
   const hasScaleCue = explicitDepth || !depthFit.priorOnly || !!recentPrior;
@@ -244,7 +248,7 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const cameraPositions = rays.map((r, i) => r ? mul(r, depths[i]) : null);
   const transform = p => useWorld ? cameraToWorld(p, camera) : [p[0] - rootCamera[0], -(p[1] - rootCamera[1]), p[2] - rootCamera[2]];
   const joints = cameraPositions.map((p, id) => p ? { id, position: transform(p), score: clamp(points[id].score) * (modelDepth ? .65 : .4), source: 'inferredMonocular', ageMs: 0, observable2D: true, modelRelativeZ: Number.isFinite(points[id]?.relativeZ ?? points[id]?.relativeZm), depthAmbiguous: !modelDepth } : missing(id));
-  const pose = { timestampMs: observation?.timestampMs ?? 0, sourceId: observation?.sourceId, joints, cameraPositions, metric: absoluteAllowed, coordinateFrame: useWorld ? 'world' : 'root-relative', units: absoluteAllowed ? 'm' : knownScale ? 'm-relative-estimate' : 'body-height', worldCalibrationId: useWorld ? (camera.worldCalibrationId || 'configured-world') : null, diagnostics: { method: modelDepth ? 'model-relative-depth-with-scale-fit' : 'ray-constrained-anthropometric-fit', intrinsicsCalibrated: hasIntrinsics, scaleConfirmed: knownScale, depthAnchored: explicitDepth, depthAnchorSource: explicitDepth ? 'providedCurrentMeasurement' : depthFit.priorOnly ? 'temporalPrior' : 'currentBoneFit', depthFitBoneCount: depthFit.boneCount, depthFitLoss: depthFit.fitLoss ?? null, depthAmbiguous: !modelDepth, scaleCueCount: depthGuesses.length, calibratedWorld: camera?.calibrated === true, observedJointCount: cameraPositions.filter(Boolean).length } };
+  const pose = { timestampMs: observation?.timestampMs ?? 0, sourceId: observation?.sourceId, joints, cameraPositions, metric: absoluteAllowed, coordinateFrame: useWorld ? 'world' : 'root-relative', units: absoluteAllowed ? 'm' : bodyScaleInMetres ? 'm-relative-estimate' : 'body-height', worldCalibrationId: useWorld ? (camera.worldCalibrationId || 'configured-world') : null, diagnostics: { method: modelDepth ? 'model-relative-depth-with-scale-fit' : 'ray-constrained-anthropometric-fit', intrinsicsCalibrated: hasIntrinsics, scaleConfirmed: knownScale, bodyScaleUnit: bodyScaleInMetres ? 'm' : 'body-height', modelRelativeDepthScale: bodyScaleInMetres ? 1 : 1 / 1.7, depthAnchored: explicitDepth, depthAnchorSource: explicitDepth ? 'providedCurrentMeasurement' : depthFit.priorOnly ? 'temporalPrior' : 'currentBoneFit', depthFitBoneCount: depthFit.boneCount, depthFitLoss: depthFit.fitLoss ?? null, depthAmbiguous: !modelDepth, scaleCueCount: depthGuesses.length, calibratedWorld: camera?.calibrated === true, observedJointCount: cameraPositions.filter(Boolean).length } };
   finishPose(pose);
   if (!absoluteAllowed) pose.root = { ...pose.root, position: null, valid: false, metric: false, distanceStatus: 'uncalibrated' };
   return pose;
