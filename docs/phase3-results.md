@@ -1,6 +1,6 @@
 # フェーズ3の測定範囲
 ## 公開モデルと実行記録
-アプリ本体の公開入力での実推論は[Actions run 41386321154](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41386321154)で通過した。ソースは `d57985ece9f0556c1cbf8b9ad4deeae4e9643515`。Sitesの `dist/delivery.json` は配布物の由来を記録する。以後のrunのJSONは配布アプリのActions実測欄へ同梱する。
+圧縮配布を含む公開入力での実推論は[Actions run 41389867024](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41389867024)で通過した。計算コードのソースは `985542a1021add7595819689ebd0dbfde66574d3`。Sitesの `dist/delivery.json` は配布物の由来を記録する。実測JSONは配布アプリのActions実測欄へ同梱する。
 BootsTAPIRは[変換run 41384892970](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41384892970)で3つのONNXへ変換した。Google公式実装との参照比較と固定画像の前後処理比較を通過した重みを、[公開run 41385853154](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41385853154)から[Foot-Point-Tracker-onnx](https://huggingface.co/RabbitDaisuke/Foot-Point-Tracker-onnx)へ公開した。ライセンスはApache-2.0。
 manifestの固定revisionは `ac66a7e5df280cb9986a417de79bc2c1b997c233`、重みの固定revisionは `4751f96d5413e48c05e63da133a5b4b1e6074c12`。モデルはencoder 115,330,894 bytes、query 2,291 bytes、step 105,305,753 bytes。アプリは各ファイルのSHA-256を検査する。
 Sitesの1ファイル25 MiB上限に合わせ、28,747,738 bytesのORT 1.31.1 Asyncify WASMはgzipで配布する。圧縮状態で届いた場合は圧縮ファイルと復元後のbytes・SHA-256を照合し、HTTP層ですでに展開された場合も元WASMのbytes・SHA-256を照合する。復元した同一WASMを `env.wasm.wasmBinary` に渡すため、モデル・演算・数値精度は変えない。Sites版とローカル配布版は同じ形式を使う。
@@ -20,7 +20,8 @@ BootsTAPIRの出荷コードは[run 41385890985](https://github.com/DaisukeDaisu
 このWebGPU実行はSwiftShaderで、初期化フレーム約143秒・更新フレーム約135秒だった。GPU投入が非同期であるため、APIで囲ったencoder/stepの所要時間は個別GPUカーネル時間ではない。一部の演算はCPUへ割り当てられるため、全演算がGPU上で実行されたとも主張しない。物理GPUの推論速度は未測定。
 同じ1.31.1構成の[core run 41387576005](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41387576005)でも実WASMを再確認した。2回の更新は約1,831msと1,708ms、公式参照との座標最大差0.000114441px、可視判定の相違0だった。以前の1.22.0とは別runnerの測定であり、版更新だけによる速度改善率とは扱わない。
 再実行に期限付きartifactを必要としないよう、公開参照JSONをリポジトリに保存し、元の公開JPEGを同じ固定版OpenCVで復号してRGBのSHA-256一致を確認する。モデルはアプリと同じHugging Face固定revisionから取得する。
-この恒久的な準備経路を使った[run 41388182911](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41388182911)も通過した。座標差・可視判定は前runと同じで、SwiftShaderでは初期化約104秒・更新約98秒だった。配布アプリの `evaluation/phase3-webgpu.json` はこのrunの実測を保存する。
+この恒久的な準備経路を使った[run 41388182911](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41388182911)も通過した。座標差・可視判定は前runと同じで、SwiftShaderでは初期化約104秒・更新約98秒だった。
+gzip配布経路は[run 41389867022](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41389867022)で確認した。7,131,690 bytesの圧縮WASMはcore配布物と完全一致し、ブラウザWorkerで圧縮データ・復元後WASMの両SHA-256を検証した。未圧縮WASMへのリクエストは0、外部リクエストとGPUエラーも0、3グラフとGPU上の状態保持・更新は成功した。公式参照との座標最大差は0.000114441px、可視判定の相違は0。SwiftShaderの初期化は約104秒・更新は約96秒で、物理GPUの速度ではない。配布アプリの `evaluation/phase3-webgpu.json` はこのrunの実測を保存する。
 ## 実動画の精度に関する境界
 点追跡は初期点の意味を自分で識別しない。母趾先・小趾先・踵中心は初期検出または手動指定で定義する。画像上の対応が続くことと、隠れた5本の足指の3D関節を推定できることは別の達成条件である。
 初期ROIの拡大は比較機能で、回転・大移動で範囲を外れうるため既定OFF。可視性の低い点を常に観測座標へ変換しない。足だけの結果に奥行きや全身位置を加えず、VRM反映も初期角度からの画像平面内変化に限定する。
