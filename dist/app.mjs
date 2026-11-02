@@ -123,19 +123,20 @@ function poseFor(source){
 }
 async function processFrame(source,token){
   const start=performance.now(),mode=$('mode').value,roi=source.roi||[0,0,source.video.videoWidth,source.video.videoHeight],stamp=source.stream?start:source.video.currentTime*1000;
+  let didInference=false;
   const captured=source.frameCaptureAt||start;
   if(source.frame.width!==source.video.videoWidth||source.frame.height!==source.video.videoHeight){source.frame.width=source.video.videoWidth;source.frame.height=source.video.videoHeight;}
   source.frameContext.drawImage(source.video,0,0);
-  if(mode==='wholebody'){source.points=await runBody(source,roi);if(!running||generation!==token||!sources.includes(source))return;}
+  if(mode==='wholebody'){source.points=await runBody(source,roi);didInference=true;if(!running||generation!==token||!sources.includes(source))return;}
   else{source.points=null;source.observation=null;}
   if((mode==='face'||mode==='wholebody'&&$('face-enabled').checked)&&start-source.lastFace>=1000/15){
     const candidate=mode==='face'?{roi,confidence:1}:faceRoiFrom59(source.points);
-    if(candidate){source.face=await parts.runFace(source.frame,candidate.roi,{roiConfidence:candidate.confidence,calibration:neutralFace});source.faceRoiConfidence=candidate.confidence;limitedPush(partTimes,source.face.inferenceMs);source.lastFace=performance.now();}else source.face=null;
+    if(candidate){source.face=await parts.runFace(source.frame,candidate.roi,{roiConfidence:candidate.confidence,calibration:neutralFace});didInference=true;source.faceRoiConfidence=candidate.confidence;limitedPush(partTimes,source.face.inferenceMs);source.lastFace=performance.now();}else source.face=null;
   }
   if((mode==='foot'||mode==='wholebody'&&$('foot-enabled').checked)&&start-source.lastFoot>=100){
     for(const side of (mode==='foot'?['left']:['left','right'])){
       const candidate=mode==='foot'?{roi,confidence:1}:footRoiFrom59(source.points,side);
-      if(candidate){source.feet[side]={...await parts.runFoot(source.frame,candidate.roi,{roiConfidence:candidate.confidence}),roi:candidate.roi};limitedPush(partTimes,source.feet[side].inferenceMs);}else delete source.feet[side];
+      if(candidate){source.feet[side]={...await parts.runFoot(source.frame,candidate.roi,{roiConfidence:candidate.confidence}),roi:candidate.roi};didInference=true;limitedPush(partTimes,source.feet[side].inferenceMs);}else delete source.feet[side];
     }
     source.lastFoot=performance.now();
   }
@@ -148,7 +149,7 @@ async function processFrame(source,token){
     else{clearPose();$('pose-status').textContent=mode==='foot'?'足領域の見え方を分類中。絶対位置と足首回転は未観測です。':'顔領域から表情を読み取り中。';}
     $('measure-points').innerHTML=`${source.points?.filter(p=>p.score>=Number($('confidence').value)).length??'—'}<small> / 59</small>`;
   }
-  draw(source);limitedPush(timings,performance.now()-start);limitedPush(readTimes,Math.max(0,performance.now()-captured));frameCounter++;
+  draw(source);if(didInference){limitedPush(timings,performance.now()-start);limitedPush(readTimes,Math.max(0,performance.now()-captured));frameCounter++;}
 }
 async function loop(token){
   let cursor=0,next=0;
@@ -171,7 +172,7 @@ async function start(){
 }
 function stop(){running=false;generation++;for(const s of sources)if(!s.stream)s.video.pause();$('start').disabled=loading;$('stop').disabled=true;$('status-dot').classList.remove('on');$('top-status').textContent='一時停止';bridge.stop();}
 async function initView(){if(view)return view;if(viewPromise)return viewPromise;viewPromise=(async()=>{const {createVRMView}=await import('./vrm-view.mjs');view=createVRMView({container:$('avatar-canvas'),onState:s=>$('avatar-status').textContent=s.hasVRM?`${s.fileName} · ${s.appliedBoneCount} ボーン反映`:'実際に観測した関節を3D表示します。',onError:fail});if(lastPose)view.updatePose(lastPose);return view;})();try{return await viewPromise;}catch(e){viewPromise=null;throw e;}}
-async function setView(mode){$('stage-content').className=`view-${mode}`;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===mode));if(mode!=='input')await initView();}
+async function setView(mode){$('stage-content').className=`view-${mode}`;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===mode));if(mode!=='input')await initView();view?.setEnabled(mode!=='input');}
 async function enumerate(){if(!navigator.mediaDevices?.enumerateDevices)return;const selected=$('camera-select').value,devices=await navigator.mediaDevices.enumerateDevices();$('camera-select').replaceChildren(new Option('標準カメラ',''));for(const d of devices.filter(d=>d.kind==='videoinput'))$('camera-select').append(new Option(d.label||`カメラ ${$('camera-select').options.length}`,d.deviceId));$('camera-select').value=selected;}
 $('video-file').onchange=e=>{try{for(const file of e.target.files)createSource({file});}catch(error){fail(error);}e.target.value='';};
 $('camera-add').onclick=async()=>{try{if(sources.length>=3)throw new Error('入力は3件までです。');const device=$('camera-select').value;const stream=await navigator.mediaDevices.getUserMedia({video:{...(device?{deviceId:{exact:device}}:{}),width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60,max:60}},audio:false});createSource({stream,label:stream.getVideoTracks()[0].label});await enumerate();}catch(e){fail(e);}};

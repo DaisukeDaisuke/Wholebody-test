@@ -135,7 +135,7 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100);
   camera.position.set(2.3, 1.65, 4.3);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.setAttribute('aria-label', 'VRMと推定骨格の3D表示。ドラッグで回転、ホイールで拡大。');
   container.append(renderer.domElement);
@@ -162,7 +162,7 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   scene.add(skeletonGroup);
   let vrm = null, rig = null, fileName = '', pose = null, sourceMode = 'live', displayMode = 'skeleton';
   let disposed = false, loading = false, generation = 0, lastRetarget = null, poseIdentity = null, framed = false;
-  let frameId = 0, lastTick = performance.now(), metricStart = lastTick, renderFrames = 0, renderMsTotal = 0;
+  let frameId = 0, lastTick = performance.now(), lastDraw = -Infinity, enabled = true, metricStart = lastTick, renderFrames = 0, renderMsTotal = 0;
   let lastStateKey = '', loadError = '', lastPoseError = '';
 
   const poseSummary = () => {
@@ -319,6 +319,11 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   resize();
   function tick(now) {
     if (disposed) return;
+    if (!enabled || container.clientWidth < 2 || container.clientHeight < 2 || now - lastDraw < 1000 / 30) {
+      frameId = requestAnimationFrame(tick);
+      return;
+    }
+    lastDraw = now;
     const dt = Math.min(Math.max((now - lastTick) / 1000, 0), 0.05); lastTick = now;
     const start = performance.now();
     controls.update();
@@ -335,6 +340,7 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   notify(true);
   return {
     updatePose, updateExpressions, loadFile, unload, resetView, setDisplayMode, getStatus: status,
+    setEnabled(value) { enabled = value === true; if (enabled) lastDraw = -Infinity; },
     dispose() {
       if (disposed) return;
       disposed = true; generation++; cancelAnimationFrame(frameId); observer.disconnect(); controls.dispose();

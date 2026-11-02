@@ -45,6 +45,7 @@ jobs:
           name: compact59-${{ github.sha }}
           path: |
             artifacts/compact59/*.onnx
+            artifacts/compact59/*.pth
             artifacts/compact59/*.json
             artifacts/compact59/*.md
           if-no-files-found: error
@@ -112,6 +113,11 @@ jobs:
           node build/node_modules/esbuild/bin/esbuild build/vrm-entry.mjs --bundle --format=esm --minify --outfile=dist/vendor/vrm-runtime.mjs
       - name: Prepare deployable models and measured results
         run: node ci/package.mjs
+      - name: Execute shipped browser models on one public image
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --prefix .cache/browser playwright@1.56.1
+          node .cache/browser/node_modules/playwright/cli.js install --with-deps chromium
+          node ci/browser-inference.mjs
       - name: Validate shipped source
         run: |
           for file in dist/*.mjs server/*.mjs; do node --check "$file"; done
