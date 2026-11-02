@@ -209,7 +209,7 @@ function acquisitionReport(samples, durationSeconds) {
 }
 
 function createCropDiagnostics() {
-  const sideRatios = [], stepRatios = [], outsideFractions = []; let previousSide = null, centresOutside = 0;
+  const sideRatios = [], stepRatios = [], outsideFractions = [], bodyHeightRatios = [], bodyAreaRatios = []; let previousSide = null, centresOutside = 0, observedLimbExpansions = 0;
   return {
     add(crop, size) {
       sideRatios.push(crop.side / Math.max(size.width, size.height));
@@ -217,8 +217,13 @@ function createCropDiagnostics() {
       const half = crop.side / 2, intersectionWidth = Math.max(0, Math.min(size.width, crop.cx + half) - Math.max(0, crop.cx - half)), intersectionHeight = Math.max(0, Math.min(size.height, crop.cy + half) - Math.max(0, crop.cy - half));
       outsideFractions.push(1 - intersectionWidth * intersectionHeight / (crop.side * crop.side));
       if (crop.cx < 0 || crop.cy < 0 || crop.cx >= size.width || crop.cy >= size.height) centresOutside++;
+      const body = bodyRoiFromCrop(crop, size), input = cropTransform(body.roi, [3, 4], body.padding);
+      bodyHeightRatios.push(input.height / crop.side); bodyAreaRatios.push(input.width * input.height / (crop.side * crop.side));
+      if (body.expandedForObservedLimbs) observedLimbExpansions++;
     },
-    finish() { return { sideOverImageLongestSide: stats(sideRatios), consecutiveSideRatio: stats(stepRatios), axisAlignedSquareOutsideImageFraction: stats(outsideFractions), cropCentreOutsideImageFrames: centresOutside, centresAreRoiOnlyNotBodyObservations: true }; },
+    finish() { return { sideOverImageLongestSide: stats(sideRatios), consecutiveSideRatio: stats(stepRatios), axisAlignedSquareOutsideImageFraction: stats(outsideFractions), cropCentreOutsideImageFrames: centresOutside,
+      bodyInputHeightOverCircleDiameter: stats(bodyHeightRatios), bodyInputAreaOverCircleSquare: stats(bodyAreaRatios), framesExpandedForObservedLimbs: observedLimbExpansions,
+      bodyInputAspectRatio: .75, bodyAspectPolicy: 'circle-height-plus-recent-observed-limb-envelope', centresAreRoiOnlyNotBodyObservations: true }; },
   };
 }
 

@@ -30,13 +30,24 @@ export function createPersonDetectorTransform(roi, imageSize) {
   return { roi: [x, y, width, height], scaledWidth, scaledHeight, padX: Math.floor((224 - scaledWidth) / 2), padY: Math.floor((224 - scaledHeight) / 2), inputWH: [224, 224], imageSize: { ...imageSize } };
 }
 
-/** The detector circle already includes a full-body margin. The SimCC model
- * gets its bounding square with no second padding multiplier; cropTransform
- * still expands one axis to the model aspect ratio. Do not clip offscreen
- * bounds: clipping changes the virtual hip centre in partial-body frames. */
+/** Match the portrait SimCC input: circle diameter is body height, not width.
+ * A square followed by 3:4 aspect correction shrinks the person by another
+ * 25% vertically. Preserve previous reliable observed body/hand extents, so
+ * an extended arm can widen this rectangle without another model inference.
+ * Offscreen virtual bounds remain ROI only and are never clipped/recentred. */
 export function bodyRoiFromCrop(crop, imageSize = crop?.imageSize) {
   if (![crop?.cx, crop?.cy, crop?.side, imageSize?.width, imageSize?.height].every(finite) || crop.side <= 0) throw new Error('invalidSharedBodyCrop');
-  return { roi: [crop.cx - crop.side / 2, crop.cy - crop.side / 2, crop.side, crop.side], padding: 1 };
+  const c = Math.abs(Math.cos(crop.angleRad || 0)), s = Math.abs(Math.sin(crop.angleRad || 0));
+  const width = crop.side * (.75 * c + s), height = crop.side * (c + .75 * s);
+  let left = crop.cx - width / 2, right = crop.cx + width / 2, top = crop.cy - height / 2, bottom = crop.cy + height / 2;
+  const bounds = crop.bodyObservationBounds, margin = crop.side * .04;
+  if (Array.isArray(bounds) && bounds.length === 4 && bounds.every(finite)) {
+    left = Math.min(left, bounds[0] - margin); right = Math.max(right, bounds[2] + margin);
+    top = Math.min(top, bounds[1] - margin); bottom = Math.max(bottom, bounds[3] + margin);
+  }
+  return { roi: [left, top, right - left, bottom - top], padding: 1,
+    expandedForObservedLimbs: right - left > width + 1e-6 || bottom - top > height + 1e-6,
+    aspectPolicy: 'circle-height-plus-recent-observed-limb-envelope' };
 }
 
 /** Canvas pixels after drawing source ROI into the transform's letterbox.
@@ -111,17 +122,23 @@ export class Pose3DRoiTracker {
     return ranked[0] || null;
   }
   nextCrop(roi, imageSize, timestampMs) {
-    if (this.freshDetection) { this.freshDetection = false; return { ...this.detectedCrop, imageSize: { ...imageSize } }; }
+    const withBodyEnvelope = crop => {
+      const current = timestampMs >= this.lastUpdateAt && timestampMs - this.lastUpdateAt <= 200;
+      const points = current ? [0, ...Array.from({ length: 18 }, (_, i) => i + 5), ...Array.from({ length: 42 }, (_, i) => i + 91)].map(id => this.keypoints?.[id]).filter(p => p?.observable !== false && !p?.derived && p?.score >= .35 && finite(p.x) && finite(p.y) && p.x >= 0 && p.y >= 0 && p.x < imageSize.width && p.y < imageSize.height && (!finite(p.observedAtMs) || timestampMs - p.observedAtMs <= 200)) : [];
+      const bodyObservationBounds = points.length ? [Math.min(...points.map(p => p.x)), Math.min(...points.map(p => p.y)), Math.max(...points.map(p => p.x)), Math.max(...points.map(p => p.y))] : null;
+      return { ...crop, imageSize: { ...imageSize }, bodyObservationBounds };
+    };
+    if (this.freshDetection) { this.freshDetection = false; return withBodyEnvelope(this.detectedCrop); }
     if (this.torsoGood && this.keypoints) {
       const prior = this.lastGoodCrop, trackedRoi = prior ? [prior.cx - prior.side / 2, prior.cy - prior.side / 2, prior.side, prior.side] : roi;
       const next = createPose3DCrop(trackedRoi, this.keypoints, imageSize);
       // The torso gate must agree with createPose3DCrop. If anchors disappear,
       // never feed the previous crop through person-ROI padding again: repeated
       // 1.25x expansion makes the person vanish even while detection succeeds.
-      if (next.source === 'observed-hip-torso') return next;
+      if (next.source === 'observed-hip-torso') return withBodyEnvelope(next);
     }
-    if (this.lastGoodCrop && timestampMs - this.lastGoodAt <= this.cropHoldMs) return { ...this.lastGoodCrop, imageSize: { ...imageSize }, source: 'recent-crop-only-not-held-landmarks' };
-    return createPose3DCrop(roi, [], imageSize);
+    if (this.lastGoodCrop && timestampMs - this.lastGoodAt <= this.cropHoldMs) return withBodyEnvelope({ ...this.lastGoodCrop, source: 'recent-crop-only-not-held-landmarks' });
+    return withBodyEnvelope(createPose3DCrop(roi, [], imageSize));
   }
   update(decoded, crop, timestampMs) {
     this.lastUpdateAt = timestampMs; this.keypoints = decoded?.keypoints || null;
