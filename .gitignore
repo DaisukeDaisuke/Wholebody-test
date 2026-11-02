@@ -1,0 +1,7 @@
+.cache/
+node_modules/
+artifacts/
+*.zip
+.env
+*.pem
+*.key

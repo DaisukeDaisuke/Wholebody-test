@@ -1,0 +1,60 @@
+name: Actual-image pose evaluation
+on:
+  push:
+    paths:
+      - 'dist/**'
+      - 'scripts/**'
+      - '.github/workflows/evaluate.yml'
+  workflow_dispatch:
+    inputs:
+      models:
+        description: Comma-separated model IDs
+        default: rtmpose-s,rtmw-l
+      dataset:
+        description: 'official-example or val-subset (larger evaluation)'
+        default: official-example
+      people:
+        description: Maximum annotated people
+        default: '12'
+permissions:
+  contents: read
+concurrency:
+  group: actual-image-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install inference-only dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 onnxruntime==1.23.2 opencv-python-headless==4.12.0.88
+      - name: Evaluate real annotated photographs
+        env:
+          MODEL_IDS: ${{ inputs.models || 'rtmpose-s,rtmw-l' }}
+          DATASET: ${{ inputs.dataset || 'official-example' }}
+          PEOPLE: ${{ inputs.people || '12' }}
+        run: python scripts/evaluate.py --models "$MODEL_IDS" --dataset "$DATASET" --people "$PEOPLE" --out artifacts
+      - name: Verify geometry contract
+        run: node scripts/verify-geometry.mjs
+      - name: Publish measured results to run summary
+        if: always()
+        run: |
+          if test -f artifacts/summary.md; then
+            cat artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Save reports and evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-image-evaluation-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9

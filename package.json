@@ -1,0 +1,9 @@
+{
+  "name": "wholebody-phase2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local video whole-body and hand tracking with calibrated two-view fusion",
+  "scripts": {"start": "node server.mjs"},
+  "engines": {"node": ">=22"}
+}
