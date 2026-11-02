@@ -27,12 +27,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install the file enumerator used by source checks
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ripgrep
+          command -v rg
       - name: Check shipped modules without a browser
         shell: bash
         run: |
-          if test -d dist; then
-            while IFS= read -r file; do node --check "$file"; done < <(rg --files dist -g '*.mjs' -g '*.js')
-          fi
+          rg --files dist -g '*.mjs' -g '*.js' > "$RUNNER_TEMP/tracking-javascript-files.txt"
+          test -s "$RUNNER_TEMP/tracking-javascript-files.txt"
+          while IFS= read -r file; do node --check "$file"; done < "$RUNNER_TEMP/tracking-javascript-files.txt"
           python -m py_compile scripts/publish_models.py
           if test -f scripts/evaluate_video.py; then python -m py_compile scripts/evaluate_video.py; fi
           python -m py_compile scripts/check_public_assets.py
