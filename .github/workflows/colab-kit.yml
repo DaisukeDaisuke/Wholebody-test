@@ -1,0 +1,75 @@
+name: Colab kit real export check
+on:
+  push:
+    branches: [compact-vrc-20261102-7fe4fac1]
+    paths: ['training/fast_model.py', 'training/train_fast.py', 'training/quantize_stable.py', 'colab/**', '.github/workflows/colab-kit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: colab-kit-7fe4fac1-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  real-export-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: colab/requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: artifacts/compact59
+          key: compact59-trained-v1-9ed63fc278b4e0daefbaaef92ba44c2dcd89b9f5b69a47ae96a7c4c8bf722b93
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: artifacts/fast59
+          key: fast59-trained-v1-b41fb2dae145d7c697b4bcb9cd9967bd5b966fd2bc3bd9281de0979079cf016c
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/compact59
+          key: compact59-public-v1-${{ runner.os }}
+      - name: Install the Python 3.13 dependency contract
+        run: |
+          python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r colab/requirements.txt
+      - name: Check the notebook and launcher syntax
+        run: |
+          python -m compileall -q colab training
+          python - <<'PY'
+          import ast, json, pathlib
+          path = pathlib.Path('colab/VRC_Compact59_GPU_7fe4fac1.ipynb')
+          notebook = json.loads(path.read_text(encoding='utf-8'))
+          for cell in notebook['cells']:
+              if cell['cell_type'] == 'code':
+                  ast.parse(''.join(cell['source']))
+                  assert not cell['outputs']
+          print('Notebook syntax and clean output cells verified')
+          PY
+      - name: Exercise actual gradient updates and ONNX export on public images
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: >-
+          python training/train_fast.py
+          --output artifacts/colab-smoke --cache .cache/compact59
+          --baseline-checkpoint artifacts/compact59/compact59.pth
+          --exclude-split artifacts/compact59/public-split.json
+          --exclude-split artifacts/fast59/public-split.json
+          --device cpu --execution-environment actions --smoke-test
+          --train-count 8 --val-count 8 --test-count 8
+          --steps 2 --warmup-steps 1 --validation-interval 1
+          --batch-size 2 --threads 2 --seed 20261105
+      - name: Retain execution evidence; this is not production training
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: colab-kit-export-check-${{ github.sha }}
+          path: artifacts/colab-smoke/*.json
+          if-no-files-found: warn
+          retention-days: 7

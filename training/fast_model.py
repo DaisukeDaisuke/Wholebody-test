@@ -1,25 +1,22 @@
-"""Native low-resolution students; no resize or Gather wrapper at inference.
+"""Lower-resolution backbones with the trained Compact59 head intact.
 
-The checkpoint-compatible original lives in model.py and remains unchanged.
-Kernel, spatial MLP and SimCC classifier interpolation happens once at
-initialization. Exported students contain only their smaller native operators.
+All original head weights are copied exactly. Two small constant MatMul
+operators align native features to the original physical stride-32 grid.
+Image convolutions run at reduced resolution; output stays 384/512 SimCC bins.
 """
 
-import copy
 import math
 
 import torch
 from torch import nn
-from torch.nn import functional as F
-
-from model import GAU, Pose, SELECTED, ScaleNorm, TinyBackbone
+from model import Head, Pose, SELECTED, TinyBackbone
 
 
 CANDIDATES = (
-    {"id": "fast59-128", "width": 96, "height": 128, "kernel": 3},
-    {"id": "fast59-160", "width": 120, "height": 160, "kernel": 5},
-    {"id": "fast59-192", "width": 144, "height": 192, "kernel": 5},
+    {"id": "fast59-aligned-192", "width": 144, "height": 192, "kernel": 7},
+    {"id": "fast59-aligned-224", "width": 168, "height": 224, "kernel": 7},
 )
+DECODE_WH = (192, 256)
 
 
 def feature_shape(width, height):
@@ -27,20 +24,36 @@ def feature_shape(width, height):
     return math.ceil(height / 32), math.ceil(width / 32)
 
 
-class FastHead(nn.Module):
-    def __init__(self, width, height, kernel):
+def interpolation_matrix(source_length, target_length, coordinate_scale):
+    """Sample physical feature centers without a resize half-pixel offset.
+
+    Odd-kernel, symmetrically padded stride-two convolutions place feature
+    centers at 32*j in input pixels. Target j samples source index
+    j * native_input / original_input. Out-of-range neighbors clamp to edge.
+    """
+    matrix = torch.zeros(target_length, source_length, dtype=torch.float32)
+    for target in range(target_length):
+        position = target * coordinate_scale
+        lower = math.floor(position)
+        fraction = position - lower
+        matrix[target, min(source_length - 1, lower)] += 1 - fraction
+        matrix[target, min(source_length - 1, lower + 1)] += fraction
+    return matrix
+
+
+class PhysicalFeatureAlignment(nn.Module):
+    def __init__(self, width, height):
         super().__init__()
-        feature_h, feature_w = feature_shape(width, height)
-        spatial = feature_h * feature_w
-        self.final_layer = nn.Conv2d(384, 59, kernel, padding=kernel // 2)
-        self.mlp = nn.Sequential(ScaleNorm(spatial), nn.Linear(spatial, 256, bias=False))
-        self.gau = GAU()
-        self.cls_x = nn.Linear(256, width * 2, bias=False)
-        self.cls_y = nn.Linear(256, height * 2, bias=False)
+        source_h, source_w = feature_shape(width, height)
+        self.source_h, self.source_w = source_h, source_w
+        self.register_buffer("horizontal", interpolation_matrix(source_w, 6, width / 192).T.contiguous())
+        self.register_buffer("vertical", interpolation_matrix(source_h, 8, height / 256))
 
     def forward(self, features):
-        tokens = self.gau(self.mlp(self.final_layer(features).flatten(2)))
-        return self.cls_x(tokens), self.cls_y(tokens)
+        return torch.matmul(self.vertical, torch.matmul(features, self.horizontal))
+
+    def multiply_accumulates(self):
+        return 384 * self.source_h * self.source_w * 6 + 384 * 8 * self.source_h * 6
 
 
 class FastPose(nn.Module):
@@ -48,10 +61,14 @@ class FastPose(nn.Module):
         super().__init__()
         self.config = dict(config)
         self.backbone = TinyBackbone()
-        self.head = FastHead(config["width"], config["height"], config["kernel"])
+        self.alignment = PhysicalFeatureAlignment(config["width"], config["height"])
+        self.head = Head(59)
+
+    def aligned_features(self, image):
+        return self.alignment(self.backbone(image))
 
     def forward(self, image):
-        return self.head(self.backbone(image))
+        return self.head(self.aligned_features(image))
 
     def train(self, mode=True):
         super().train(mode)
@@ -79,24 +96,7 @@ def load_baseline(path):
 def initialize_student(baseline, config):
     student = FastPose(config)
     student.backbone.load_state_dict(baseline.backbone.state_dict(), strict=True)
-    original = baseline.head.state_dict()
-    state = copy.deepcopy(original)
-    kernel = config["kernel"]
-    weight = original["final_layer.weight"]
-    state["final_layer.weight"] = F.interpolate(
-        weight.reshape(-1, 1, 7, 7), size=(kernel, kernel), mode="bilinear",
-        align_corners=False).reshape(59, 384, kernel, kernel) * (49 / kernel ** 2)
-    feature_h, feature_w = feature_shape(config["width"], config["height"])
-    state["mlp.1.weight"] = F.interpolate(
-        original["mlp.1.weight"].reshape(256, 1, 8, 6),
-        size=(feature_h, feature_w), mode="bilinear", align_corners=False,
-    ).reshape(256, feature_h * feature_w) * (48 / (feature_h * feature_w))
-    for axis, length in (("x", config["width"] * 2), ("y", config["height"] * 2)):
-        weight = original[f"cls_{axis}.weight"]
-        state[f"cls_{axis}.weight"] = F.interpolate(
-            weight.T.unsqueeze(0), size=length, mode="linear", align_corners=False,
-        )[0].T.contiguous()
-    student.head.load_state_dict(state, strict=True)
+    student.head.load_state_dict(baseline.head.state_dict(), strict=True)
     return student.eval()
 
 
@@ -116,10 +116,13 @@ def multiply_accumulates(model, width, height):
             if isinstance(layer, (nn.Conv2d, nn.Linear)):
                 hooks.append(layer.register_forward_hook(count))
         model.eval()
+        device = next(model.parameters()).device
         with torch.inference_mode():
-            outputs = model(torch.zeros(1, 3, height, width))
+            outputs = model(torch.zeros(1, 3, height, width, device=device))
         points = outputs[0].shape[1]
         total += points * points * (128 + 512)
+        if hasattr(model, "alignment"):
+            total += model.alignment.multiply_accumulates()
     finally:
         for hook in hooks:
             hook.remove()
