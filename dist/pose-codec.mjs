@@ -9,11 +9,23 @@ export const FOOT_EDGES = [[15,17],[17,18],[18,19],[19,15],[16,20],[20,21],[21,2
 export function cropTransform(box, inputWH, padding = 1.25) {
   if (!Array.isArray(box) || box.length !== 4 || !box.every(Number.isFinite) || box[2] <= 0 || box[3] <= 0) throw new Error('ROI must be [x,y,width,height] with positive dimensions.');
   const [iw, ih] = inputWH;
-  const center = [box[0] + box[2] / 2, box[1] + box[3] / 2];
-  let width = box[2] * padding, height = box[3] * padding;
-  if (width / height > iw / ih) height = width * ih / iw;
-  else width = height * iw / ih;
-  return {center, scale:[width,height], inputWH:[iw,ih], left:center[0]-width/2, top:center[1]-height/2};
+  const f = Math.fround;
+  const center = [f(box[0] + box[2] / 2), f(box[1] + box[3] / 2)];
+  let width = f(f(box[2]) * padding), height = f(f(box[3]) * padding);
+  const aspect=iw/ih;
+  if (width > f(height*aspect)) height = f(width/aspect);
+  else width = f(height*aspect);
+  // The independent reference creates an FP32 affine matrix, then OpenCV
+  // inverts that matrix in double precision. Preserve the same pixel map.
+  const ax=f(iw/width), ay=f(ih/height);
+  const bx=f(iw*f(.5-f(center[0]/width))), by=f(ih*f(.5-f(center[1]/height)));
+  const inverse=[1/ax,0,-bx/ax,0,1/ay,-by/ay];
+  return {center, scale:[width,height], inputWH:[iw,ih], left:center[0]-width/2, top:center[1]-height/2, inverse};
+}
+
+function roundEven(value) {
+  const base=Math.floor(value), fraction=value-base;
+  return fraction<.5?base:fraction>.5?base+1:base+(base&1);
 }
 
 export function rgbaToTensor(image, transform) {
@@ -21,19 +33,23 @@ export function rgbaToTensor(image, transform) {
   const [iw,ih] = transform.inputWH;
   const output = new Float32Array(3 * iw * ih);
   const area = iw * ih;
-  // Match OpenCV warpAffine INTER_LINEAR's integer-pixel convention and 1/32 interpolation table.
+  // Match OpenCV warpAffine's separately rounded 10-bit affine terms and
+  // subsequent 5-bit interpolation-table coordinates, including negative ROI.
   // Original RGB frame is sampled once; there is no full-frame downscaling before the hand crops.
   const sample = (x,y,c) => x < 0 || y < 0 || x >= width || y >= height ? 0 : data[(y*width+x)*4+c];
+  const inverse=transform.inverse||[transform.scale[0]/iw,0,transform.left,0,transform.scale[1]/ih,transform.top];
+  const xDelta=Int32Array.from({length:iw},(_,x)=>roundEven(inverse[0]*x*1024));
+  const xBase=roundEven(inverse[2]*1024)+16;
   for (let y=0; y<ih; y++) {
-    const sy = transform.top + y * transform.scale[1] / ih;
-    let y0 = Math.floor(sy), fy = Math.round((sy-y0)*32)/32;
+    const iy=(roundEven((inverse[4]*y+inverse[5])*1024)+16)>>5;
+    const y0=iy>>5, fy=(iy&31)/32;
     for (let x=0; x<iw; x++) {
-      const sx = transform.left + x * transform.scale[0] / iw;
-      const x0 = Math.floor(sx), fx = Math.round((sx-x0)*32)/32;
+      const ix=(xBase+xDelta[x])>>5;
+      const x0=ix>>5, fx=(ix&31)/32;
       const index = y*iw+x;
       for (let c=0; c<3; c++) {
         const pixel = Math.round(sample(x0,y0,c)*(1-fx)*(1-fy) + sample(x0+1,y0,c)*fx*(1-fy) + sample(x0,y0+1,c)*(1-fx)*fy + sample(x0+1,y0+1,c)*fx*fy);
-        output[c*area+index] = (pixel-MEAN[c])/STD[c];
+        output[c*area+index] = Math.fround(pixel-Math.fround(MEAN[c]))/Math.fround(STD[c]);
       }
     }
   }

@@ -20,6 +20,7 @@ const references = [
   'https://openaccess.thecvf.com/content_iccv_2015/html/Joo_Panoptic_Studio_A_ICCV_2015_paper.html',
 ];
 const toCoco = [1, 15, 17, 16, 18, 3, 9, 4, 10, 5, 11, 6, 12, 7, 13, 8, 14];
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
 const missing = id => ({ id, position: null, score: 0, source: 'missing' });
 const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
 
@@ -55,7 +56,7 @@ function readPoseArchive(bytes) {
     if (!Number.isSafeInteger(size) || size < 0 || offset + 512 + size > bytes.length) throw new Error('Invalid or truncated TAR archive.');
     const type = header[156], match = name.match(/body3DScene_(\d+)\.json$/);
     if ((type === 0 || type === 48) && match && size <= 1024 * 1024) {
-      const frame = JSON.parse(bytes.subarray(offset + 512, offset + 512 + size).toString('utf8'));
+      const frame = JSON.parse(strictUtf8.decode(bytes.subarray(offset + 512, offset + 512 + size)));
       if (Array.isArray(frame.bodies)) frames.push({ index: Number(match[1]), frame });
     }
     offset += 512 + Math.ceil(size / 512) * 512;
@@ -70,6 +71,8 @@ function referenceSequence(frames) {
   for (const { frame } of frames) for (const body of frame.bodies) if (Array.isArray(body.joints19) && body.joints19.length === 76) counts.set(body.id, (counts.get(body.id) || 0) + 1);
   const selectedId = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
   if (selectedId === undefined) throw new Error('No stable subject with joints19 labels is available.');
+  const fpsTypes = [...new Set(frames.map(({ frame }) => frame.fpsType).filter(Boolean))];
+  if (fpsTypes.some(type => type !== 'hd_29_97')) throw new Error(`Unsupported frame-time convention: ${fpsTypes.join(', ')}`);
   const selected = frames.flatMap(({ index, frame }) => {
     const body = frame.bodies.find(b => b.id === selectedId && Array.isArray(b.joints19) && b.joints19.length === 76);
     if (!body) return [];
@@ -78,10 +81,13 @@ function referenceSequence(frames) {
       const offset = toCoco[i] * 4, values = body.joints19.slice(offset, offset + 4), [x, y, z, confidence] = values;
       if (values.every(Number.isFinite) && confidence >= .3) joints[i] = { id: i, position: [x / 100, -y / 100, z / 100], score: Math.min(1, confidence), source: 'measuredMultiView' };
     }
-    return [{ index, timestampMs: index * 1001 / 30, joints }];
+    return [{ index, timestampMs: index * 1001 / 30, labelTime: Number.isFinite(frame.univTime) ? frame.univTime : null, joints }];
   }).slice(0, 900);
   if (selected.length < 90) throw new Error(`Only ${selected.length} usable frames; at least 90 are required.`);
-  return { subjectId: selectedId, frames: selected, detectedSubjectCount: counts.size };
+  const increments = selected.slice(1).map((frame, i) => frame.index - selected[i].index);
+  if (increments.some(delta => delta <= 0)) throw new Error('Frame indices are duplicated or not strictly increasing.');
+  const labelIntervals = selected.slice(1).flatMap((frame, i) => Number.isFinite(frame.labelTime) && Number.isFinite(selected[i].labelTime) ? [(frame.labelTime - selected[i].labelTime) / (frame.index - selected[i].index)] : []).sort((a, b) => a - b);
+  return { subjectId: selectedId, frames: selected, detectedSubjectCount: counts.size, fpsTypes, timeAudit: { labelIntervalPerFrame: labelIntervals.length ? labelIntervals[Math.floor(labelIntervals.length / 2)] : null, expectedIntervalMs: 1001 / 30, maximumFrameIndexGap: Math.max(...increments), nonconsecutiveFramePairs: increments.filter(delta => delta > 1).length, note: 'Frame-index timing is used. univTime is retained only for comparison; its absolute origin is not shared with application performance.now().' } };
 }
 
 function summary(errors) {
@@ -95,7 +101,8 @@ function evaluateGap(frames, hiddenIds, gapFrames, label) {
   let eligible = 0, absent = 0, maskedFrames = 0;
   for (let index = 0; index < frames.length; index++) {
     const truth = frames[index];
-    const hide = index >= 30 && (index - 30) % 120 < gapFrames;
+    const relativeFrame = truth.index - frames[0].index;
+    const hide = relativeFrame >= 30 && (relativeFrame - 30) % 120 < gapFrames;
     if (hide) maskedFrames++;
     const joints = truth.joints.map((j, id) => hide && hiddenIds.includes(id) ? missing(id) : { ...j, position: j.position?.slice() || null });
     for (let id = 0; id < 17; id++) if (joints[id].position) previousObserved.set(id, joints[id].position.slice());
@@ -142,7 +149,7 @@ const report = {
 for (const url of sources) {
   try {
     const archive = await download(url), frames = readPoseArchive(archive), selected = referenceSequence(frames);
-    report.dataset = { url, sha256: createHash('sha256').update(archive).digest('hex'), downloadedBytes: archive.length, archiveFrameCount: frames.length, evaluatedFrameCount: selected.frames.length, firstFrameIndex: selected.frames[0].index, lastFrameIndex: selected.frames.at(-1).index, subjectId: selected.subjectId, detectedSubjectCount: selected.detectedSubjectCount };
+    report.dataset = { url, sha256: createHash('sha256').update(archive).digest('hex'), downloadedBytes: archive.length, archiveFrameCount: frames.length, evaluatedFrameCount: selected.frames.length, firstFrameIndex: selected.frames[0].index, lastFrameIndex: selected.frames.at(-1).index, subjectId: selected.subjectId, detectedSubjectCount: selected.detectedSubjectCount, fpsTypes: selected.fpsTypes, timeAudit: selected.timeAudit };
     for (const gap of [3, 9, 30]) {
       report.experiments.push(evaluateGap(selected.frames, [7, 9], gap, 'left-elbow-and-wrist-hidden'));
       report.experiments.push(evaluateGap(selected.frames, [15, 16], gap, 'both-ankles-hidden'));

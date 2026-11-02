@@ -173,6 +173,9 @@ class PoseModel:
             raise ValueError("SimCC model produced non-finite values")
         xy = np.stack([x_axis[0].argmax(axis=-1), y_axis[0].argmax(axis=-1)], axis=-1).astype(np.float32) / 2
         score = np.minimum(x_axis[0].max(axis=-1), y_axis[0].max(axis=-1)).astype(np.float32)
+        # Official get_simcc_maximum sets both indices to -1 for a
+        # non-positive peak, before dividing by simcc_split_ratio=2.
+        xy[score <= 0] = -0.5
         xy = xy / np.array([self.width, self.height]) * scale + center - scale / 2
         if self.capture_next:
             self.codec_fixture = {"rgba": cv2.cvtColor(image, cv2.COLOR_BGR2RGBA),
@@ -393,6 +396,134 @@ def emit_codec_fixture(model: PoseModel, folder: Path, image_info: dict, annotat
     model.codec_fixture = None
 
 
+def predicted_person_box(prediction: np.ndarray, scores: np.ndarray,
+                         image: np.ndarray) -> tuple[np.ndarray | None, int]:
+    """The first updateTracker call in dist/inference.mjs, with no history.
+
+    The 23 body/foot predictions, not any annotation, determine this crop.
+    A second pass over the same still image is only an initialization diagnostic.
+    """
+    points = prediction[:23]
+    valid = (scores[:23] > 0.4) & np.isfinite(points).all(axis=1)
+    count = int(np.count_nonzero(valid))
+    if count < 8:
+        return None, count
+    low, high = points[valid].min(axis=0), points[valid].max(axis=0)
+    width = max(float(high[0] - low[0]), image.shape[1] * 0.08)
+    height = max(float(high[1] - low[1]), image.shape[0] * 0.18)
+    return np.array([low[0] - width * 0.25, low[1] - height * 0.15,
+                     width * 1.5, height * 1.3], dtype=np.float64), count
+
+
+def nearest_annotated_body(prediction: np.ndarray, annotations: list[dict],
+                           target_id: int) -> dict:
+    """Interpret identity errors after inference; never use this to set the ROI.
+
+    This diagnostic does not change the preselected scoring target or turn a
+    nearest annotation into a verified identity match.
+    """
+    candidates = []
+    for annotation in annotations:
+        body = np.asarray(annotation["keypoints"], dtype=np.float32).reshape(-1, 3)
+        valid = body[:, 2] > 0
+        if not valid.any():
+            continue
+        error = np.linalg.norm(prediction[:17][valid] - body[valid, :2], axis=1)
+        candidates.append({"annotationId": annotation["id"],
+                           "normalizedMeanBodyError": float(error.mean() / max(annotation["bbox"][2:])),
+                           "bodyPoints": int(np.count_nonzero(valid))})
+    candidates.sort(key=lambda value: (value["normalizedMeanBodyError"], value["annotationId"]))
+    nearest = candidates[0] if candidates else None
+    return {"nearestAnnotationId": nearest["annotationId"] if nearest else None,
+            "nearestIsScoringTarget": nearest["annotationId"] == target_id if nearest else False,
+            "candidates": candidates,
+            "scope": "post-inference body-error diagnostic; target and input ROI remain unchanged"}
+
+
+def initialization_experiment(body_model: PoseModel, hand_model: PoseModel,
+                              annotations: list[dict], image_cache: dict,
+                              images: dict, output: Path) -> dict:
+    """Measure the actual full-frame -> predicted crop -> hand path on images."""
+    by_image = defaultdict(list)
+    for annotation in annotations:
+        by_image[annotation["image_id"]].append(annotation)
+    measurements, cases, predictions = {}, [], []
+    body_calls_before, hand_calls_before = len(body_model.times), len(hand_model.times)
+    method_order = ("full_frame", "full_frame_hand_refined", "predicted_person_crop",
+                    "predicted_person_crop_hand_refined")
+    for image_id, candidates in sorted(by_image.items()):
+        image = image_cache[image_id]
+        # A fixed, reproducible scoring target. Its box is never an input here.
+        annotation = max(candidates, key=lambda value: (value["bbox"][2] * value["bbox"][3], -value["id"]))
+        target = target_points(annotation)
+        full_box = np.array([0, 0, image.shape[1], image.shape[0]], dtype=np.float64)
+        first_xy, first_scores = body_model.predict(image, full_box)
+        next_box, reliable_count = predicted_person_box(first_xy, first_scores, image)
+        crop_available = next_box is not None
+        if next_box is None:
+            next_box = full_box.copy()
+        second_xy, second_scores = body_model.predict(image, next_box)
+        first_refined, first_refined_scores, first_hands = refine_hands(
+            hand_model, image, first_xy, first_scores, full_box)
+        second_refined, second_refined_scores, second_hands = refine_hands(
+            hand_model, image, second_xy, second_scores, next_box)
+        stages = [
+            ("full_frame", full_box, first_xy, first_scores, []),
+            ("full_frame_hand_refined", full_box, first_refined, first_refined_scores, first_hands),
+            ("predicted_person_crop", next_box, second_xy, second_scores, []),
+            ("predicted_person_crop_hand_refined", next_box, second_refined, second_refined_scores, second_hands),
+        ]
+        case = {"imageId": image_id, "targetAnnotationId": annotation["id"],
+                "targetBBoxXYWHForScoringOnly": annotation["bbox"],
+                "annotatedPeople": len(candidates), "initialReliableBodyFootPoints": reliable_count,
+                "predictedCropAvailable": crop_available,
+                "fallbackReason": None if crop_available else "fewer_than_8_body_foot_points_above_score_0.4",
+                "stages": []}
+        for method, box, xy, scores, hand_records in stages:
+            if xy.shape != (133, 2) or not np.isfinite(xy).all() or not np.isfinite(scores).all():
+                raise ValueError(f"Invalid wholebody result for initialization/{method}")
+            add_metrics(measurements.setdefault(method, {}), annotation, target, xy, scores)
+            per_image = {}
+            add_metrics(per_image, annotation, target, xy, scores)
+            stage = {"method": method, "inputBBoxXYWH": box.tolist(),
+                     "metrics": summarize_metrics(per_image),
+                     "identityDiagnostic": nearest_annotated_body(xy, candidates, annotation["id"]),
+                     "refinement": hand_records}
+            case["stages"].append(stage)
+            predictions.append({"imageId": image_id, "targetAnnotationId": annotation["id"],
+                                **stage, "prediction": xy.tolist(), "scores": scores.tolist()})
+        cases.append(case)
+        if images[image_id]["license"] == 4:
+            panels = [overlay(image, xy, scores, target, title)
+                      for (_, _, xy, scores, _), title in zip(stages, (
+                          "full frame; green=fixed target annotation", "full frame + Hand5",
+                          "predicted person crop", "predicted person crop + Hand5"))]
+            grid = np.concatenate([np.concatenate(panels[:2], axis=1),
+                                   np.concatenate(panels[2:], axis=1)], axis=0)
+            cv2.imwrite(str(output / "overlays" / f"{image_id}-initialization.jpg"),
+                        grid, [cv2.IMWRITE_JPEG_QUALITY, 94])
+        print(f"initialization image={image_id} target={annotation['id']} "
+              f"predicted_crop={crop_available} reliable_points={reliable_count}", flush=True)
+    json_write(output / "initialization-predictions.json", predictions)
+    return {"images": len(cases), "methodOrder": list(method_order),
+            "targetSelection": "largest annotated person bbox area per selected image; lowest id breaks ties",
+            "groundTruthUsedForInference": False,
+            "inputPath": "full image -> predicted body/foot extent -> original-image hand crops",
+            "roiContract": {"pointIndices": "0..22", "scoreGreaterThan": 0.4, "minimumPoints": 8,
+                            "minimumImageWidthFraction": 0.08, "minimumImageHeightFraction": 0.18,
+                            "extentExpansionXYWH": [-0.25, -0.15, 1.5, 1.3],
+                            "missingCropFallback": "full image", "historyBlending": False,
+                            "modelCropPadding": 1.25},
+            "bodyCalls": len(body_model.times) - body_calls_before,
+            "handCalls": len(hand_model.times) - hand_calls_before,
+            "metrics": {method: summarize_metrics(measurements[method]) for method in method_order},
+            "cases": cases,
+            "limits": ["The identical still image is used twice; this does not measure video tracking.",
+                       "Multi-person initialization can select another person; fixed-target errors are retained.",
+                       "Identity diagnostics never alter the target or model input.",
+                       "No detector or ground-truth person box is supplied to the inference path."]}
+
+
 def markdown_report(report: dict) -> str:
     rows = ["# 実画像・実ONNX推論の小規模評価", f"実行日時: {report['createdAt']}",
             f"対象: {report['dataset']['images']}画像・{report['dataset']['people']}人物。人物領域は正解BBoxを使用。",
@@ -412,6 +543,22 @@ def markdown_report(report: dict) -> str:
     rows.extend(["## 手の再推論による差", "改善を合格条件として偽装せず、符号付きの差をそのまま記録する。"])
     for condition, delta in report["handRefinementDifference"].items():
         rows.append(f"{condition}: 平均誤差差 {delta['meanErrorPxRefinedMinusBaseline']:.3f}px、PCK@0.20差 {delta['pck020RefinedMinusBaseline']:+.3f}。")
+    initialization = report["initializationExperiment"]
+    rows.extend(["## 実際の入力経路: 全画面から予測ROIへ",
+                 f"{initialization['images']}画像で、全画面入力から予測した身体・足の23点で次の人物領域を作り、元画像の手を再推論する。",
+                 "推論に正解BBoxは渡さない。採点対象は画像ごとの最大人物に事前固定し、別人を追った場合の誤差も残す。",
+                 "同じ静止画を2回使う初期化の診断であり、実動画での追従・フレーム落ち・再捕捉の評価ではない。",
+                 "|入力経路|部位|点数|平均誤差px|PCK@0.05|PCK@0.10|PCK@0.20|",
+                 "|---|---|---:|---:|---:|---:|---:|"])
+    for method in initialization["methodOrder"]:
+        for part in ("body", "hand", "foot"):
+            value = initialization["metrics"][method].get(part)
+            if value is None:
+                continue
+            error = "—" if value["meanErrorPx"] is None else f"{value['meanErrorPx']:.3f}"
+            rows.append(f"|{method}|{part}|{value['points']}|{error}|{value['pck005']:.3f}|{value['pck010']:.3f}|{value['pck020']:.3f}|")
+    rows.extend(["画像ごとの採点・予測ROI・人物対応の診断はreport.jsonのinitializationExperiment.casesへ、",
+                 "実座標と手ROIはinitialization-predictions.jsonへ保存する。CC BY画像785の比較はoverlays/785-initialization.jpg。"])
     rows.extend(["## 遮蔽の解釈", "hand/foot/torsoは元画像上へ矩形を置く制御実験。遮蔽で失われた点だけの成績はreport.jsonのmaskedPointMetricsへ分離。",
                  "これは時系列補完や別カメラでの回復を実証する評価ではない。全方向から隠れた指を観測したと扱わない。",
                  "## 出典とライセンス", "COCO-WholeBodyの注釈は研究・非商用用途（公式READMEのリンク先CC BY-NC 4.0）。画像は各画像のFlickr由来ライセンス。",
@@ -440,9 +587,10 @@ def main():
     data = json.loads(annotation_path.read_text(encoding="utf-8"))
     images = {value["id"]: value for value in data["images"]}
     licenses = {value["id"]: value for value in data["licenses"]}
-    selected = [value for value in sorted(data["annotations"], key=lambda v: (v["image_id"], v["id"]))
+    eligible = [value for value in sorted(data["annotations"], key=lambda v: (v["image_id"], v["id"]))
                 if not value.get("iscrowd", 0) and value.get("num_keypoints", 0) > 0
-                and min(value["bbox"][2:]) >= 20][:args.max_people]
+                and min(value["bbox"][2:]) >= 20]
+    selected = eligible[:args.max_people]
     if not selected:
         raise ValueError("No annotated people were selected")
     body_model = PoseModel(args.body_model, args.cache, "wholebody", args.threads)
@@ -489,6 +637,9 @@ def main():
                 filename = args.output / "overlays" / f"{image_id}-{annotation['id']}-{condition}.jpg"
                 cv2.imwrite(str(filename), comparison, [cv2.IMWRITE_JPEG_QUALITY, 94])
             print(f"inferred image={image_id} person={annotation['id']} condition={condition}", flush=True)
+    initialization = initialization_experiment(
+        body_model, hand_model, [value for value in eligible if value["image_id"] in image_cache],
+        image_cache, images, args.output)
     metrics = {condition: {method: summarize_metrics(parts) for method, parts in methods.items()}
                for condition, methods in measurements.items()}
     masked_metrics = {condition: {method: summarize_metrics(parts) for method, parts in methods.items()}
@@ -511,6 +662,7 @@ def main():
               "models": {"wholebody": {"id": args.body_model_id, **body_model.metadata, "timing": body_model.timing()},
                          "hand": {"id": "RTMPose-m-hand5-256x256", **hand_model.metadata, "timing": hand_model.timing()}},
               "metrics": metrics, "maskedPointMetrics": masked_metrics, "handRefinementDifference": differences,
+              "initializationExperiment": initialization,
               "limits": ["Small diagnostic subset, not representative COCO AP.",
                          "CPU runtime timings do not measure browser WebGPU or the user's GPU.",
                          "Still-image masks do not validate temporal tracking or true multiview reconstruction.",

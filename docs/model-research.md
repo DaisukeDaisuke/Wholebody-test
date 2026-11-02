@@ -19,7 +19,7 @@ RTMPose-m/DWPose公式ONNX ZIP: https://download.openmmlab.com/mmpose/v1/project
 公式ファイルは日付付きURLであり、Git revisionと同等の不変性は仮定しない。Actionsが取得したZIPとONNXのSHA-256、実際の入力・出力名・shapeを保存する。Hugging Faceミラーは`RabbitDaisuke/Wholebody-Refinement-onnx`を使用し、モデルカードに元モデル・変換手順・SHA-256を残す。上流コードはApache-2.0、データの利用条件は独立して扱う。既製重みを変換したものを自作学習済みモデルとは呼ばない。
 ## 前処理と後処理の契約
 画像はRGB、`float32`のNCHW。各チャンネルで`(value-mean)/std`を使い、meanは`[123.675,116.28,103.53]`、stdは`[58.395,57.12,57.375]`。BBoxを中心を保って1.25倍にし、モデルの縦横比に合わせて不足側を広げ、黒パディングのアフィン変換を行う。
-SimCC座標は各軸のargmaxを2で割る。元画像への逆変換は`inputXY/[inputW,inputH]*cropScale+cropCenter-cropScale/2`。2Dの公式MMPose codecに合わせてscoreは`min(max(x),max(y))`とする。これは校正済みの確率ではない。任意の`/5`やsoftmaxは入れない。RTMLibは独自に平均scoreを使用しているため、その閾値を無条件に流用しない。
+SimCC座標は各軸のargmaxを2で割る。元画像への逆変換は`inputXY/[inputW,inputH]*cropScale+cropCenter-cropScale/2`。2Dの公式MMPose codecに合わせてscoreは`min(max(x),max(y))`とし、scoreが0以下なら両軸のargmax indexを-1にしてから2で割る。scoreは校正済みの確率ではない。任意の`/5`やsoftmaxは入れない。RTMLibは独自に平均scoreを使用しているため、その閾値を無条件に流用しない。
 正方形のHand5出力は両方512要素なのでshapeだけではx/yを判別できない。`simcc_x`・`simcc_y`の出力名を優先する。RTMW-l 384×288はxが576、yが768。出力shapeを実ファイルで検証し、133点と21点を取り違えない。
 公式ONNX例のBGR無変換で結果が変わる問題は[公式issue #2888](https://github.com/open-mmlab/mmpose/issues/2888)にも記録されている。[Hand5 config](https://github.com/open-mmlab/mmpose/blob/main/projects/rtmpose/rtmpose/hand_2d_keypoint/rtmpose-m_8xb32-210e_coco-wholebody-hand-256x256.py)、[SimCC decoder](https://github.com/open-mmlab/mmpose/blob/main/mmpose/codecs/simcc_label.py)を契約の根拠にする。
 ## 指と足で実際に得られる情報
@@ -35,7 +35,8 @@ FootMRと2026年10月公開のExMRは、全身姿勢の初期値へ手・足の�
 自作モデルを追加する場合は画像認識器全体の再学習より、欠損マスク付き2D/3D座標から姿勢を補う小さなモデルが先候補。H3WBには133点の2D→3D・不完全2D→3Dタスクがあり、遮蔽補完の定量比較が可能。ただし現在の評価スクリプトはこの学習・精度達成を含まない。[H3WB公式データとタスク](https://github.com/wholebody3d/wholebody3d)、[公表ベンチマーク](https://github.com/wholebody3d/wholebody3d/blob/main/benchmark.md)。
 ## Actionsでの実画像評価
 `evaluation/benchmark.py`は実ONNXをCPU推論し、MMPose公式repoのCOCO-WholeBody小標本を使用する。データ元をcommit `759b39c13fea6ba094afc1fa932f51dc1b11cbf9`に固定。4画像・最大14人物なので統計的な精度保証には使わず、前処理不整合、手の再推論の改善・悪化、遮蔽時の破綻を確認する。
-身体・手・足を別々に採点し、低信頼点も分母へ含める。正解人物BBoxを使うため検出器の評価ではない。手のROIは予測座標のみから作り、正解手BBoxは採点尺度にだけ使用する。手・足・胴体を人工的に隠した入力でも同じ推論を行い、隠した点だけの成績を別集計する。静止画の人工遮蔽から、時間補完・実際の多視点・利用者環境の精度達成は主張しない。
+身体・手・足を別々に採点し、低信頼点も分母へ含める。モデル単体の基準比較は正解人物BBoxを使うため検出器の評価ではない。手のROIは予測座標のみから作り、正解手BBoxは採点尺度にだけ使用する。手・足・胴体を人工的に隠した入力でも同じ推論を行い、隠した点だけの成績を別集計する。静止画の人工遮蔽から、時間補完・実際の多視点・利用者環境の精度達成は主張しない。
+加えて、アプリの入力経路を測るため、画像ごとの最大人物を採点対象として固定し、正解BBoxを入力しない全画面推論→予測人物ROI再推論を行う。全画面と予測ROIのそれぞれでHand5なし/ありを採点し、4経路を比較する。ROIは身体・足23点のうちscore>0.4を8点以上採れた場合だけ作り、幅は画像幅の8%以上、高さは画像高の18%以上、外接範囲から`[left-0.25w,top-0.15h,1.5w,1.3h]`へ広げる。この式はアプリの初回tracker更新と同じ。採点後の人物対応診断はターゲットや入力ROIを変更しない。`initialization-predictions.json`に実座標、`report.json`の`initializationExperiment`に部位別数値・各画像の結果を保存する。同じ静止画を2回使う初期化診断であり、動画追跡性能とは区別する。
 注釈はCOCO-WholeBody公式の研究・非商用条件に従い、画像は個別のFlickrライセンスを記録する。公開する重ね描き画像はCC BYの画像785に限定する。NC-ND画像の派生画像は生成成果へ含めない。[注釈利用条件](https://github.com/jin-s13/COCO-WholeBody#terms-of-use)。
 実行例: `python evaluation/benchmark.py --output evaluation/results --cache .cache/wholebody --max-people 14`。モデル差替えは`--body-model URL_or_path --body-model-id identifier`、手モデルは`--hand-model URL_or_path`。実行場所はGitHub Actionsとし、ローカル推論やクラウドブラウザの手動テストは行わない。
 ## ブラウザ用前後処理との数値一致
