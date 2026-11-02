@@ -39,8 +39,16 @@ jobs:
         run: for file in dist/*.mjs dist/sw.js; do node --check "$file"; done
       - name: Evaluate real annotated images and controlled occlusion
         run: python evaluation/benchmark.py --output evaluation/results --cache .cache/wholebody --max-people 14 --emit-codec-fixture
+      - name: Evaluate person detection through body and selective hand inference
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
+        run: python evaluation/detector-evaluate.py --output evaluation/results/detector-report.json --cache .cache/wholebody --publish --emit-codec-fixture
       - name: Compare the shipped JavaScript preprocessing and decoding to the real Python inference
         run: node evaluation/codec-parity.mjs --fixture evaluation/results/codec-fixture --output evaluation/results/codec-parity.json
+      - name: Compare the shipped person detector codec to actual ONNX outputs
+        run: node evaluation/detector-codec-parity.mjs
       - name: Evaluate calibrated geometry and observed temporal sequences
         run: node evaluation/geometry-experiment.mjs
       - name: Measure occlusion recovery against captured Panoptic 3D sequences
@@ -54,6 +62,8 @@ jobs:
           cp evaluation/results/geometry-report.json dist/evaluation/geometry-report.json
           cp evaluation/results/codec-parity.json dist/evaluation/codec-parity.json
           cp evaluation/results/panoptic-report.json dist/evaluation/panoptic-report.json
+          cp evaluation/results/detector-report.json dist/evaluation/detector-report.json
+          cp evaluation/results/detector-codec-parity.json dist/evaluation/detector-codec-parity.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -62,6 +72,7 @@ jobs:
             evaluation/results/*.json
             evaluation/results/*.md
             evaluation/results/overlays/
+            evaluation/results/detector-codec-fixture/
           if-no-files-found: warn
           retention-days: 7
       - uses: actions/upload-artifact@v4

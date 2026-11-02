@@ -31,6 +31,15 @@ FOOT_GROUPS = ("foot", "left_foot", "right_foot", "ankle")
 DETECTION_MIN = 0.05
 REFINE_DETECTION_MIN = 0.25
 REFINE_KEYPOINT_MIN = 0.35
+ASSOCIATION_POLICY = {
+    "id": "ankle-associated-v1", "candidateLimit": 64, "baselineAnchorMin": 0.25,
+    "detectionMin": 0.25, "keypointMin": 0.35, "minShinPx": 8.0,
+    "ankleDistanceFraction": 0.30, "ankleDistanceFloorPx": 3.0,
+    "footRadiusFraction": 0.90, "footRadiusFloorPx": 4.0,
+    "heelRadiusFraction": 0.45, "minimumUsableFootPoints": 2,
+    "minimumSeparatedAnklesPx": 6.0, "minimumPairSeparationRatio": 0.35,
+    "blendWeight": 0.5, "refineAnkles": False,
+}
 
 
 def require_actions():
@@ -126,6 +135,20 @@ def decode_top_one(raw: np.ndarray, model: dict, transform: dict) -> dict:
             "candidateIndex": candidate_index, "candidateCount": len(candidates)}
 
 
+def decode_association_candidates(raw: np.ndarray, model: dict, transform: dict) -> list[dict]:
+    """Decode score-qualified raw rows, before any target identity is selected."""
+    rows = raw[0].T if model["head"] == "one2many" else raw[0]
+    indices = np.flatnonzero(rows[:, 4] >= ASSOCIATION_POLICY["detectionMin"])
+    indices = indices[np.argsort(-rows[indices, 4], kind="stable")[:ASSOCIATION_POLICY["candidateLimit"]]]
+    candidates = []
+    for index in indices:
+        one = rows[index][None, :, None] if model["head"] == "one2many" else rows[index][None, None, :]
+        result = decode_top_one(one, model, transform)
+        result["candidateIndex"], result["candidateCount"] = int(index), len(rows)
+        candidates.append(result)
+    return candidates
+
+
 class FootModel:
     def __init__(self, directory: Path, metadata: dict, threads: int):
         self.metadata = metadata
@@ -153,6 +176,7 @@ class FootModel:
         if len(outputs) != 1:
             raise ValueError("Expected one FOCUS output tensor")
         result = decode_top_one(outputs[0], self.metadata, transform)
+        result["candidates"] = decode_association_candidates(outputs[0], self.metadata, transform)
         result["transform"] = transform
         self.total_times.append((time.perf_counter() - total_start) * 1000)
         if self.capture_next:
@@ -185,6 +209,96 @@ def insert_predictions(baseline: np.ndarray, baseline_scores: np.ndarray,
     prediction[COCO_INDICES[use]] = result["points"][use]
     scores[COCO_INDICES[use]] = result["detectionScore"] * result["keypointScores"][use]
     return prediction, scores, COCO_INDICES[use].tolist()
+
+
+def associate_foot_candidates(candidates: list[dict], baseline: np.ndarray,
+                             baseline_scores: np.ndarray) -> dict:
+    """Associate to predicted shins only. No annotations, image IDs or GT boxes.
+
+    Each side must fit its own knee/ankle anchor. A candidate can refine one side
+    while the other side falls back. Detector scores are never compared with
+    RTMW scores; they rank candidates from this same FOCUS model only.
+    """
+    policy = ASSOCIATION_POLICY
+    anchors = []
+    for side in range(2):
+        knee_id, ankle_id = 13 + side, 15 + side
+        valid = (min(baseline_scores[knee_id], baseline_scores[ankle_id]) >= policy["baselineAnchorMin"]
+                 and np.isfinite(baseline[[knee_id, ankle_id]]).all())
+        shin_length = float(np.linalg.norm(baseline[ankle_id] - baseline[knee_id])) if valid else 0.0
+        anchors.append({"valid": bool(valid and shin_length >= policy["minShinPx"]),
+                        "ankle": baseline[ankle_id], "shinLengthPx": shin_length})
+    best, audits = None, []
+    for candidate in candidates:
+        if candidate["detectionScore"] < policy["detectionMin"]:
+            continue
+        accepted = np.zeros(8, dtype=bool)
+        sides, quality = [], 0.0
+        for side, anchor in enumerate(anchors):
+            offset, ankle_index = side * 4, side * 4 + 3
+            detail = {"side": "left" if side == 0 else "right", "accepted": False,
+                      "shinLengthPx": anchor["shinLengthPx"], "reason": None}
+            if not anchor["valid"]:
+                detail["reason"] = "unreliable_or_too_short_baseline_shin"
+            elif candidate["keypointScores"][ankle_index] < policy["keypointMin"]:
+                detail["reason"] = "candidate_ankle_score"
+            else:
+                shin = anchor["shinLengthPx"]
+                ankle_distance = float(np.linalg.norm(candidate["points"][ankle_index] - anchor["ankle"]))
+                gate = max(policy["ankleDistanceFloorPx"], policy["ankleDistanceFraction"] * shin)
+                detail.update({"ankleDistancePx": ankle_distance, "ankleGatePx": gate,
+                               "normalizedAnkleDistance": ankle_distance / shin})
+                if ankle_distance > gate:
+                    detail["reason"] = "ankle_outside_same_shin_gate"
+                else:
+                    radii = np.linalg.norm(candidate["points"][offset:offset + 3] - candidate["points"][ankle_index], axis=1)
+                    bounds = np.array([max(policy["footRadiusFloorPx"], policy["footRadiusFraction"] * shin),
+                                       max(policy["footRadiusFloorPx"], policy["footRadiusFraction"] * shin),
+                                       max(policy["footRadiusFloorPx"], policy["heelRadiusFraction"] * shin)])
+                    usable = (radii <= bounds) & (candidate["keypointScores"][offset:offset + 3] >= policy["keypointMin"])
+                    detail.update({"footRadiiPx": radii.tolist(), "maximumFootRadiiPx": bounds.tolist(),
+                                   "usableFootPoints": int(usable.sum())})
+                    if int(usable.sum()) < policy["minimumUsableFootPoints"]:
+                        detail["reason"] = "insufficient_consistent_foot_points"
+                    else:
+                        accepted[offset:offset + 3] = usable
+                        detail["accepted"] = True
+                        detail["reason"] = "same_shin_and_plausible_foot_extent"
+                        quality += float(candidate["keypointScores"][ankle_index]) * math.exp(-0.5 * (ankle_distance / gate) ** 2) * float(usable.mean())
+            sides.append(detail)
+        if all(side["accepted"] for side in sides):
+            baseline_separation = float(np.linalg.norm(anchors[0]["ankle"] - anchors[1]["ankle"]))
+            candidate_separation = float(np.linalg.norm(candidate["points"][3] - candidate["points"][7]))
+            if baseline_separation >= policy["minimumSeparatedAnklesPx"] and candidate_separation < baseline_separation * policy["minimumPairSeparationRatio"]:
+                accepted[:] = False
+                quality = 0.0
+                for side in sides:
+                    side["accepted"], side["reason"] = False, "candidate_pair_collapses_distinct_ankles"
+        quality *= candidate["detectionScore"]
+        audit = {"candidateIndex": candidate["candidateIndex"], "detectionScore": candidate["detectionScore"],
+                 "quality": quality, "acceptedCocoIndices": COCO_INDICES[accepted].tolist(), "sides": sides}
+        audits.append(audit)
+        if accepted.any() and (best is None or quality > best["quality"]):
+            best = {"candidate": candidate, "accepted": accepted, "quality": quality, "audit": audit}
+    return {"selected": best, "candidateCountEvaluated": len(candidates), "candidates": audits,
+            "policyId": policy["id"]}
+
+
+def insert_associated(baseline: np.ndarray, baseline_scores: np.ndarray, association: dict,
+                      blend: bool = False):
+    prediction, scores = baseline.copy(), baseline_scores.copy()
+    selected = association["selected"]
+    if selected is None:
+        return prediction, scores, []
+    candidate, use = selected["candidate"], selected["accepted"]
+    indices = COCO_INDICES[use]
+    weight = ASSOCIATION_POLICY["blendWeight"] if blend else 1.0
+    prediction[indices] = baseline[indices] * (1 - weight) + candidate["points"][use] * weight
+    # Source scores have different scales. Retain the original score in a blend;
+    # only a full replacement exposes the FOCUS detection × keypoint score.
+    if not blend:
+        scores[indices] = candidate["detectionScore"] * candidate["keypointScores"][use]
+    return prediction, scores, indices.tolist()
 
 
 def record_metrics(bucket: dict, annotation: dict, target: np.ndarray,
@@ -223,6 +337,16 @@ def write_fixture(model: FootModel, directory: Path):
     np.asarray(sample["tensor"], dtype="<f4").tofile(directory / "expected-input.f32")
     np.asarray(sample["output"], dtype="<f4").tofile(directory / "output.f32")
     result = sample["result"]
+    association_fixture = None
+    if sample.get("association") is not None:
+        association = sample["association"]
+        associated, _, replaced = insert_associated(sample["baseline"], sample["baselineScores"], association)
+        blended, _, _ = insert_associated(sample["baseline"], sample["baselineScores"], association, True)
+        association_fixture = {"policy": ASSOCIATION_POLICY, "baseline": clean_array(sample["baseline"]),
+                               "baselineScores": sample["baselineScores"].tolist(),
+                               "selectedCandidateIndex": association["selected"]["candidate"]["candidateIndex"] if association["selected"] else None,
+                               "replacedCocoIndices": replaced, "associated": clean_array(associated),
+                               "associatedBlend": clean_array(blended)}
     json_write(directory / "fixture.json", {"schemaVersion": 1, "model": model.metadata,
                "image": {"file": "image-rgba.u8", "width": sample["rgba"].shape[1], "height": sample["rgba"].shape[0]},
                "transform": sample["transform"],
@@ -231,6 +355,7 @@ def write_fixture(model: FootModel, directory: Path):
                "expected": {"detectionScore": result["detectionScore"], "found": result["found"],
                             "points": clean_array(result["points"]),
                             "keypointScores": result["keypointScores"].tolist(), "bboxXYXY": result["bboxXYXY"].tolist()},
+               "associationExpected": association_fixture,
                "scope": "One real image; preprocessing/decoder parity only, not an extra accuracy dataset"})
 
 
@@ -317,14 +442,23 @@ def main():
             for model in models:
                 model_id = model.metadata["id"]
                 for crop_name, crop_box, source in crop_choices:
-                    if args.emit_codec_fixture and model.fixture is None and condition == "clean" and crop_name == "predicted_foot_crop" and info["license"] == 4:
+                    capture_fixture = args.emit_codec_fixture and model.fixture is None and condition == "clean" and crop_name == "person_crop" and info["license"] == 4
+                    if capture_fixture:
                         model.capture_next = True
                     result = model.predict(frame, crop_box)
+                    association = associate_foot_candidates(result["candidates"], baseline, baseline_scores) if crop_name == "person_crop" else None
+                    if capture_fixture:
+                        model.fixture["baseline"] = baseline.copy()
+                        model.fixture["baselineScores"] = baseline_scores.copy()
+                        model.fixture["association"] = association
                     method_results = {}
-                    for selective in (False, True):
-                        mode = "selective" if selective else "direct"
+                    variants = [("direct", insert_predictions(baseline, baseline_scores, result, False)),
+                                ("selective", insert_predictions(baseline, baseline_scores, result, True))]
+                    if association is not None:
+                        variants += [("associated", insert_associated(baseline, baseline_scores, association)),
+                                     ("associated_blend", insert_associated(baseline, baseline_scores, association, True))]
+                    for mode, (points, scores, replaced) in variants:
                         method = f"{model_id}/{crop_name}/{mode}"
-                        points, scores, replaced = insert_predictions(baseline, baseline_scores, result, selective)
                         record_metrics(measurements[condition][method], annotation, target, points, scores)
                         if changed.any():
                             record_metrics(masked_measurements[condition][method], annotation, target, points, scores, changed)
@@ -340,12 +474,25 @@ def main():
                                         "keypointScores": result["keypointScores"].tolist(),
                                         "cocoIndices": COCO_INDICES.tolist(), "points": clean_array(result["points"]),
                                         "bboxXYXY": result["bboxXYXY"].tolist(),
-                                        "candidateIndex": result["candidateIndex"], "candidateCount": result["candidateCount"]})
+                                        "candidateIndex": result["candidateIndex"], "candidateCount": result["candidateCount"],
+                                        "association": None if association is None else {
+                                            "policyId": association["policyId"],
+                                            "candidateCountEvaluated": association["candidateCountEvaluated"],
+                                            "selectedCandidateIndex": association["selected"]["candidate"]["candidateIndex"] if association["selected"] else None,
+                                            "selectedPoints": clean_array(association["selected"]["candidate"]["points"]) if association["selected"] else None,
+                                            "candidateAudits": association["candidates"]}})
                     if info["license"] == 4 and crop_name == "predicted_foot_crop":
                         panels = [overlay(frame, baseline, baseline_scores, target, f"{condition}: RTMW-l; green=label"),
                                   overlay(frame, *method_results["direct"], target, f"FOCUS {model.metadata['head']} direct"),
                                   overlay(frame, *method_results["selective"], target, "FOCUS score-gated + RTMW fallback")]
                         filename = args.output / "overlays" / f"{image_id}-{annotation['id']}-{condition}-{model_id}.jpg"
+                        cv2.imwrite(str(filename), np.concatenate(panels, axis=1), [cv2.IMWRITE_JPEG_QUALITY, 94])
+                    if info["license"] == 4 and association is not None:
+                        panels = [overlay(frame, baseline, baseline_scores, target, f"{condition}: RTMW-l; green=label"),
+                                  overlay(frame, *method_results["selective"], target, "person crop: score-only"),
+                                  overlay(frame, *method_results["associated"], target, "person crop: predicted-shin association"),
+                                  overlay(frame, *method_results["associated_blend"], target, "associated + fixed 50% coordinate blend")]
+                        filename = args.output / "overlays" / f"{image_id}-{annotation['id']}-{condition}-{model_id}-associated.jpg"
                         cv2.imwrite(str(filename), np.concatenate(panels, axis=1), [cv2.IMWRITE_JPEG_QUALITY, 94])
             print(json.dumps({"footInferred": True, "image": image_id, "person": annotation["id"], "condition": condition}), flush=True)
     metrics = {condition: {method: summarize_foot(bucket) for method, bucket in methods.items()}
@@ -367,21 +514,28 @@ def main():
                 "meanErrorPxRefinedMinusBaseline": (candidate["meanErrorPx"] - baseline_foot["meanErrorPx"])
                 if candidate["meanErrorPx"] is not None and baseline_foot["meanErrorPx"] is not None else None,
                 "points": candidate["points"], "sameDenominator": candidate["points"] == baseline_foot["points"]}
-    ranked = sorted((name for name in metrics["clean"] if name.endswith("/predicted_foot_crop/selective")),
+    ranked = sorted((name for name in metrics["clean"] if name.endswith(("/person_crop/associated", "/person_crop/associated_blend", "/predicted_foot_crop/selective"))),
                     key=lambda name: metrics["clean"][name].get("foot", {}).get("pck020", -1), reverse=True)
-    best = ranked[0] if ranked else None
-    recommendation = {"method": best, "adoptForDiagnosticUse": False,
-                      "decisionRule": "At least two additional correct clean foot points; no loss on masked-point PCK; no increase in clean mean pixel error.",
-                      "independentGeneralizationEstablished": False}
-    if best and "foot" in metrics["clean"]["rtmw_l"]:
-        delta = differences["clean"][best]
+    eligibility = []
+    for name in ranked:
+        if name not in differences.get("clean", {}):
+            continue
+        delta = differences["clean"][name]
         masked_base = masked_metrics.get("foot", {}).get("rtmw_l", {}).get("foot", {})
-        masked_candidate = masked_metrics.get("foot", {}).get(best, {}).get("foot", {})
+        masked_candidate = masked_metrics.get("foot", {}).get(name, {}).get("foot", {})
         extra_correct = round(delta["pck020RefinedMinusBaseline"] * delta["points"])
         masked_no_loss = bool(masked_base and masked_candidate and masked_candidate["pck020"] >= masked_base["pck020"] - 1e-9)
-        recommendation.update({"additionalCorrectCleanPoints": extra_correct, "maskedPointsDoNotRegress": masked_no_loss,
-                               "adoptForDiagnosticUse": extra_correct >= 2 and masked_no_loss and
-                               delta["meanErrorPxRefinedMinusBaseline"] is not None and delta["meanErrorPxRefinedMinusBaseline"] <= 0})
+        eligibility.append({"method": name, "additionalCorrectCleanPoints": extra_correct,
+                            "maskedPointsDoNotRegress": masked_no_loss,
+                            "adoptForDiagnosticUse": extra_correct >= 2 and masked_no_loss and
+                            delta["meanErrorPxRefinedMinusBaseline"] is not None and delta["meanErrorPxRefinedMinusBaseline"] <= 0})
+    qualified = [value for value in eligibility if value["adoptForDiagnosticUse"]]
+    best = qualified[0]["method"] if qualified else ranked[0] if ranked else None
+    recommendation = {"method": best, "adoptForDiagnosticUse": False,
+                      "decisionRule": "At least two additional correct clean foot points; no loss on masked-point PCK; no increase in clean mean pixel error.",
+                      "independentGeneralizationEstablished": False, "candidateEligibility": eligibility}
+    if best:
+        recommendation.update(next((value for value in eligibility if value["method"] == best), {}))
     prior_baseline_match = None
     if baseline_report:
         prior = baseline_report["metrics"]["clean"]["wholebody"].get("foot")
@@ -403,8 +557,11 @@ def main():
                           "trainingOverlapExcluded": False},
               "policy": {"detectionMin": DETECTION_MIN, "refineDetectionMin": REFINE_DETECTION_MIN,
                          "refineKeypointMin": REFINE_KEYPOINT_MIN, "cocoIndices": COCO_INDICES.tolist(),
-                         "targetSelection": "highest detector score inside the supplied crop; no ground-truth identity matching",
+                         "targetSelection": "original methods: highest score; associated methods: same-side predicted shin/ankle agreement among up to 64 score-qualified rows; no ground-truth identity matching",
+                         "association": ASSOCIATION_POLICY,
+                         "associationInputs": "FOCUS raw candidates and RTMW predicted coordinates/scores only; no annotations, image IDs or ground-truth boxes",
                          "predictionScore": "detection score times keypoint head score; not calibrated visibility probability",
+                         "blendScore": "retained baseline score; never average or compare scores from different models",
                          "footNormalization": "each foot's annotated big/small/heel span, identical to benchmark.py",
                          "missingDetections": "direct method records failures; selective method retains RTMW fallback",
                          "denominator": "all annotated points, including low-score and missing predictions"},

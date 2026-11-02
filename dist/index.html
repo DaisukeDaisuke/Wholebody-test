@@ -14,12 +14,15 @@
     <div class="topbar-end"><span class="phase-pill">PHASE 02</span><a id="camera-mode-link" class="quiet-link" href="?mode=camera">スマホをカメラにする ↗</a></div>
   </header>
 
-  <main id="receiver-app">
+  <p id="app-loading" class="app-loading" role="status">画面を準備しています…</p>
+  <noscript><p class="app-loading">このトラッキング画面にはJavaScriptが必要です。</p></noscript>
+  <main id="receiver-app" hidden>
     <section class="session-bar" aria-label="推論設定">
       <div class="session-heading"><span class="eyebrow">TRACKING SESSION</span><h1>動きを、確かめる。</h1><p>元映像の細部を使い、観測できた点と補完した点を分けて表示します。</p></div>
       <div class="model-controls">
         <label class="compact-label">全身モデル<select id="model-select"><option value="rtmw-l">RTMW-l · 読み込み中</option></select></label>
         <label class="compact-label">実行<select id="backend-select"><option value="webgpu">WebGPU</option><option value="wasm">WASM · 互換性用</option></select></label>
+        <label class="check-row" title="初回は最大の人物を選択します。映像内で人物を囲むと手動指定を優先します。変更は推論の停止後に行えます。"><input id="person-detection" type="checkbox" checked>人物を自動検出</label>
         <label class="check-row"><input id="hand-refinement" type="checkbox" checked>手を切り出して再推論</label>
         <div class="button-row"><button id="start-inference" class="primary">モデルを読み込み、開始</button><button id="stop-inference" disabled>停止</button></div>
       </div>
@@ -32,8 +35,9 @@
         <article class="panel input-panel" data-source="a">
           <div class="panel-heading"><h2><span class="source-letter">A</span>入力 A</h2><span id="source-a-state" class="subtle">未選択</span></div>
           <div class="source-toolbar"><label class="file-button">動画を選ぶ<input id="source-a-file" type="file" accept="video/*" hidden></label><button id="source-a-camera">PCカメラ</button><button id="source-a-remote">スマホ接続</button><button id="source-a-close" class="icon-button" aria-label="入力Aを閉じる">×</button></div>
+          <div class="target-bar"><span id="source-a-target-state">A：映像を選んでから人物を指定</span><div><button id="source-a-roi" class="roi-button" disabled>人物を囲んで選ぶ</button><button id="source-a-reset-roi" class="text-button" disabled>解除</button></div></div>
           <div class="media-screen" id="source-a-screen"><video id="source-a-video" playsinline muted controls preload="metadata"></video><canvas id="source-a-overlay" aria-label="入力Aの関節表示"></canvas><div class="empty-state" id="source-a-empty"><span class="empty-icon" aria-hidden="true">◉</span><strong>動画かカメラを選択</strong><span>ファイルはアップロードされません</span></div></div>
-          <div class="source-options"><select id="source-a-device" aria-label="入力Aのカメラ"><option value="">カメラの自動選択</option></select><button id="source-a-roi">範囲を選ぶ</button><button id="source-a-reset-roi" class="text-button">全体</button></div>
+          <div class="source-options"><select id="source-a-device" aria-label="入力Aのカメラ"><option value="">カメラの自動選択</option></select></div>
           <div class="source-meta"><span id="source-a-dimensions">— × —</span><span id="source-a-timing">フレーム待機</span><span id="source-a-quality">観測 — / 133</span></div>
           <details id="source-a-pairing" class="pairing"><summary>スマホとの接続</summary><p>PCの招待を同じWi-Fiのスマホで開き、スマホに表示された応答をここへ貼り付けます。映像の中継サーバーは使いません。</p><div class="button-row"><button id="source-a-offer">招待を作る</button><button id="source-a-invite-copy" disabled>招待リンクをコピー</button></div><label>招待コード<textarea id="source-a-offer-code" rows="2" readonly spellcheck="false"></textarea></label><label>スマホの応答<textarea id="source-a-answer-code" rows="2" spellcheck="false" placeholder="応答コードを貼り付け"></textarea></label><button id="source-a-answer-apply">応答を適用</button><p id="source-a-peer-state" class="subtle">未接続</p></details>
         </article>
@@ -41,13 +45,14 @@
         <article class="panel input-panel" data-source="b">
           <div class="panel-heading"><h2><span class="source-letter second">B</span>入力 B</h2><span id="source-b-state" class="subtle">2視点で遮蔽を補う</span></div>
           <div class="source-toolbar"><label class="file-button">動画を選ぶ<input id="source-b-file" type="file" accept="video/*" hidden></label><button id="source-b-camera">PCカメラ</button><button id="source-b-remote">スマホ接続</button><button id="source-b-close" class="icon-button" aria-label="入力Bを閉じる">×</button></div>
+          <div class="target-bar"><span id="source-b-target-state">B：映像を選んでから人物を指定</span><div><button id="source-b-roi" class="roi-button" disabled>人物を囲んで選ぶ</button><button id="source-b-reset-roi" class="text-button" disabled>解除</button></div></div>
           <div class="media-screen" id="source-b-screen"><video id="source-b-video" playsinline muted controls preload="metadata"></video><canvas id="source-b-overlay" aria-label="入力Bの関節表示"></canvas><div class="empty-state" id="source-b-empty"><span class="empty-icon" aria-hidden="true">◉</span><strong>別方向の映像を追加</strong><span>1台のままでも推論できます</span></div></div>
-          <div class="source-options"><select id="source-b-device" aria-label="入力Bのカメラ"><option value="">カメラの自動選択</option></select><button id="source-b-roi">範囲を選ぶ</button><button id="source-b-reset-roi" class="text-button">全体</button></div>
+          <div class="source-options"><select id="source-b-device" aria-label="入力Bのカメラ"><option value="">カメラの自動選択</option></select></div>
           <div class="source-meta"><span id="source-b-dimensions">— × —</span><span id="source-b-timing">フレーム待機</span><span id="source-b-quality">観測 — / 133</span></div>
           <details id="source-b-pairing" class="pairing"><summary>スマホとの接続</summary><p>2台目も別の接続を作ります。各端末は撮影・送信だけを行い、PCの1つのモデルで推論します。</p><div class="button-row"><button id="source-b-offer">招待を作る</button><button id="source-b-invite-copy" disabled>招待リンクをコピー</button></div><label>招待コード<textarea id="source-b-offer-code" rows="2" readonly spellcheck="false"></textarea></label><label>スマホの応答<textarea id="source-b-answer-code" rows="2" spellcheck="false" placeholder="応答コードを貼り付け"></textarea></label><button id="source-b-answer-apply">応答を適用</button><p id="source-b-peer-state" class="subtle">未接続</p></details>
         </article>
 
-        <div class="panel synchronization"><div class="panel-heading"><h2>映像の時刻合わせ</h2><span id="sync-state" class="subtle">1視点</span></div><div class="two-fields"><label>動画Bの時刻補正 [ms]<input id="video-offset-ms" type="number" value="0" step="1"></label><label>同期許容幅 [ms]<input id="sync-tolerance-ms" type="number" value="45" min="1" max="200" step="1"></label></div><label class="check-row"><input id="video-sync-confirmed" type="checkbox">同時撮影した2本で、対応する時刻を確認した</label><button id="align-video-now">現在の表示フレームを同時刻に合わせる</button><div class="button-row"><button id="play-video-pair">2本を同時に再生</button><button id="pause-video-pair">2本を一時停止</button></div><p class="help-text">別カメラの映像が必要です。撮影時刻が取得できないライブ映像は、多視点の3D推定に混ぜません。</p></div>
+        <div class="panel synchronization"><div class="panel-heading"><h2>映像の時刻合わせ</h2><span id="sync-state" class="subtle">1視点</span></div><div class="two-fields"><label>動画Bの時刻補正 [ms]<input id="video-offset-ms" type="number" value="0" step="1"></label><label>同期許容幅 [ms]<input id="sync-tolerance-ms" type="number" value="45" min="1" max="200" step="1"></label></div><label class="check-row"><input id="video-sync-confirmed" type="checkbox">同時撮影した2本で、対応する時刻を確認した</label><button id="align-video-now">現在の表示フレームを同時刻に合わせる</button><div class="button-row"><button id="play-video-pair">2本を同時に再生</button><button id="pause-video-pair">2本を一時停止</button></div><p class="help-text">別方向の2台で、同じ人物を選んでください。撮影時刻が取得できないライブ映像は、多視点の3D推定に混ぜません。</p></div>
       </section>
 
       <section class="result-column" aria-label="推定結果">
@@ -75,7 +80,7 @@
   </main>
 
   <main id="sender-app" hidden class="sender-layout">
-    <section class="panel sender-panel"><span class="eyebrow">CAMERA NODE</span><h1>この端末をカメラに。</h1><p>映像は同じLANのPCへ直接送ります。この端末でモデル推論は行いません。</p><div class="sender-preview"><video id="sender-video" playsinline autoplay muted></video><span id="sender-state">未接続</span></div><label>使うカメラ<select id="sender-facing"><option value="environment">背面カメラ</option><option value="user">前面カメラ</option></select></label><div class="two-fields"><label>要求する横幅<input id="sender-width" type="number" min="320" max="3840" value="1280" step="1"></label><label>要求するfps<input id="sender-fps" type="number" min="1" max="120" value="60" step="1"></label></div><label>PCからの招待<textarea id="sender-offer" rows="3" spellcheck="false" placeholder="招待コード、または招待リンクを貼り付け"></textarea></label><div class="button-row"><button id="sender-start" class="primary">カメラを開始して接続</button><button id="sender-stop">停止</button></div><label>PCへ渡す応答<textarea id="sender-answer" rows="3" readonly spellcheck="false"></textarea></label><button id="sender-copy" class="full-width" disabled>応答をコピー</button><p id="sender-info" class="help-text">HTTPSで開き、カメラの利用を許可してください。端末のロック中やブラウザのバックグラウンドでは撮影が止まる場合があります。</p><pre id="sender-audit"></pre></section>
+    <section class="panel sender-panel"><span class="eyebrow">CAMERA NODE</span><h1>この端末をカメラに。</h1><p>映像は同じLANのPCへ直接送ります。この端末でモデル推論は行いません。</p><div class="sender-preview"><video id="sender-video" playsinline autoplay muted></video><span id="sender-state">未接続</span></div><label>使うカメラ<select id="sender-facing"><option value="environment">背面カメラ</option><option value="user">前面カメラ</option></select></label><div class="two-fields"><label>要求する横幅<input id="sender-width" type="number" min="320" max="3840" value="1280" step="1"></label><label>要求するfps<input id="sender-fps" type="number" min="1" max="120" value="60" step="1"></label></div><label>PCからの招待<textarea id="sender-offer" rows="3" spellcheck="false" placeholder="招待コード、または招待リンクを貼り付け"></textarea></label><div class="button-row"><button id="sender-start" class="primary">カメラを開始して接続</button><button id="sender-stop">停止</button></div><label>PCへ渡す応答<textarea id="sender-answer" rows="3" readonly spellcheck="false"></textarea></label><button id="sender-copy" class="full-width" disabled>応答をコピー</button><p id="sender-info" class="help-text">HTTPSで開き、カメラの利用を許可してください。端末のロック中やブラウザのバックグラウンドでは撮影が止まる場合があります。</p><p id="sender-network-state" class="help-text">接続を待っています。</p></section>
   </main>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="./app.mjs"></script>

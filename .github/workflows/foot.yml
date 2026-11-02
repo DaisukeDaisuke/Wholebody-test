@@ -2,7 +2,7 @@ name: Foot model export, real-image comparison and publication
 on:
   push:
     branches: [main, phase2-20261102-4fc7ff60]
-    paths: ['evaluation/foot-*.py', 'evaluation/foot-*.mjs', 'dist/foot-codec.mjs', '.github/workflows/foot.yml']
+    paths: ['evaluation/foot-*.py', 'evaluation/foot-*.mjs', 'dist/foot-codec.mjs', 'dist/resize-codec.mjs', '.github/workflows/foot.yml']
   workflow_dispatch:
 permissions:
   contents: read

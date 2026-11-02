@@ -305,6 +305,34 @@ def selective_refinement(xy: np.ndarray, scores: np.ndarray, refined: np.ndarray
     return selected, selected_scores, decisions
 
 
+def capture_hand_decision(cases: dict, xy: np.ndarray, scores: np.ndarray,
+                          refined: np.ndarray, refined_scores: np.ndarray,
+                          records: list[dict], decisions: list[dict],
+                          image_id: int, annotation_id: int, condition: str):
+    """Keep at most three real Hand5 candidates for the JavaScript comparison."""
+    for record, decision in zip(records, decisions):
+        if not record["accepted"]:
+            continue
+        category = ("accepted" if decision["accepted"] else "boundary_rejected"
+                    if "not_boundary_collapsed" in decision["rejectedBy"] else "anchor_or_score_rejected")
+        if category in cases:
+            continue
+        offset = 91 if record["side"] == "left" else 112
+
+        def points(positions, confidence):
+            return [{"id": index, "x": float(point[0]), "y": float(point[1]),
+                     "rawScore": float(score), "score": float(np.clip(score, 0, 1))}
+                    for index, (point, score) in enumerate(zip(positions, confidence))]
+
+        fields = ("accepted", "policy", "rejectedBy", "rawWristScore", "wristShiftFraction",
+                  "confidentJointCount", "cropBoundaryJointCount")
+        cases[category] = {"category": category, "imageId": image_id, "annotationId": annotation_id,
+                           "condition": condition, "side": record["side"], "box": record["roi"],
+                           "body": points(xy[:17], scores[:17]),
+                           "hand": points(refined[offset:offset + 21], refined_scores[offset:offset + 21]),
+                           "expected": {key: decision[key] for key in fields}}
+
+
 def target_points(annotation: dict) -> np.ndarray:
     fields = ("keypoints", "foot_kpts", "face_kpts", "lefthand_kpts", "righthand_kpts")
     values = np.concatenate([np.asarray(annotation[field]).reshape(-1, 3) for field in fields]).astype(np.float32)
@@ -673,7 +701,7 @@ def main():
     body_model.capture_next = args.emit_codec_fixture
     hand_model = PoseModel(args.hand_model, args.cache, "hand5", args.threads)
     measurements, masked_measurements = defaultdict(lambda: defaultdict(dict)), defaultdict(lambda: defaultdict(dict))
-    all_predictions, image_attributions, image_cache = [], [], {}
+    all_predictions, image_attributions, image_cache, hand_decision_cases = [], [], {}, {}
     for annotation in selected:
         image_id = annotation["image_id"]
         image_info = images[image_id]
@@ -701,6 +729,9 @@ def main():
             refined, refined_scores, hand_details = refine_hands(hand_model, frame, prediction, scores, box)
             selective, selective_scores, selective_details = selective_refinement(
                 prediction, scores, refined, refined_scores, hand_details, (hand_model.width, hand_model.height))
+            if args.emit_codec_fixture:
+                capture_hand_decision(hand_decision_cases, prediction, scores, refined, refined_scores,
+                                      hand_details, selective_details, image_id, annotation["id"], condition)
             for method, points, confidence in (("wholebody", prediction, scores),
                                                ("hand_refined", refined, refined_scores),
                                                ("hand_selective", selective, selective_scores)):
@@ -720,6 +751,13 @@ def main():
                 filename = args.output / "overlays" / f"{image_id}-{annotation['id']}-{condition}.jpg"
                 cv2.imwrite(str(filename), comparison, [cv2.IMWRITE_JPEG_QUALITY, 94])
             print(f"inferred image={image_id} person={annotation['id']} condition={condition}", flush=True)
+    if args.emit_codec_fixture:
+        json_write(args.output / "hand-decision-fixture.json", {
+            "schemaVersion": 1, "source": "at most three actual ONNX Hand5 candidates from this run",
+            "handModelSha256": hand_model.metadata["onnxSha256"],
+            "bodyModelSha256": body_model.metadata["onnxSha256"],
+            "policy": SELECTIVE_HAND_POLICY, "cases": list(hand_decision_cases.values()),
+        })
     initialization = initialization_experiment(
         body_model, hand_model, [value for value in eligible if value["image_id"] in image_cache],
         image_cache, images, args.output)
