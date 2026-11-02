@@ -139,6 +139,51 @@ def tensor_difference(actual, expected):
     return {"maxAbs": float(error.max(initial=0)), "meanAbs": float(error.mean()), "shape": list(a.shape)}
 
 
+def normalize_webgpu_graph(path):
+    """Keep fixed-shape math identical while removing unsupported Max/Size ops."""
+    import numpy as np
+    import onnx
+    from onnx import helper, numpy_helper
+
+    graph = onnx.load(str(path))
+    constants = {value.name: numpy_helper.to_array(value) for value in graph.graph.initializer}
+    for node in graph.graph.node:
+        if node.op_type == "Constant" and len(node.output) == 1:
+            attribute = next((value for value in node.attribute if value.name == "value"), None)
+            if attribute is not None:
+                constants[node.output[0]] = numpy_helper.to_array(attribute.t)
+    inferred = onnx.shape_inference.infer_shapes(graph, strict_mode=False)
+    shapes = {}
+    for value in [*inferred.graph.input, *inferred.graph.value_info, *inferred.graph.output]:
+        if not value.type.tensor_type.HasField("shape"):
+            continue
+        dimensions = value.type.tensor_type.shape.dim
+        if all(dimension.HasField("dim_value") and dimension.dim_value > 0 for dimension in dimensions):
+            shapes[value.name] = [dimension.dim_value for dimension in dimensions]
+    nodes, changes = [], []
+    for index, node in enumerate(graph.graph.node):
+        if node.op_type == "Max" and len(node.input) == 2:
+            scalar_index = next((i for i, name in enumerate(node.input) if name in constants and constants[name].size == 1 and np.isfinite(constants[name]).all()), None)
+            if scalar_index is not None:
+                name = f"webgpu_clip_minimum_{index}"
+                minimum = np.asarray(constants[node.input[scalar_index]]).reshape(())
+                graph.graph.initializer.append(numpy_helper.from_array(minimum, name=name))
+                nodes.append(helper.make_node("Clip", [node.input[1 - scalar_index], name], list(node.output), name=node.name))
+                changes.append({"node": node.name, "from": "Max", "to": "Clip", "minimum": float(minimum)})
+                continue
+        if node.op_type == "Size" and len(node.input) == 1 and node.input[0] in shapes:
+            value = np.array(np.prod(shapes[node.input[0]], dtype=np.int64), dtype=np.int64)
+            nodes.append(helper.make_node("Constant", [], list(node.output), name=node.name, value=numpy_helper.from_array(value)))
+            changes.append({"node": node.name, "from": "Size", "to": "Constant", "inputShape": shapes[node.input[0]], "value": int(value)})
+            continue
+        nodes.append(node)
+    del graph.graph.node[:]
+    graph.graph.node.extend(nodes)
+    onnx.checker.check_model(graph)
+    onnx.save(graph, str(path))
+    return changes
+
+
 def inspect_graph(path, supported_ops, threads):
     import onnx
     import onnxruntime as ort
@@ -271,8 +316,9 @@ def export_and_compare(args, report):
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
             torch.onnx.export(wrapper, inputs, str(path), input_names=input_names, output_names=output_names,
                               opset_version=17, dynamo=False, do_constant_folding=True, training=torch.onnx.TrainingMode.EVAL)
+        normalization = normalize_webgpu_graph(path)
         metadata, session = inspect_graph(path, supported_ops, args.threads)
-        metadata.update({"id": name, "exportSeconds": time.perf_counter() - started})
+        metadata.update({"id": name, "exportSeconds": time.perf_counter() - started, "graphNormalization": normalization})
         models.append(metadata)
         sessions[name] = session
     first_features = sessions["encoder"].run(None, {"frame": frames[0].numpy()})
@@ -280,6 +326,7 @@ def export_and_compare(args, report):
     native_state = unpack_state(zero_state.clone())
     onnx_state = zero_state.numpy().copy()
     comparisons, native_ms, encoder_ms, step_ms = [], [], [], []
+    native_first_state = None
     for index, frame in enumerate(frames):
         started = time.perf_counter()
         native_grids = model.get_feature_grids(frame, False, refinement_resolutions=[(256, 256)])
@@ -300,11 +347,24 @@ def export_and_compare(args, report):
         mismatches = int(np.count_nonzero(visibility(output[1], output[2]) != visibility(native_outputs[1], native_outputs[2])))
         comparisons.append({"frame": index, "syntheticTranslationXYpx": [index * 3, index * 2], "artificialOccluder": index == 2, "differences": difference, "visibleDecisionMismatches": mismatches})
         if index == 0:
+            native_first_state = pack_state(native_state).clone()
             fixture_meta["outputs"] = {"tracks": output[0].reshape(-1).tolist(), "occlusion": output[1].reshape(-1).tolist(), "expected_dist": output[2].reshape(-1).tolist()}
             confidence = ((1 - torch.sigmoid(torch.from_numpy(output[1]))) * (1 - torch.sigmoid(torch.from_numpy(output[2])))).numpy().reshape(-1)
             original_xy = output[0].reshape(QUERY_COUNT, 2) * np.array([fixture_meta["width"] / 256, fixture_meta["height"] / 256])
             fixture_meta["decodedReference"] = [{"x": float(point[0]), "y": float(point[1]), "score": float(confidence[i]), "observable": bool(confidence[i] > .5)} for i, point in enumerate(original_xy)]
         print(json.dumps({"stage": "parity", "frame": index, "maxTrackDifferencePx": difference["tracks"]["maxAbs"], "onnxEncoderMs": encoder_ms[-1], "onnxStepMs": step_ms[-1]}), flush=True)
+    # A second sequence keeps the original RGB bytes unchanged. The production
+    # browser tracker can replay it without duplicating the export preprocessing.
+    repeated_state, repeated_reference = unpack_state(native_first_state), []
+    for index in (1, 2):
+        reference = model.estimate_trajectories((256, 256), False, official_grids, official_queries, query_points_in_video=None,
+                        query_chunk_size=QUERY_COUNT, causal_context=repeated_state, get_causal_context=True)
+        repeated_state = reference["causal_context"]
+        repeated_reference.append({"frame": index, "timestampMs": index * 1000 / 30,
+            "outputs": {"tracks": reference["tracks"][-1].numpy().reshape(-1).tolist(),
+                        "occlusion": reference["occlusion"][-1].numpy().reshape(-1).tolist(),
+                        "expected_dist": reference["expected_dist"][-1].numpy().reshape(-1).tolist()}})
+    fixture_meta["repeatedFrameReference"] = {"kind": "Unchanged public RGB image, official PyTorch causal state carried between calls", "frames": repeated_reference}
     passed = all(c["differences"]["tracks"]["maxAbs"] <= .05 and c["differences"]["occlusion"]["maxAbs"] <= .02
                  and c["differences"]["expected_dist"]["maxAbs"] <= .02 and c["differences"]["causal_state"]["maxAbs"] <= .05 and c["visibleDecisionMismatches"] == 0 for c in comparisons)
     report.update({"status": "measured", "passed": passed, "models": models, "inputWH": INPUT_WH, "queryCount": QUERY_COUNT, "stateShape": [offset], "stateBytes": offset * 4,

@@ -477,6 +477,9 @@ async function initReceiver() {
         drawOverlay(source);
         updateDetailViews(frame.canvas, observation);
         batchObservations.push(observation);
+        // Live input is paused while selecting exact pixel coordinates. Resume
+        // only after that frozen frame has initialized the temporal tracker.
+        if(result.diagnostics?.manualSeedApplied&&source.kind!=='video'&&source.video.paused)await source.video.play();
       }
       const acceptedObservations = batchObservations.filter((observation) => state.observations.get(observation.sourceId) === observation);
       if (acceptedObservations.length && generation === state.generation) {
@@ -654,7 +657,7 @@ async function initReceiver() {
     $('scene-empty').hidden = false; $('root-status').textContent = '新しい追跡対象の推論待ち';
     $('coordinate-state').textContent = '相対ポーズ · 待機中';
     for (const axis of ['x', 'y', 'z']) $(`root-${axis}`).textContent = '—';
-    if (source.kind === 'video' && source.video.paused && state.running) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
+    if (source.video.paused && state.running && (source.kind==='video'||source.footSeed)) captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
   }
   function beginSelection(source, event) {
     if (!source.selection || !source.video.videoWidth) return;
@@ -1003,7 +1006,7 @@ async function initReceiver() {
       $('load-progress').hidden = true; $('stop-inference').disabled = false;
       $('start-inference').textContent = '推論を再開';
       engineStatus('running', '推論中', '観測を更新しています。モデルは入力A・Bで共有します。');
-      for (const source of state.sources.values()) if (source.video.readyState >= 2 && source.video.paused && source.kind === 'video' && source.selection !== 'board') captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
+      for (const source of state.sources.values()) if (source.video.readyState >= 2 && source.video.paused && (source.kind==='video'||source.footSeed) && source.selection !== 'board') captureFrame(source, performance.now(), { mediaTime: source.video.currentTime });
       processFrames(); updateDiagnostics();
     } catch (error) {
       state.running = false;

@@ -176,11 +176,11 @@ export class PoseEngine {
     let tracker=this.footTrackers.get(sourceId);
     const learned=this.footTrackingMethod==='bootstapir';
     if(!tracker){tracker=learned?new TapirTracker({ort:this.ort,sessions:this.tapirMaster.sessions,manifest:this.tapirMaster.manifest}):new FootTracker();this.footTrackers.set(sourceId,tracker);}
-    let result=null;
+    let result=null,manualSeedApplied=false;
     if(footSeed&&this.seedVersions.get(sourceId)!==footSeed.version){
       if(Number.isFinite(footSeed.mediaTimeMs)&&Number.isFinite(frameMediaTimeMs)&&Math.abs(footSeed.mediaTimeMs-frameMediaTimeMs)>75)throw new Error('3点を選んだフレームから動画が進んでいます。動画を停止して3点を再指定してください。');
       result=await tracker.seed({...footSeed,timestampMs,image,roi,seedSource:'manual'});
-      this.seedVersions.set(sourceId,footSeed.version);this.manualFootSources.add(sourceId);
+      this.seedVersions.set(sourceId,footSeed.version);this.manualFootSources.add(sourceId);manualSeedApplied=true;
     }
     if(learned){
       if(!result&&tracker.requiresSeed&&!this.manualFootSources.has(sourceId)){
@@ -205,7 +205,7 @@ export class PoseEngine {
     }
     const spec=this.sessions.get('focus-foot8-one2many').spec,modelId=learned?'google/causal-bootstapir':spec.id;
     return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},
-      bbox:roi||[0,0,image.width,image.height],...result,inputMode:'feet',refinements:[],
+      bbox:roi||[0,0,image.width,image.height],...result,diagnostics:{...result.diagnostics,manualSeedApplied},inputMode:'feet',refinements:[],
       personDetection:{enabled:false,detected:null,selection:'foot-only',selectedBox:roi||null,candidateCount:0},
       modelId,modelHash:learned?null:spec.actualHash,modelHashes:learned?Object.fromEntries(this.tapirMaster.manifest.models.map(model=>[model.id,model.sha256])):null,
       backend:this.backend,footTrackingMethod:this.footTrackingMethod,scoreKind:learned?'uncalibratedLearnedVisibility':'uncalibratedModelAndFlowQuality',
