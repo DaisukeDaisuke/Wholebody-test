@@ -104,9 +104,20 @@ export function predictedHandBox(points, side, personBox) {
   return [center[0]-size/2,center[1]-size/2,size,size];
 }
 
-export function acceptHandRefinement(points, hand, box, side) {
-  const wrist=side==='left'?9:10;
-  const mean=hand.reduce((a,p)=>a+(p.rawScore??p.score),0)/hand.length;
-  const distance=Math.hypot(hand[0].x-points[wrist].x,hand[0].y-points[wrist].y);
-  return hand.length===21 && hand.every(p=>Number.isFinite(p.x+p.y+p.score)) && mean>=0.2 && (points[wrist].score<0.3 || distance<=box[2]*0.8);
+// These are diagnostics of this candidate's own Hand5 output, not calibrated
+// visibility probabilities or a comparison between different model score scales.
+export function handRefinementDecision(points, hand, box, side) {
+  const wrist=side==='left'?9:10,raw=hand.map(p=>p.rawScore??p.score);
+  const mean=raw.reduce((sum,value)=>sum+value,0)/hand.length;
+  const distance=hand[0]?Math.hypot(hand[0].x-points[wrist].x,hand[0].y-points[wrist].y):Infinity;
+  const initial=hand.length===21 && hand.every((p,i)=>Number.isFinite(p.x+p.y+raw[i])) && mean>=0.2 && (points[wrist].score<0.3 || distance<=box[2]*0.8);
+  if(!initial)return {accepted:false,policy:'hand_selective',rejectedBy:['initial_candidate_gate']};
+  const padded=box[2]*1.25,left=box[0]-box[2]*.125,top=box[1]-box[3]*.125;
+  const boundary=hand.filter(p=>{const u=(p.x-left)/padded*256,v=(p.y-top)/padded*256;return u<=1||v<=1||u>=255||v>=255;}).length;
+  const confident=raw.filter(value=>value>=.2).length,wristShift=distance/box[2];
+  const checks={wrist_confidence:raw[0]>=.2,wrist_agreement:wristShift<=.35,majority_confident:confident>=11,not_boundary_collapsed:boundary<=10};
+  const rejectedBy=Object.entries(checks).filter(([,passed])=>!passed).map(([name])=>name);
+  return {accepted:rejectedBy.length===0,policy:'hand_selective',rejectedBy,rawWristScore:raw[0],wristShiftFraction:wristShift,confidentJointCount:confident,cropBoundaryJointCount:boundary};
 }
+
+export function acceptHandRefinement(points,hand,box,side){return handRefinementDecision(points,hand,box,side).accepted;}

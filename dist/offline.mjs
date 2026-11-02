@@ -20,8 +20,7 @@ export async function setClosedMode(closed){
   if(!('serviceWorker' in navigator)){if(closed)throw new Error('閉域モードにはService Workerが必要です。');return;}
   if(!navigator.serviceWorker.controller){
     if(!closed)return;
-    await prepareOffline();
-    if(!navigator.serviceWorker.controller)await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error('オフライン準備後にこのページを再読込してください。')),5000);navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timeout);resolve();},{once:true});});
+    throw new Error('先にオンラインで「オフライン準備」を行い、ページを再読込してください。閉域切替から新たなダウンロードは開始しません。');
   }
   return workerMessage({type:'closed-mode',closed:!!closed});
 }

@@ -1,0 +1,80 @@
+name: Foot model export, real-image comparison and publication
+on:
+  push:
+    branches: [main, phase2-20261102-4fc7ff60]
+    paths: ['evaluation/foot-*.py', 'evaluation/foot-*.mjs', 'dist/foot-codec.mjs', '.github/workflows/foot.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wholebody-foot-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  export-and-evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: evaluation/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install CPU export and evaluation runtime
+        run: |
+          python -m pip install torch==2.9.0 torchvision==0.24.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r evaluation/requirements.txt onnx==1.18.0 ultralytics==8.4.198
+      - name: Export the verified checkpoint without upload credentials
+        run: python evaluation/foot-prepare.py --output foot-model-package
+      - name: Compare foot candidates on the same annotated images
+        run: python evaluation/foot-evaluate.py --models foot-model-package --output evaluation/foot-results --max-people 14 --threads 2 --emit-codec-fixture
+      - name: Compare the shipped foot codec when present
+        run: |
+          if [ -f evaluation/foot-codec-parity.mjs ]; then
+            node evaluation/foot-codec-parity.mjs --fixtures evaluation/foot-results/codec-fixtures --output evaluation/foot-results/foot-codec-parity.json
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: foot-measured-results-${{ github.sha }}
+          path: evaluation/foot-results/
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foot-model-package-${{ github.sha }}
+          path: foot-model-package/
+          retention-days: 7
+  publish:
+    needs: export-and-evaluate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: foot-model-package-${{ github.sha }}
+          path: foot-model-package
+      - name: Install uploader
+        run: python -m pip install huggingface_hub==0.31.2
+      - name: Publish ONNX files into the separate AGPL repository
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
+        run: python evaluation/foot-publish.py --models foot-model-package --output foot-publication.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foot-publication-${{ github.sha }}
+          path: foot-publication.json
+          retention-days: 7

@@ -90,6 +90,11 @@ export function triangulateJoint(observations, cameras, options = {}) {
     if (ray) { rays.push(ray); seen.add(o.sourceId); }
   }
   if (rays.length < 2) return { valid: false, reason: 'fewerThanTwoViews' };
+  // Extrinsics only compose when their world frames agree. Legacy calibration
+  // files with no IDs still share the explicit configured-world convention;
+  // mixing that convention with a named board frame is not assumed safe.
+  const worldCalibrationIds = [...new Set(rays.map(ray => ray.camera.worldCalibrationId || 'configured-world'))];
+  if (worldCalibrationIds.length > 1) return { valid: false, reason: 'calibrationFrameMismatch', worldCalibrationIds };
   let best = null;
   for (let i = 0; i < rays.length; i++) for (let j = i + 1; j < rays.length; j++) {
     const angle = rayAngle(rays[i], rays[j]);
@@ -112,7 +117,7 @@ export function triangulateJoint(observations, cameras, options = {}) {
   const depth = median(best.inliers.map(r => worldToCamera(point, r.camera)[2]));
   const focal = median(best.inliers.map(r => intrinsics4(r.camera.K)[0]));
   const source = best.inliers.every(r => r.camera.calibrated === true) ? 'measuredMultiView' : 'estimatedMultiView';
-  return { valid: true, position: point, score: clamp(Math.min(...best.inliers.map(r => r.keypoint.score)) * Math.exp(-rms / opts.maxReprojectionErrorPx)), source, reprojectionErrorPx: rms, rayAngleDeg: angle, uncertaintyM: Math.max(1, rms) * depth / (focal * Math.sin(angle * Math.PI / 180)), views: best.inliers.map(r => r.camera.id) };
+  return { valid: true, position: point, score: clamp(Math.min(...best.inliers.map(r => r.keypoint.score)) * Math.exp(-rms / opts.maxReprojectionErrorPx)), source, worldCalibrationId: worldCalibrationIds[0], reprojectionErrorPx: rms, rayAngleDeg: angle, uncertaintyM: Math.max(1, rms) * depth / (focal * Math.sin(angle * Math.PI / 180)), views: best.inliers.map(r => r.camera.id) };
 }
 
 function boneLength(a, b, ratio, height, overrides) {
@@ -258,11 +263,16 @@ export function fusePose(observations, cameras = [], options = {}) {
     if (synced.some(p => p.sourceId === o.sourceId)) continue;
     if (synced.every(p => Math.abs(p.timestampMs - o.timestampMs) + (p.timeUncertaintyMs ?? p.syncUncertaintyMs) + (o.timeUncertaintyMs ?? o.syncUncertaintyMs) <= opts.syncToleranceMs)) synced.push(o);
   }
+  const worldCalibrationIds = [...new Set(synced.flatMap(o => {
+    const camera = cameraList.find(c => c.id === o.sourceId);
+    return camera && (camera.calibrated === true || (opts.allowApproximateCalibration && camera.calibrationMethod === 'manualEstimate')) ? [camera.worldCalibrationId || 'configured-world'] : [];
+  }))];
+  const calibrationFrameMismatch = worldCalibrationIds.length > 1;
   const bestObservation = list.slice().sort((a, b) => b.keypoints.reduce((s, p) => s + (visible(p, opts.minScore) ? p.score : 0), 0) - a.keypoints.reduce((s, p) => s + (visible(p, opts.minScore) ? p.score : 0), 0))[0];
   if (!bestObservation) return finishPose({ timestampMs: targetTime, joints: Array.from({ length: 133 }, (_, i) => missing(i)), metric: opts.priorPose?.metric || false, sourceId: opts.priorPose?.sourceId, coordinateFrame: opts.priorPose?.coordinateFrame || 'root-relative', units: opts.priorPose?.units || 'body-height', worldCalibrationId: opts.priorPose?.worldCalibrationId || null, diagnostics: { reason: 'noObservations', synchronizedSources: [] } });
   const bestCamera = cameraList.find(c => c.id === bestObservation.sourceId) || null;
   const joints = Array.from({ length: 133 }, (_, id) => {
-    const result = synced.length >= 2 ? triangulateJoint(synced.map(o => ({ sourceId: o.sourceId, imageSize: o.imageSize, keypoint: o.keypoints[id] })), cameraList, opts) : { valid: false, reason: 'notSynchronized' };
+    const result = calibrationFrameMismatch ? { valid: false, reason: 'calibrationFrameMismatch' } : synced.length >= 2 ? triangulateJoint(synced.map(o => ({ sourceId: o.sourceId, imageSize: o.imageSize, keypoint: o.keypoints[id] })), cameraList, opts) : { valid: false, reason: 'notSynchronized' };
     return result.valid ? { id, ...result, ageMs: 0 } : missing(id, result.reason);
   });
   const triangulatedCount = joints.filter(j => finite3(j.position)).length;
@@ -276,10 +286,10 @@ export function fusePose(observations, cameras = [], options = {}) {
     if (learnedHeight && !opts.scaleConfirmed) { monoOptions.bodyHeightM = learnedHeight; monoOptions.scaleConfirmed = true; }
   }
   const mono = estimateMonocularPose(bestObservation, bestCamera, monoOptions);
-  const diagnostics = { ...mono.diagnostics, synchronizedSources: synced.map(o => o.sourceId), rejectedTimeSources: list.filter(o => !synced.includes(o)).map(o => o.sourceId), maxSkewMs: synced.length > 1 ? Math.max(...synced.map(o => o.timestampMs)) - Math.min(...synced.map(o => o.timestampMs)) : null, triangulatedJointCount: triangulatedCount, learnedHeightM: learnedHeight, maxReprojectionErrorPx: opts.maxReprojectionErrorPx };
+  const diagnostics = { ...mono.diagnostics, synchronizedSources: synced.map(o => o.sourceId), rejectedTimeSources: list.filter(o => !synced.includes(o)).map(o => o.sourceId), calibrationFrameMismatch, worldCalibrationIds, maxSkewMs: synced.length > 1 ? Math.max(...synced.map(o => o.timestampMs)) - Math.min(...synced.map(o => o.timestampMs)) : null, triangulatedJointCount: triangulatedCount, learnedHeightM: learnedHeight, maxReprojectionErrorPx: opts.maxReprojectionErrorPx };
   if (!triangulatedCount) return { ...mono, timestampMs: targetTime, diagnostics };
   if (mono.coordinateFrame === 'world') for (let i = 0; i < 133; i++) if (!joints[i].position && mono.joints[i].position) joints[i] = mono.joints[i];
-  return finishPose({ timestampMs: targetTime, joints, metric: true, coordinateFrame: 'world', units: 'm', worldCalibrationId: cameraList[0]?.worldCalibrationId || 'configured-world', diagnostics });
+  return finishPose({ timestampMs: targetTime, joints, metric: true, coordinateFrame: 'world', units: 'm', worldCalibrationId: worldCalibrationIds[0] || 'configured-world', diagnostics });
 }
 
 function quaternionFromBasis(right, up, forward) {

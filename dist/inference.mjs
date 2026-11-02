@@ -1,4 +1,4 @@
-import {cropTransform,rgbaToTensor,decodeSimCC,predictedHandBox,acceptHandRefinement} from './pose-codec.mjs';
+import {cropTransform,rgbaToTensor,decodeSimCC,predictedHandBox,handRefinementDecision} from './pose-codec.mjs';
 import {MODEL_SPECS,REFINEMENT_MANIFEST} from './models.mjs';
 export {BODY_MODELS} from './models.mjs';
 export {BODY_EDGES,HAND_EDGES,FOOT_EDGES} from './pose-codec.mjs';
@@ -128,14 +128,14 @@ export class PoseEngine {
       if(handRefinement){
         for(const [side,offset] of [['left',91],['right',112]]){
           const handBox=predictedHandBox(points,side,bbox);if(!handBox){refinements.push({side,accepted:false,reason:'no_roi'});continue;}
-          const hand=await this.run('hand5',image,handBox),accepted=acceptHandRefinement(points,hand,handBox,side);
+          const hand=await this.run('hand5',image,handBox),decision=handRefinementDecision(points,hand,handBox,side),{accepted}=decision;
           if(accepted){for(let j=0;j<21;j++){const previous=points[offset+j];points[offset+j]={...previous,...hand[j],id:offset+j,source:'handRefined2D',relativeZ:previous.relativeZ,relativeZScore:previous.relativeZScore};}}
-          refinements.push({side,roi:handBox,accepted});
+          refinements.push({side,roi:handBox,...decision});
         }
       }
       for(const point of points){point.observable=point.observable&&point.x>=0&&point.y>=0&&point.x<image.width&&point.y<image.height;}
       this.updateTracker(sourceId,points,image,timestampMs);
-      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{bodyMs,handsMs:performance.now()-handsStart,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
+      return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{bodyMs,handsMs:performance.now()-handsStart,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
     }finally{this.busy=false;}
   }
   async dispose(){this.abort.abort();for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();}

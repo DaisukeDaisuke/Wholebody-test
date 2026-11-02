@@ -4,6 +4,7 @@ const APP_FILES=['./','./index.html','./styles.css','./app.mjs','./webrtc.mjs','
 const RUNTIME='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const RUNTIME_FILES=['ort.webgpu.min.mjs','ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'];
 let closedPromise;
+let preparing=false;
 function closedMode(){return closedPromise||(closedPromise=caches.open(SETTINGS).then(c=>c.match(new URL('./__closed_mode__',self.registration.scope))).then(r=>r?r.json():false));}
 self.addEventListener('install',event=>{event.waitUntil(self.skipWaiting());});
 self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim());});
@@ -13,11 +14,15 @@ self.addEventListener('message',event=>{
       if(event.data?.type==='status'){
         event.ports[0]?.postMessage({closed:await closedMode()});
       }else if(event.data?.type==='closed-mode'){
+        if(preparing)throw new Error('オフライン準備の完了後に切り替えてください。');
         const closed=!!event.data.closed,cache=await caches.open(SETTINGS);
         await cache.put(new URL('./__closed_mode__',self.registration.scope),new Response(JSON.stringify(closed)));
         closedPromise=Promise.resolve(closed);event.ports[0]?.postMessage({closed});
       }else if(event.data?.type==='prepare'){
         if(await closedMode())throw new Error('先に閉域モードを解除して準備してください。');
+        if(preparing)throw new Error('オフライン準備は実行中です。');
+        preparing=true;
+        try{
         const cache=await caches.open(VERSION);
         await cache.addAll(APP_FILES.map(p=>new URL(p,self.registration.scope).href));
         for(const name of RUNTIME_FILES){
@@ -26,7 +31,12 @@ self.addEventListener('message',event=>{
           if(localResponse.ok)await cache.put(local,localResponse);
           else {const url=RUNTIME+name,response=await fetch(url,{credentials:'omit'});if(!response.ok)throw new Error('Runtime preparation failed: '+name);await cache.put(url,response);}
         }
+        for(const name of ['report.json','codec-parity.json','geometry-report.json','panoptic-report.json']){
+          const url=new URL('./evaluation/'+name,self.registration.scope).href;
+          try{const response=await fetch(url);if(response.ok)await cache.put(url,response);}catch{}
+        }
         event.ports[0]?.postMessage({prepared:true,models:'Models are cached separately when loaded.'});
+        }finally{preparing=false;}
       }
     }catch(error){event.ports[0]?.postMessage({error:error.message});}
   })());

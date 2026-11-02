@@ -38,6 +38,17 @@ HAND_EDGES = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7),
               (7, 8), (0, 9), (9, 10), (10, 11), (11, 12), (0, 13),
               (13, 14), (14, 15), (15, 16), (0, 17), (17, 18), (18, 19),
               (19, 20)]
+SELECTIVE_HAND_POLICY = {
+    "rawWristScoreMinimum": 0.2,
+    "maximumWristShiftFraction": 0.35,
+    "rawJointScoreMinimum": 0.2,
+    "minimumConfidentJoints": 11,
+    "cropBoundaryMarginPixels": 1.0,
+    "maximumBoundaryJoints": 10,
+    "cropPadding": 1.25,
+    "designEvidenceWorkflowRunId": "41375521773",
+    "evaluationStatus": "Exploratory post-hoc design on this diagnostic set; not independent validation.",
+}
 
 
 def sha256(path: Path) -> str:
@@ -242,6 +253,56 @@ def refine_hands(model: PoseModel, image: np.ndarray, xy: np.ndarray,
         records.append({"side": side, "roi": box.tolist(), "accepted": bool(accepted),
                         "wristDistancePx": wrist_distance, "meanScore": float(np.mean(confidence))})
     return refined, refined_scores, records
+
+
+def selective_refinement(xy: np.ndarray, scores: np.ndarray, refined: np.ndarray,
+                         refined_scores: np.ndarray, records: list[dict],
+                         hand_input_wh: tuple[int, int]) -> tuple[np.ndarray, np.ndarray, list[dict]]:
+    """Conservative acceptance of the same Hand5 candidates, with no extra run.
+
+    This policy uses predicted geometry and Hand5's own score scale only. The
+    scoring annotations and image/annotation IDs are deliberately not inputs.
+    """
+    selected, selected_scores, decisions = xy.copy(), scores.copy(), []
+    input_wh = np.asarray(hand_input_wh, dtype=np.float64)
+    for record in records:
+        decision = {**record, "policy": "hand_selective"}
+        if not record["accepted"]:
+            decision.update({"accepted": False, "rejectedBy": ["initial_candidate_gate"]})
+            decisions.append(decision)
+            continue
+        offset, wrist = (91, 9) if record["side"] == "left" else (112, 10)
+        hand = refined[offset:offset + 21]
+        confidence = refined_scores[offset:offset + 21]
+        box = np.asarray(record["roi"], dtype=np.float64)
+        center = box[:2] + box[2:] / 2
+        crop_scale = box[2:] * SELECTIVE_HAND_POLICY["cropPadding"]
+        aspect = input_wh[0] / input_wh[1]
+        if crop_scale[0] > crop_scale[1] * aspect:
+            crop_scale[1] = crop_scale[0] / aspect
+        else:
+            crop_scale[0] = crop_scale[1] * aspect
+        input_xy = (hand - center + crop_scale / 2) / crop_scale * input_wh
+        margin = SELECTIVE_HAND_POLICY["cropBoundaryMarginPixels"]
+        boundary = ((input_xy <= margin) | (input_xy >= input_wh - margin)).any(axis=1)
+        boundary_count = int(np.count_nonzero(boundary))
+        confident_count = int(np.count_nonzero(confidence >= SELECTIVE_HAND_POLICY["rawJointScoreMinimum"]))
+        wrist_shift = float(np.linalg.norm(hand[0] - xy[wrist]) / box[2])
+        checks = {
+            "wrist_confidence": float(confidence[0]) >= SELECTIVE_HAND_POLICY["rawWristScoreMinimum"],
+            "wrist_agreement": wrist_shift <= SELECTIVE_HAND_POLICY["maximumWristShiftFraction"],
+            "majority_confident": confident_count >= SELECTIVE_HAND_POLICY["minimumConfidentJoints"],
+            "not_boundary_collapsed": boundary_count <= SELECTIVE_HAND_POLICY["maximumBoundaryJoints"],
+        }
+        accepted = all(checks.values())
+        decision.update({"accepted": accepted, "rejectedBy": [name for name, passed in checks.items() if not passed],
+                         "rawWristScore": float(confidence[0]), "wristShiftFraction": wrist_shift,
+                         "confidentJointCount": confident_count, "cropBoundaryJointCount": boundary_count})
+        if accepted:
+            selected[offset:offset + 21] = hand
+            selected_scores[offset:offset + 21] = confidence
+        decisions.append(decision)
+    return selected, selected_scores, decisions
 
 
 def target_points(annotation: dict) -> np.ndarray:
@@ -449,8 +510,9 @@ def initialization_experiment(body_model: PoseModel, hand_model: PoseModel,
         by_image[annotation["image_id"]].append(annotation)
     measurements, cases, predictions = {}, [], []
     body_calls_before, hand_calls_before = len(body_model.times), len(hand_model.times)
-    method_order = ("full_frame", "full_frame_hand_refined", "predicted_person_crop",
-                    "predicted_person_crop_hand_refined")
+    method_order = ("full_frame", "full_frame_hand_refined", "full_frame_hand_selective",
+                    "predicted_person_crop", "predicted_person_crop_hand_refined",
+                    "predicted_person_crop_hand_selective")
     for image_id, candidates in sorted(by_image.items()):
         image = image_cache[image_id]
         # A fixed, reproducible scoring target. Its box is never an input here.
@@ -467,11 +529,19 @@ def initialization_experiment(body_model: PoseModel, hand_model: PoseModel,
             hand_model, image, first_xy, first_scores, full_box)
         second_refined, second_refined_scores, second_hands = refine_hands(
             hand_model, image, second_xy, second_scores, next_box)
+        first_selected, first_selected_scores, first_decisions = selective_refinement(
+            first_xy, first_scores, first_refined, first_refined_scores, first_hands,
+            (hand_model.width, hand_model.height))
+        second_selected, second_selected_scores, second_decisions = selective_refinement(
+            second_xy, second_scores, second_refined, second_refined_scores, second_hands,
+            (hand_model.width, hand_model.height))
         stages = [
             ("full_frame", full_box, first_xy, first_scores, []),
             ("full_frame_hand_refined", full_box, first_refined, first_refined_scores, first_hands),
+            ("full_frame_hand_selective", full_box, first_selected, first_selected_scores, first_decisions),
             ("predicted_person_crop", next_box, second_xy, second_scores, []),
             ("predicted_person_crop_hand_refined", next_box, second_refined, second_refined_scores, second_hands),
+            ("predicted_person_crop_hand_selective", next_box, second_selected, second_selected_scores, second_decisions),
         ]
         case = {"imageId": image_id, "targetAnnotationId": annotation["id"],
                 "targetBBoxXYWHForScoringOnly": annotation["bbox"],
@@ -497,9 +567,10 @@ def initialization_experiment(body_model: PoseModel, hand_model: PoseModel,
             panels = [overlay(image, xy, scores, target, title)
                       for (_, _, xy, scores, _), title in zip(stages, (
                           "full frame; green=fixed target annotation", "full frame + Hand5",
-                          "predicted person crop", "predicted person crop + Hand5"))]
-            grid = np.concatenate([np.concatenate(panels[:2], axis=1),
-                                   np.concatenate(panels[2:], axis=1)], axis=0)
+                          "full frame + selective Hand5", "predicted person crop",
+                          "predicted person crop + Hand5", "predicted crop + selective Hand5"))]
+            grid = np.concatenate([np.concatenate(panels[:3], axis=1),
+                                   np.concatenate(panels[3:], axis=1)], axis=0)
             cv2.imwrite(str(output / "overlays" / f"{image_id}-initialization.jpg"),
                         grid, [cv2.IMWRITE_JPEG_QUALITY, 94])
         print(f"initialization image={image_id} target={annotation['id']} "
@@ -542,6 +613,11 @@ def markdown_report(report: dict) -> str:
                 rows.append(f"|{condition}|{method}|{part}|{value['points']}|{error}|{value['pck005']:.3f}|{value['pck010']:.3f}|{value['pck020']:.3f}|")
     rows.extend(["## 手の再推論による差", "改善を合格条件として偽装せず、符号付きの差をそのまま記録する。"])
     for condition, delta in report["handRefinementDifference"].items():
+        rows.append(f"{condition}: 平均誤差差 {delta['meanErrorPxRefinedMinusBaseline']:.3f}px、PCK@0.20差 {delta['pck020RefinedMinusBaseline']:+.3f}。")
+    rows.extend(["## 手の選択採用による差",
+                 "hand_selectiveは同じHand5候補へ手首の信頼度・位置整合性・関節の信頼度・crop境界への集中を判定する。",
+                 "このルールはrun 41375521773の失敗例から設計した探索的改善であり、この小標本での再測定を汎化性能の証明には使わない。"])
+    for condition, delta in report["handSelectiveDifference"].items():
         rows.append(f"{condition}: 平均誤差差 {delta['meanErrorPxRefinedMinusBaseline']:.3f}px、PCK@0.20差 {delta['pck020RefinedMinusBaseline']:+.3f}。")
     initialization = report["initializationExperiment"]
     rows.extend(["## 実際の入力経路: 全画面から予測ROIへ",
@@ -623,17 +699,24 @@ def main():
             if body_model.codec_fixture is not None:
                 emit_codec_fixture(body_model, args.output / "codec-fixture", image_info, annotation)
             refined, refined_scores, hand_details = refine_hands(hand_model, frame, prediction, scores, box)
-            for method, points, confidence in (("wholebody", prediction, scores), ("hand_refined", refined, refined_scores)):
+            selective, selective_scores, selective_details = selective_refinement(
+                prediction, scores, refined, refined_scores, hand_details, (hand_model.width, hand_model.height))
+            for method, points, confidence in (("wholebody", prediction, scores),
+                                               ("hand_refined", refined, refined_scores),
+                                               ("hand_selective", selective, selective_scores)):
                 add_metrics(measurements[condition][method], annotation, target, points, confidence)
                 if changed.any():
                     add_metrics(masked_measurements[condition][method], annotation, target, points, confidence, changed)
             all_predictions.append({"imageId": image_id, "annotationId": annotation["id"], "condition": condition,
                                     "bboxXYWH": box.tolist(), "prediction": prediction.tolist(), "scores": scores.tolist(),
                                     "refined": refined.tolist(), "refinedScores": refined_scores.tolist(),
-                                    "refinement": hand_details, "occludedPointIndices": np.flatnonzero(changed).tolist()})
+                                    "refinement": hand_details, "selective": selective.tolist(),
+                                    "selectiveScores": selective_scores.tolist(), "selectiveRefinement": selective_details,
+                                    "occludedPointIndices": np.flatnonzero(changed).tolist()})
             if image_info["license"] == 4:
                 comparison = np.concatenate([overlay(frame, prediction, scores, target, f"{condition}: wholebody; green=annotation"),
-                                             overlay(frame, refined, refined_scores, target, "predicted hand ROI + hand5")], axis=1)
+                                             overlay(frame, refined, refined_scores, target, "predicted hand ROI + hand5"),
+                                             overlay(frame, selective, selective_scores, target, "selective Hand5 (same candidates)")], axis=1)
                 filename = args.output / "overlays" / f"{image_id}-{annotation['id']}-{condition}.jpg"
                 cv2.imwrite(str(filename), comparison, [cv2.IMWRITE_JPEG_QUALITY, 94])
             print(f"inferred image={image_id} person={annotation['id']} condition={condition}", flush=True)
@@ -644,12 +727,17 @@ def main():
                for condition, methods in measurements.items()}
     masked_metrics = {condition: {method: summarize_metrics(parts) for method, parts in methods.items()}
                       for condition, methods in masked_measurements.items()}
-    differences = {}
+    differences, selective_differences = {}, {}
     for condition, methods in metrics.items():
         if "hand" in methods["wholebody"] and "hand" in methods["hand_refined"]:
             before, after = methods["wholebody"]["hand"], methods["hand_refined"]["hand"]
             differences[condition] = {"meanErrorPxRefinedMinusBaseline": after["meanErrorPx"] - before["meanErrorPx"],
                                       "pck020RefinedMinusBaseline": after["pck020"] - before["pck020"]}
+            selected_hand = methods["hand_selective"]["hand"]
+            selective_differences[condition] = {
+                "meanErrorPxRefinedMinusBaseline": selected_hand["meanErrorPx"] - before["meanErrorPx"],
+                "pck020RefinedMinusBaseline": selected_hand["pck020"] - before["pck020"],
+            }
     report = {"schemaVersion": 1, "createdAt": datetime.now(timezone.utc).isoformat(),
               "gitCommit": os.environ.get("GITHUB_SHA"), "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
               "dataset": {"name": "MMPose COCO-WholeBody diagnostic subset", "sourceRevision": SOURCE_REVISION,
@@ -662,6 +750,7 @@ def main():
               "models": {"wholebody": {"id": args.body_model_id, **body_model.metadata, "timing": body_model.timing()},
                          "hand": {"id": "RTMPose-m-hand5-256x256", **hand_model.metadata, "timing": hand_model.timing()}},
               "metrics": metrics, "maskedPointMetrics": masked_metrics, "handRefinementDifference": differences,
+              "handSelectiveDifference": selective_differences, "handSelectivePolicy": SELECTIVE_HAND_POLICY,
               "initializationExperiment": initialization,
               "limits": ["Small diagnostic subset, not representative COCO AP.",
                          "CPU runtime timings do not measure browser WebGPU or the user's GPU.",
@@ -677,6 +766,7 @@ def main():
                                                         "images": image_attributions})
     (args.output / "report.md").write_text(markdown_report(report), encoding="utf-8")
     print(json.dumps({"images": len(image_cache), "people": len(selected), "handRefinementDifference": differences,
+                      "handSelectiveDifference": selective_differences,
                       "output": str(args.output)}, ensure_ascii=False), flush=True)
 
 

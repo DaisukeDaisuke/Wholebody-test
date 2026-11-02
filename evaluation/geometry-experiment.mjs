@@ -37,6 +37,23 @@ experiment('known-point-two-view-reconstruction', () => {
   return { passed: result.valid && errorM < 1e-8 && result.source === 'measuredMultiView', expectedPositionM: expected, reconstructedPositionM: result.position || null, errorM, reprojectionErrorPx: result.reprojectionErrorPx ?? null };
 });
 
+experiment('different-world-calibration-frames-are-rejected', () => {
+  const expected = [.1, .2, 3], named = cameras.map(c => ({ ...c, worldCalibrationId: 'same-board-frame' }));
+  const observations = cameras.map((c, i) => ({ sourceId: c.id, keypoint: pixel(expected, i) }));
+  const matching = triangulateJoint(observations, named);
+  const conflicting = [named[0], { ...named[1], worldCalibrationId: 'different-board-frame' }];
+  const rejected = triangulateJoint(observations, conflicting);
+  const mixedUnknown = triangulateJoint(observations, [named[0], cameras[1]]);
+  const a = blankPoints(), b = blankPoints();
+  a[11] = pixel(expected, 0); b[11] = pixel(expected, 1);
+  const fused = fusePose([observation('a', 1000, a), observation('b', 1000, b)], conflicting);
+  return { passed: matching.valid && !rejected.valid && rejected.reason === 'calibrationFrameMismatch' &&
+           !mixedUnknown.valid && fused.quality.observed3D === 0 && fused.diagnostics.calibrationFrameMismatch,
+           sameFrameAccepted: matching.valid, conflictingFrameReason: rejected.reason,
+           namedAndUnknownFrameReason: mixedUnknown.reason, conflictingFusedJointCount: fused.quality.observed3D,
+           scope: 'Coordinate-frame consistency fixture, not camera accuracy.' };
+});
+
 experiment('subpixel-perturbation-sensitivity', () => {
   const errors = [];
   for (let i = 0; i < 30; i++) {

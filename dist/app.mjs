@@ -13,7 +13,7 @@ const median = (values) => {
 };
 const COLORS = { observed: '#b9ef92', inferred: '#70d7df', predicted: '#edbd73', missing: '#617386' };
 const SOURCE_LABELS = {
-  measuredMultiView: '校正済み2視点の実測', estimatedMultiView: '仮配置による2視点推定',
+  measuredMultiView: '校正済み2視点の3D推定', estimatedMultiView: '仮配置による2視点推定',
   inferredMonocular: '単眼・人体モデルによる推定', predicted: '遮蔽中の短期予測',
   inferredKinematic: '周囲の関節から補完', inferredPrior: '過去の姿勢から補完',
   inferredAnatomy: '人体の形から補完', missing: '欠測', uncalibrated: '絶対位置は未校正'
@@ -47,6 +47,175 @@ async function readJson(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if ((bytes[0] === 255 && bytes[1] === 254) || (bytes[0] === 254 && bytes[1] === 255)) throw new Error('UTF-16のファイルは読み込めません。UTF-8のJSONを指定してください。');
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+}
+
+async function loadEvaluationPanel() {
+  const container = $('evaluation-content');
+  const button = $('refresh-evaluation');
+  button.disabled = true;
+  const paths = ['report.json', 'codec-parity.json', 'geometry-report.json', 'panoptic-report.json', 'foot-report.json'];
+  const element = (tag, text, className) => {
+    const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;
+  };
+  const percent = (value) => Number.isFinite(value) && value >= 0 && value <= 1 ? `${(100 * value).toFixed(1)}%` : '—';
+  const signedPoints = (value) => Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${(100 * value).toFixed(1)} pt` : '—';
+  const check = (parent, label, value, style = '') => {
+    const row = element('div', undefined, 'evaluation-check'); row.append(element('span', label), element('strong', value, style)); parent.append(row);
+  };
+  const table = (headers, rows) => {
+    const wrapper = element('div', undefined, 'evaluation-table-wrap'), body = element('tbody'), grid = element('table', undefined, 'evaluation-table');
+    const head = element('thead'), titles = element('tr'); headers.forEach((text) => titles.append(element('th', text))); head.append(titles); grid.append(head, body);
+    rows.forEach((cells) => {
+      const row = element('tr'); cells.forEach((value) => row.append(typeof value === 'object' && value.nodeType ? value : element('td', value))); body.append(row);
+    });
+    wrapper.append(grid); return wrapper;
+  };
+  try {
+    const results = await Promise.all(paths.map(async (path) => {
+      const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch(`./evaluation/${path}`, { signal: controller.signal, cache: 'no-cache', credentials: 'same-origin' });
+        if (response.status === 404) return { path, status: 'pending' };
+        if (!response.ok) return { path, status: 'unavailable', message: `HTTP ${response.status}` };
+        const data = await response.json();
+        if (!data || typeof data !== 'object') throw new Error('Invalid report');
+        return { path, status: 'available', data };
+      } catch (error) { return { path, status: 'unavailable', message: error.name === 'AbortError' ? '読込タイムアウト' : '読込失敗' }; }
+      finally { clearTimeout(timer); }
+    }));
+    const [main, codec, geometry, panoptic, foot] = results;
+    const content = document.createDocumentFragment();
+    if (main.status !== 'available') content.append(element('p', main.status === 'pending' ? '評価結果の配信待ち' : `実画像の評価結果を読めません（${main.message}）。`, 'evaluation-summary'));
+    else {
+      const report = main.data, dataset = report.dataset || {};
+      const size = Number.isFinite(dataset.images) && Number.isFinite(dataset.people) ? `実画像 ${dataset.images} 枚 · ${dataset.people} 人物` : '実画像の評価結果';
+      content.append(element('p', size, 'evaluation-summary'));
+      if (dataset.name) content.append(element('p', dataset.name, 'help-text'));
+      const rows = [];
+      const hasSelective = Object.values(report.metrics || {}).some((metrics) => metrics?.hand_selective);
+      const method = hasSelective ? 'hand_selective' : 'hand_refined';
+      const differences = hasSelective ? report.handSelectiveDifference : report.handRefinementDifference;
+      for (const [condition, label] of [['clean', '通常画像'], ['hand', '手を遮蔽'], ['foot', '足を遮蔽'], ['torso', '体幹を遮蔽']]) {
+        const metrics = report.metrics?.[condition]; if (!metrics) continue;
+        const before = metrics.wholebody?.hand?.pck020, after = metrics[method]?.hand?.pck020;
+        const reported = differences?.[condition]?.pck020RefinedMinusBaseline;
+        const delta = Number.isFinite(reported) ? reported : Number.isFinite(before) && Number.isFinite(after) ? after - before : null;
+        const deltaCell = element('td', signedPoints(delta), Number.isFinite(delta) && delta > 0 ? 'evaluation-delta-positive' : Number.isFinite(delta) && delta < 0 ? 'evaluation-delta-negative' : '');
+        rows.push([label, `${percent(before)} → ${percent(after)}`, deltaCell, percent(metrics.wholebody?.foot?.pck020)]);
+      }
+      if (rows.length) content.append(table(['PCK@0.2', hasSelective ? '手：本体 → 選択採用' : '手：本体 → 再推論', '差', '足：本体'], rows));
+      else content.append(element('p', '対応する手・足のPCK集計がありません。', 'help-text'));
+      const clean = report.metrics?.clean?.wholebody;
+      if (Number.isFinite(clean?.hand?.points) && Number.isFinite(clean?.foot?.points)) content.append(element('p', `通常画像の分母：手 ${clean.hand.points} 点 / 足 ${clean.foot.points} 点。小規模な診断用標本です。`, 'help-text'));
+      if (hasSelective) {
+        content.append(element('p', '選択採用：手の再推論が不安定な場合、全身モデルの点を保持します。', 'help-text'));
+        if (String(report.handSelectivePolicy?.evaluationStatus || '').includes('not independent')) content.append(element('p', 'この小標本の失敗例を参照して採用条件を設計しています。別データでの改善は未確認です。', 'evaluation-basis'));
+        const detail = element('details'), comparisonRows = [];
+        detail.append(element('summary', '従来の手の再推論と、選択採用を比較'));
+        for (const [condition, label] of [['clean', '通常画像'], ['hand', '手を遮蔽'], ['foot', '足を遮蔽'], ['torso', '体幹を遮蔽']]) {
+          const metrics = report.metrics?.[condition]; if (!metrics) continue;
+          const legacy = metrics.hand_refined?.hand?.pck020, selected = metrics.hand_selective?.hand?.pck020;
+          comparisonRows.push([label, percent(metrics.wholebody?.hand?.pck020), percent(legacy), percent(selected), signedPoints(Number.isFinite(legacy) && Number.isFinite(selected) ? selected - legacy : null)]);
+        }
+        detail.append(table(['手 PCK@0.2', '本体', '従来再推論', '選択採用', '従来との差'], comparisonRows)); content.append(detail);
+      }
+      content.append(element('p', '手は注釈BBoxの長辺、足は注釈点の最大広がりで誤差を正規化。低信頼点も分母に含みます。遮蔽行は矩形マスクを追加した静止画です。', 'help-text'));
+      content.append(element('p', 'この表の人物領域は正解BBox。自動検出を含む精度や、実動画での追跡精度とは別です。', 'evaluation-basis'));
+      const initialization = report.initializationExperiment;
+      if (initialization?.metrics && Array.isArray(initialization.methodOrder)) {
+        const detail = element('details'), rows = [];
+        detail.append(element('summary', '正解BBoxを使わない全画面からの初期化'));
+        const names = { full_frame: '全画面', full_frame_hand_refined: '全画面＋従来の手', full_frame_hand_selective: '全画面＋手の選択採用', predicted_person_crop: '予測した人物範囲', predicted_person_crop_hand_refined: '予測した人物範囲＋従来の手', predicted_person_crop_hand_selective: '予測した人物範囲＋手の選択採用' };
+        for (const method of initialization.methodOrder) {
+          const metrics = initialization.metrics[method]; if (!metrics) continue;
+          rows.push([names[method] || method, percent(metrics.body?.pck020), percent(metrics.hand?.pck020), percent(metrics.foot?.pck020)]);
+        }
+        if (Number.isFinite(initialization.images)) detail.append(element('p', `${initialization.images} 画像。全画面 → 予測人物範囲 → 手の切り出し。`, 'help-text'));
+        detail.append(table(['PCK@0.2', '身体', '手', '足'], rows));
+        detail.append(element('p', '同じ静止画を2回処理した初期化の診断です。別人を選んだ場合も固定した対象との誤差に含みます。実動画の追従は未検証です。', 'help-text'));
+        content.append(detail);
+      }
+      if (report.maskedPointMetrics) {
+        const detail = element('details'), rows = [];
+        detail.append(element('summary', '隠した点だけの成績'));
+        for (const [condition, label, part] of [['hand', '手の遮蔽点', 'hand'], ['foot', '足の遮蔽点', 'foot'], ['torso', '体幹マスク内の手', 'hand']]) {
+          const metrics = report.maskedPointMetrics[condition], before = metrics?.wholebody?.[part], after = metrics?.[method]?.[part];
+          if (!before) continue;
+          rows.push([label, Number.isFinite(before.points) ? String(before.points) : '—', percent(before.pck020), percent(after?.pck020)]);
+        }
+        detail.append(table(['対象', '点数', '本体', hasSelective ? '選択採用後' : '手の再推論後'], rows)); content.append(detail);
+      }
+      const date = report.createdAt ? new Date(report.createdAt) : null;
+      if (date && Number.isFinite(date.getTime())) content.append(element('p', `計測：${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' }).format(date)} JST${typeof report.gitCommit === 'string' ? ` · ${report.gitCommit.slice(0, 8)}` : ''}`, 'help-text'));
+    }
+    const checks = element('details'); checks.append(element('summary', '実装の参照比較と遮蔽補完の検証'));
+    if (codec.status === 'available') {
+      check(checks, '前処理・復号の参照比較', codec.data.passed === true ? '一致条件を通過' : codec.data.passed === false ? '不一致あり' : '判定記載なし', codec.data.passed === false ? 'failed' : '');
+      const max = codec.data.comparison?.coordinates?.maxAbs;
+      if (Number.isFinite(max)) check(checks, '復号座標の最大差', `${max.toExponential(2)} px`);
+    } else check(checks, '前処理・復号の参照比較', codec.status === 'pending' ? '評価結果の配信待ち' : '結果を読み込めません', 'pending');
+    if (geometry.status === 'available') {
+      const experiments = Array.isArray(geometry.data.experiments) ? geometry.data.experiments : [];
+      check(checks, '幾何演算の数値fixture', experiments.length ? `${experiments.filter((item) => item.passed === true).length} / ${experiments.length} 条件通過` : geometry.data.passed === true ? '条件を通過' : '結果JSONを参照', geometry.data.passed === false ? 'failed' : '');
+      checks.append(element('p', '既知座標を使う数式の確認です。カメラの認識精度を測った値ではありません。', 'help-text'));
+    } else check(checks, '幾何演算の数値fixture', geometry.status === 'pending' ? '評価結果の配信待ち' : '結果を読み込めません', 'pending');
+    if (panoptic.status === 'available' && panoptic.data.status === 'measured') {
+      const data = panoptic.data, count = data.dataset?.evaluatedFrameCount;
+      check(checks, '公開運動ラベルでの遮蔽補完', Number.isFinite(count) ? `${count} フレーム` : '評価結果あり');
+      const rows = (data.experiments || []).map((experiment) => [experiment.label || `${experiment.nominalGapMs} ms`,
+        Number.isFinite(experiment.tracker?.mpjpeM) ? `${(experiment.tracker.mpjpeM * 1000).toFixed(1)} mm` : '—',
+        Number.isFinite(experiment.holdLastVisible?.mpjpeM) ? `${(experiment.holdLastVisible.mpjpeM * 1000).toFixed(1)} mm` : '—']);
+      if (rows.length) checks.append(table(['人工的な欠測', '補完のMPJPE', '最後の位置を保持'], rows));
+      checks.append(element('p', '記録された3D運動ラベルを隠して補完を測定。映像から隠れた部位を認識する精度の検証ではありません。', 'help-text'));
+    } else {
+      const status = panoptic.data?.status;
+      check(checks, '公開運動ラベルでの遮蔽補完', panoptic.status === 'pending' ? '評価結果の配信待ち' : status === 'unavailable' ? 'データ取得不可・未完了' : status === 'insufficient-label-coverage' ? '有効ラベルが不足' : '評価結果を確認できません', 'pending');
+    }
+    if (foot.status === 'available' && foot.data.status === 'measured' && foot.data.metrics) {
+      const report = foot.data, detail = element('details');
+      detail.append(element('summary', '足の専門モデル：実画像での比較結果'));
+      if (Number.isFinite(report.dataset?.images) && Number.isFinite(report.dataset?.people)) detail.append(element('p', `${report.dataset.images} 画像 · ${report.dataset.people} 人物。母趾・小趾・踵・足首の8点モデル。`, 'help-text'));
+      const label = (method) => method === 'rtmw_l' ? 'RTMW-l 本体' : method.split('/').map((part) => ({
+        'focus-foot8-one2many': 'FOCUS one2many', 'focus-foot8-one2one': 'FOCUS one2one',
+        person_crop: '人物範囲', predicted_foot_crop: '予測足範囲', selective: '選択採用', direct: '直接採用'
+      })[part] || part).join(' / ');
+      const rows = [], clean = report.metrics.clean || {}, base = clean.rtmw_l?.foot;
+      const methods = Object.keys(clean).sort((a, b) => a === 'rtmw_l' ? -1 : b === 'rtmw_l' ? 1 : a.localeCompare(b));
+      for (const method of methods) {
+        const metric = clean[method]?.foot; if (!metric) continue;
+        const reported = report.footRefinementDifference?.clean?.[method]?.pck020RefinedMinusBaseline;
+        const delta = Number.isFinite(reported) ? reported : Number.isFinite(metric.pck020) && Number.isFinite(base?.pck020) ? metric.pck020 - base.pck020 : null;
+        const deltaCell = element('td', method === 'rtmw_l' ? '基準' : signedPoints(delta), Number.isFinite(delta) && delta > 0 ? 'evaluation-delta-positive' : Number.isFinite(delta) && delta < 0 ? 'evaluation-delta-negative' : '');
+        rows.push([label(method), percent(metric.pck020), deltaCell, percent(report.maskedPointMetrics?.foot?.[method]?.foot?.pck020)]);
+      }
+      detail.append(table(['足 PCK@0.2', '通常画像', '本体との差', '隠した足点'], rows));
+      if (Number.isFinite(base?.points)) detail.append(element('p', `通常画像の足の分母：${base.points} 点。低信頼・未検出も分母に残し、元の全身モデルと同じ尺度で比較します。`, 'help-text'));
+      const recommendation = report.recommendation;
+      if (recommendation && typeof recommendation.adoptForDiagnosticUse === 'boolean') {
+        check(detail, '評価スクリプトの提案', recommendation.adoptForDiagnosticUse ? '診断用候補として採用' : '診断用の採用を推奨せず', recommendation.adoptForDiagnosticUse ? '' : 'pending');
+        if (recommendation.method) detail.append(element('p', label(recommendation.method), 'help-text'));
+        if (Number.isFinite(recommendation.additionalCorrectCleanPoints)) check(detail, '候補の追加正解点（通常画像）', `${recommendation.additionalCorrectCleanPoints >= 0 ? '+' : ''}${recommendation.additionalCorrectCleanPoints} 点`);
+      }
+      detail.append(element('p', 'この比較は専門モデルの診断です。推論画面での採用、5本の足指の関節精度、実動画の精度を示しません。', 'help-text'));
+      if (report.dataset?.trainingOverlapExcluded === false) detail.append(element('p', '学習データとの重複は未除外です。独立した検証データの結果ではありません。', 'evaluation-basis'));
+      if (typeof report.gitCommit === 'string') detail.append(element('p', `足モデル評価のソース：${report.gitCommit.slice(0, 8)}`, 'help-text'));
+      checks.append(detail);
+    } else if (foot.status === 'available') {
+      check(checks, '足の専門モデル', '未評価 · 測定済みの集計がありません', 'pending');
+    } else check(checks, '足の専門モデル', foot.status === 'pending' ? '未評価 · 評価結果の配信待ち' : '未評価 · 結果を読み込めません', 'pending');
+    checks.append(element('p', 'コードの検証通過だけで、実用精度を達成したとは判定しません。実カメラの動画精度と利用者のWebGPU速度は別の測定が必要です。', 'help-text'));
+    content.append(checks);
+    const links = element('div', undefined, 'evaluation-links');
+    const labels = ['実画像JSON', '参照比較JSON', '幾何演算JSON', '運動補完JSON', '足モデルJSON'];
+    results.forEach((result, index) => { if (result.status !== 'available') return; const link = element('a', labels[index]); link.href = `./evaluation/${result.path}`; link.target = '_blank'; link.rel = 'noreferrer'; links.append(link); });
+    if (/^\d+$/.test(String(main.data?.workflowRunId || ''))) {
+      const run = element('a', 'Actions run ↗'); run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${main.data.workflowRunId}`; run.target = '_blank'; run.rel = 'noreferrer'; links.append(run);
+    }
+    if (/^\d+$/.test(String(foot.data?.workflowRunId || '')) && foot.data.workflowRunId !== main.data?.workflowRunId) {
+      const run = element('a', '足モデルのActions run ↗'); run.href = `https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/${foot.data.workflowRunId}`; run.target = '_blank'; run.rel = 'noreferrer'; links.append(run);
+    }
+    content.append(links); container.replaceChildren(content);
+  } finally { button.disabled = false; }
 }
 
 if (new URLSearchParams(location.search).get('mode') === 'camera') initSender();
@@ -110,6 +279,7 @@ async function initReceiver() {
   const state = {
     engine: null, engineModule: null, geometry: null, calibrationModule: null, tracker: null,
     running: false, loading: false, processing: false, generation: 0,
+    initializing: true, preparingOffline: false, modeChanging: false, loadCanceled: false,
     sources: new Map(), observations: new Map(), cameras: [], fused: null,
     records: [], totalFrames: 0, recentTimes: [], latencies: [], lastObservationAt: 0,
     lastFusedTimestamp: 0, lastMissingTick: 0, sceneDirty: true,
@@ -136,11 +306,29 @@ async function initReceiver() {
     $('engine-status').replaceChildren(dot, document.createTextNode(text));
     if (detail) $('status-message').textContent = detail;
   }
+  function updateOperationControls() {
+    const operation = state.initializing || state.loading || state.preparingOffline || state.modeChanging;
+    $('start-inference').disabled = operation || state.running || state.processing;
+    $('stop-inference').disabled = state.loadCanceled || !(state.running || state.loading);
+    $('prepare-offline').disabled = operation || state.offline;
+    $('closed-mode').disabled = operation;
+    $('model-select').disabled = operation;
+    $('backend-select').disabled = operation;
+    $('hand-refinement').disabled = operation;
+  }
+  async function waitForInferenceIdle() {
+    const started = performance.now();
+    while (state.processing) {
+      if (performance.now() - started > 30000) throw new Error('処理の終了待ちがタイムアウトしました。通信モードは変更していません。');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
   function trackerOptions() { return { predictionMs: clamp(numberInput('prediction-ms', 180), 0, 500), holdMs: clamp(numberInput('hold-ms', 1200), 0, 5000), priorMs: Math.max(1200, clamp(numberInput('hold-ms', 1200), 0, 5000) + 1800) }; }
   function fusionOptions() {
     return { minScore: numberInput('score-threshold', .25), syncToleranceMs: numberInput('sync-tolerance-ms', 45),
       maxTimeUncertaintyMs: 20, maxReprojectionErrorPx: 8, bodyHeightM: numberInput('body-height', 1.7),
-      scaleConfirmed: $('height-confirmed').checked, rootDepthM: numberInput('root-depth', undefined),
+      scaleConfirmed: $('height-confirmed').checked,
+      ...($('root-depth-fixed').checked ? { rootDepthM: numberInput('root-depth', undefined) } : {}),
       priorPose: state.tracker?.lastPose, boneLengths: state.tracker?.getBoneLengths() || {} };
   }
 
@@ -205,6 +393,7 @@ async function initReceiver() {
 
   function resetSource(source, preservePeer = false) {
     source.epoch++;
+    state.engine?.resetSource?.(source.id);
     if (source.requestId !== null) {
       if (source.requestKind === 'video') source.video.cancelVideoFrameCallback?.(source.requestId);
       else cancelAnimationFrame(source.requestId);
@@ -361,6 +550,7 @@ async function initReceiver() {
     });
     if (!batch.length) return;
     state.processing = true;
+    updateOperationControls();
     const generation = state.generation;
     const batchObservations = [];
     try {
@@ -401,13 +591,15 @@ async function initReceiver() {
         updateMetrics();
       }
     } catch (error) {
-      state.running = false;
-      $('start-inference').disabled = false; $('stop-inference').disabled = true;
-      engineStatus('error', '推論停止', error.message || String(error));
-      toast(error.message || String(error), true);
+      if (generation === state.generation && state.running) {
+        state.running = false;
+        engineStatus('error', '推論停止', error.message || String(error));
+        toast(error.message || String(error), true);
+      }
     } finally {
       for (const { source, frame } of batch) if (source.epoch === frame.epoch && source.pool.length < 2) source.pool.push(frame.canvas);
       state.processing = false;
+      updateOperationControls();
       if (state.running && Array.from(state.sources.values()).some((source) => source.pending)) setTimeout(processFrames, 0);
     }
   }
@@ -713,22 +905,28 @@ async function initReceiver() {
   }
 
   createSource('a'); createSource('b'); bindCalibration();
+  $('refresh-evaluation').onclick = safe(loadEvaluationPanel);
+  loadEvaluationPanel().catch(() => { $('evaluation-content').textContent = '評価結果を読み込めませんでした。'; });
   $('start-inference').onclick = safe(async () => {
-    if (state.loading) return;
+    if (state.loading || state.preparingOffline || state.modeChanging || state.initializing) return;
     if (state.processing) throw new Error('前の推論処理の終了を待って、もう一度開始してください。');
-    state.loading = true; state.running = false; state.generation++;
-    $('start-inference').disabled = true; $('stop-inference').disabled = true;
+    state.loading = true; state.loadCanceled = false; state.running = false; state.generation++;
+    updateOperationControls();
     try {
       await ensureModules();
+      if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
       const bodyModel = $('model-select').value, backend = $('backend-select').value;
       if (!state.engine || bodyModel !== state.selectedModel || backend !== state.backend || state.loadedOffline !== state.offline) {
         await state.engine?.dispose?.();
+        if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
         state.engine = new state.engineModule.PoseEngine({ onProgress: ({ stage, progress, message }) => {
+          if (state.loadCanceled) return;
           engineStatus('loading', '読込中', message || stage || 'モデルを読み込んでいます');
           $('load-progress').hidden = !Number.isFinite(progress);
           if (Number.isFinite(progress)) $('load-progress').value = clamp(progress > 1 ? progress / 100 : progress, 0, 1);
         } });
         await state.engine.load({ bodyModel, handRefinement: $('hand-refinement').checked, backend, offline: state.offline });
+        if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
         state.selectedModel = bodyModel; state.backend = backend; state.loadedOffline = state.offline;
       }
       state.tracker = new state.geometry.TemporalPoseTracker(trackerOptions());
@@ -742,18 +940,27 @@ async function initReceiver() {
       state.running = false;
       const failedEngine = state.engine; state.engine = null; state.selectedModel = null;
       try { await failedEngine?.dispose?.(); } catch { /* Preserve the original initialization error. */ }
-      engineStatus('error', '読込失敗', error.message || String(error)); throw error;
+      $('load-progress').hidden = true;
+      if (state.loadCanceled || error.name === 'AbortError') engineStatus('idle', '読込中止', 'モデルの読み込みを中止しました。');
+      else { engineStatus('error', '読込失敗', error.message || String(error)); throw error; }
     }
-    finally { state.loading = false; $('start-inference').disabled = state.running; }
+    finally { state.loading = false; state.loadCanceled = false; updateOperationControls(); }
   });
   $('stop-inference').onclick = () => {
+    if (state.loading) {
+      state.loadCanceled = true;
+      state.engine?.abort?.abort();
+      engineStatus('idle', '中止処理中', '読み込み処理が終了するまで待機しています。');
+      updateOperationControls(); return;
+    }
     state.running = false; state.generation++;
-    $('start-inference').disabled = false; $('stop-inference').disabled = true;
+    updateOperationControls();
     engineStatus('idle', '停止中', '映像は保持しています。推論を再開できます。');
   };
   $('prepare-offline').onclick = safe(async () => {
+    if (state.loading || state.preparingOffline || state.modeChanging || state.initializing) return;
     if (state.offline) throw new Error('オフライン準備はオンライン配布モードで実行してください。');
-    const button = $('prepare-offline'); button.disabled = true;
+    state.preparingOffline = true; updateOperationControls();
     $('offline-state').textContent = 'アプリと実行環境を保存しています…';
     try {
       const offline = await import('./offline.mjs');
@@ -761,13 +968,20 @@ async function initReceiver() {
       $('offline-state').textContent = 'アプリを保存しました。使うモデルもオンラインで一度読み込んでください。';
       state.networkAudit = await offline.networkAudit();
       $('network-audit').textContent = JSON.stringify({ preparation: result, ...state.networkAudit }, null, 2);
-    } finally { button.disabled = false; }
+    } finally { state.preparingOffline = false; updateOperationControls(); }
   });
   $('closed-mode').onchange = safe(async () => {
     const enabled = $('closed-mode').checked;
-    $('closed-mode').disabled = true;
+    if (state.loading || state.preparingOffline || state.modeChanging || state.initializing) { $('closed-mode').checked = state.offline; return; }
+    state.modeChanging = true; updateOperationControls();
     if (state.running) $('stop-inference').click();
     try {
+      if (state.processing) {
+        state.engine?.abort?.abort();
+        state.loadedOffline = null;
+        $('offline-state').textContent = '推論とダウンロードの終了を待ってから切り替えます…';
+        await waitForInferenceIdle();
+      }
       const offline = await import('./offline.mjs');
       await offline.setClosedMode(enabled);
       state.offline = enabled;
@@ -776,7 +990,7 @@ async function initReceiver() {
       $('network-audit').textContent = JSON.stringify(state.networkAudit, null, 2);
       updateDiagnostics();
     } catch (error) { $('closed-mode').checked = !enabled; throw error; }
-    finally { $('closed-mode').disabled = false; }
+    finally { state.modeChanging = false; updateOperationControls(); }
   });
   $('audit-network').onclick = safe(async () => {
     const offline = await import('./offline.mjs');
@@ -787,15 +1001,32 @@ async function initReceiver() {
   $('score-threshold').oninput = () => { $('score-threshold-label').value = numberInput('score-threshold', .25).toFixed(2); for (const source of state.sources.values()) drawOverlay(source); };
   $('show-face').onchange = () => { for (const source of state.sources.values()) drawOverlay(source); state.sceneDirty = true; };
   for (const id of ['prediction-ms', 'hold-ms']) $(id).onchange = () => { if (state.tracker) state.tracker.options = { ...state.tracker.options, ...trackerOptions() }; };
-  for (const id of ['body-height', 'height-confirmed', 'root-depth', 'video-offset-ms', 'video-sync-confirmed']) $(id).onchange = () => { state.tracker?.reset(); state.observations.clear(); };
+  for (const id of ['body-height', 'height-confirmed', 'root-depth', 'root-depth-fixed', 'video-offset-ms', 'video-sync-confirmed']) $(id).onchange = () => { state.tracker?.reset(); state.observations.clear(); };
   $('align-video-now').onclick = () => {
     const a = state.sources.get('a'), b = state.sources.get('b');
     if (a.kind !== 'video' || b.kind !== 'video') return toast('2本の同時撮影動画を開いてください。', true);
     if (a.fileIdentity === b.fileIdentity) return toast('同じ動画の複製は2視点として使えません。', true);
+    a.video.pause(); b.video.pause();
     $('video-offset-ms').value = String(Math.round((a.video.currentTime - b.video.currentTime) * 1000));
     $('video-sync-confirmed').checked = true; state.tracker?.reset(); state.observations.clear();
     toast('現在表示している2フレームを同時刻として記録しました。');
   };
+  $('play-video-pair').onclick = safe(async () => {
+    const a = state.sources.get('a'), b = state.sources.get('b');
+    if (a.kind !== 'video' || b.kind !== 'video') throw new Error('入力A・Bに動画を開いてください。');
+    a.video.pause(); b.video.pause();
+    if ($('video-sync-confirmed').checked) {
+      const target = a.video.currentTime - numberInput('video-offset-ms', 0) / 1000;
+      if (target < 0 || (Number.isFinite(b.video.duration) && target >= b.video.duration)) throw new Error('入力Aの現在時刻に対応する映像が入力Bにありません。Aの再生位置を合わせてください。');
+      if (Math.abs(b.video.currentTime - target) > .002) await new Promise((resolve, reject) => {
+        const finish = () => { clearTimeout(timer); b.video.removeEventListener('seeked', finish); resolve(); };
+        const timer = setTimeout(() => { b.video.removeEventListener('seeked', finish); reject(new Error('動画Bの再生位置を変更できませんでした。')); }, 10000);
+        b.video.addEventListener('seeked', finish, { once: true }); b.video.currentTime = target;
+      });
+    }
+    await Promise.all([a.video.play(), b.video.play()]);
+  });
+  $('pause-video-pair').onclick = () => { for (const source of state.sources.values()) if (source.kind === 'video') source.video.pause(); };
   $('export-session').onclick = () => {
     const { priorPose, ...options } = fusionOptions();
     downloadJson(`wholebody-session-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
@@ -833,7 +1064,7 @@ async function initReceiver() {
   refreshDevices().catch(() => {});
   navigator.mediaDevices?.addEventListener?.('devicechange', () => refreshDevices().catch(() => {}));
   addEventListener('pagehide', () => { state.running = false; for (const source of state.sources.values()) { source.peer?.close(); source.stream?.getTracks().forEach((track) => track.stop()); if (source.url) URL.revokeObjectURL(source.url); } });
-  $('start-inference').disabled = true;
+  updateOperationControls();
   try {
     const offline = await import('./offline.mjs');
     const savedMode = await offline.getClosedMode();
@@ -842,6 +1073,6 @@ async function initReceiver() {
     $('offline-state').textContent = state.offline ? '閉域モード：保存済みのアプリ・モデルだけで実行します。' : 'オンライン配布モード';
   } catch (error) {
     $('offline-state').textContent = `保存済みの通信設定を確認できません：${error.message || error}`;
-  } finally { $('start-inference').disabled = false; }
+  } finally { state.initializing = false; updateOperationControls(); }
   ensureModules().catch((error) => engineStatus('error', '初期化失敗', error.message || String(error)));
 }
