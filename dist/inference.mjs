@@ -3,6 +3,8 @@ import {MODEL_SPECS,REFINEMENT_MANIFEST} from './models.mjs';
 import {detectorTransform,detectorTensor,decodePersons,boxIou} from './detector-codec.mjs';
 import {footTransform,footTensor,decodeFootCandidates,associateFeet,applyFootAssociation} from './foot-codec.mjs';
 import {FootTracker} from './foot-track.mjs';
+import {TapirTracker} from './tapir-tracker.mjs';
+import {TAPIR_REPOSITORY,TAPIR_MANIFEST_URL} from './tapir-models.mjs';
 export {BODY_MODELS} from './models.mjs';
 export {BODY_EDGES,HAND_EDGES,FOOT_EDGES} from './pose-codec.mjs';
 
@@ -52,17 +54,36 @@ async function resolveSpec(id,offline) {
 }
 
 export class PoseEngine {
-  constructor({onProgress=()=>{}}={}){this.onProgress=onProgress;this.sessions=new Map();this.trackers=new Map();this.footTrackers=new Map();this.seedVersions=new Map();this.busy=false;this.offline=false;this.abort=new AbortController();}
+  constructor({onProgress=()=>{}}={}){this.onProgress=onProgress;this.sessions=new Map();this.trackers=new Map();this.footTrackers=new Map();this.seedVersions=new Map();this.footDetectionTimes=new Map();this.manualFootSources=new Set();this.tapirMaster=null;this.busy=false;this.offline=false;this.abort=new AbortController();}
   notify(stage,progress,message){this.onProgress({stage,progress,message});}
-  async load({bodyModel='rtmw3d-x',bodyEnabled=true,footTrackingEnabled=false,handRefinement=true,personDetection=true,footRefinement=false,backend='webgpu',offline=false}={}){
+  async load({bodyModel='rtmw3d-x',bodyEnabled=true,footTrackingEnabled=false,footTrackingMethod='bootstapir',handRefinement=true,personDetection=true,footRefinement=false,backend='webgpu',offline=false}={}){
     this.offline=offline;this.backend=backend;this.bodyId=bodyModel;this.handRefinement=handRefinement;this.personDetection=personDetection;this.footRefinement=footRefinement;this.abort=new AbortController();
+    if(!['bootstapir','image-flow'].includes(footTrackingMethod))throw new Error('足の追跡方式を選択してください。');
+    this.footTrackingMethod=footTrackingMethod;
     if(backend==='webgpu'&&!navigator.gpu)throw new Error('この推論画面にはWebGPU対応のPCブラウザが必要です。WASMは比較用として明示的に選択できます。');
     this.notify('runtime',null,'推論ランタイムを読み込み');this.ort=await loadRuntime(offline);
     if(bodyEnabled)await this.loadModel(bodyModel);
     if(bodyEnabled&&personDetection)await this.loadModel('person-yolox-tiny-416');
     if(bodyEnabled&&handRefinement)await this.loadModel('hand5');
     if(footTrackingEnabled||(bodyEnabled&&footRefinement))await this.loadModel('focus-foot8-one2many');
+    if(footTrackingEnabled&&footTrackingMethod==='bootstapir')await this.loadTapir();
     this.notify('ready',1,'モデル準備完了');return this;
+  }
+  async loadTapir(){
+    if(this.tapirMaster)return this.tapirMaster;
+    if(!TAPIR_MANIFEST_URL)throw new Error('学習済み足追跡モデルはActionsで変換・検証中です。公開リビジョンの確定後に利用できます。');
+    this.notify('bootstapir',null,'学習済み点追跡の配布仕様を確認');
+    const manifest=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBytes(TAPIR_MANIFEST_URL,{offline:this.offline,signal:this.abort.signal})));
+    if(manifest.repository!==TAPIR_REPOSITORY||manifest.license!=='apache-2.0'||manifest.parityPassed!==true||manifest.codecParityPassed!==true||manifest.models?.length!==3)throw new Error('学習済み追跡モデルの検証済み配布仕様と一致しません。');
+    const modelBuffers={};
+    for(const id of ['encoder','query','step']){
+      const model=manifest.models.find(item=>item.id===id),expected=`causal-bootstapir-${id}-256-q3-fp32.onnx`;
+      if(!model||model.filename!==expected||!/^[a-f0-9]{40}$/.test(model.revision||'')||model.url!==`https://huggingface.co/${TAPIR_REPOSITORY}/resolve/${model.revision}/${expected}`)throw new Error('追跡モデルの固定リビジョンが不正です。');
+      modelBuffers[id]=await readBytes(model.url,{offline:this.offline,signal:this.abort.signal,expectedBytes:model.bytes,progress:(fraction,message)=>this.notify('bootstapir-'+id,fraction,`BootsTAPIR ${id} · ${message}`)});
+    }
+    this.notify('bootstapir',null,'3つの追跡セッションを初期化');
+    this.tapirMaster=await TapirTracker.create({ort:this.ort,modelBuffers,manifest,executionProviders:[this.backend],sessionOptions:{graphOptimizationLevel:'all'}});
+    return this.tapirMaster;
   }
   async loadModel(id){
     if(this.sessions.has(id))return this.sessions.get(id);
@@ -151,19 +172,44 @@ export class PoseEngine {
     try{const start=performance.now();result=await session.run({[session.inputNames[0]]:tensor});this.frameTiming.modelMs+=performance.now()-start;this.frameTiming.modelRuns++;return decodeFootCandidates(Object.values(result)[0],spec,transform);}
     finally{tensor.dispose?.();for(const value of Object.values(result||{}))value.dispose?.();}
   }
-  async estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed},started){
+  async estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed,frameMediaTimeMs},started){
     let tracker=this.footTrackers.get(sourceId);
-    if(!tracker){tracker=new FootTracker();this.footTrackers.set(sourceId,tracker);}
-    if(footSeed&&this.seedVersions.get(sourceId)!==footSeed.version){tracker.seed({...footSeed,timestampMs,image});this.seedVersions.set(sourceId,footSeed.version);}
-    const detectionRan=tracker.needsDetection(timestampMs);
-    const candidates=detectionRan?await this.detectFeet(image,roi):undefined;
-    const result=tracker.update({image,timestampMs,candidates,roi});
-    const spec=this.sessions.get('focus-foot8-one2many').spec;
+    const learned=this.footTrackingMethod==='bootstapir';
+    if(!tracker){tracker=learned?new TapirTracker({ort:this.ort,sessions:this.tapirMaster.sessions,manifest:this.tapirMaster.manifest}):new FootTracker();this.footTrackers.set(sourceId,tracker);}
+    let result=null;
+    if(footSeed&&this.seedVersions.get(sourceId)!==footSeed.version){
+      if(Number.isFinite(footSeed.mediaTimeMs)&&Number.isFinite(frameMediaTimeMs)&&Math.abs(footSeed.mediaTimeMs-frameMediaTimeMs)>75)throw new Error('3点を選んだフレームから動画が進んでいます。動画を停止して3点を再指定してください。');
+      result=await tracker.seed({...footSeed,timestampMs,image,roi,seedSource:'manual'});
+      this.seedVersions.set(sourceId,footSeed.version);this.manualFootSources.add(sourceId);
+    }
+    if(learned){
+      if(!result&&tracker.requiresSeed&&!this.manualFootSources.has(sourceId)){
+        const last=this.footDetectionTimes.get(sourceId),detectionDue=!Number.isFinite(last)||timestampMs<last||timestampMs-last>=500;
+        if(detectionDue){
+          const candidates=await this.detectFeet(image,roi);this.footDetectionTimes.set(sourceId,timestampMs);
+          // Use the detector's existing geometric gates only to start a new
+          // identity. It cannot replace an explicitly selected foot after loss.
+          const proposals=new FootTracker({maxTracks:1}).update({image,timestampMs,candidates,roi});
+          const found=proposals.footTracks.find(track=>track.bigToe&&track.littleToe&&track.heel);
+          if(found)result=await tracker.seed({points:[found.bigToe,found.littleToe,found.heel],side:found.modelSide||'unknown',timestampMs,image,roi,seedSource:'detector',seedScores:[found.score,found.score,found.score]});
+        }
+      }
+      if(!result)result=await tracker.update({image,timestampMs});
+      if(result.diagnostics?.modelRan){
+        const timing=result.diagnostics;this.frameTiming.modelMs+=timing.inferenceMs||0;this.frameTiming.modelRuns+=timing.modelRuns||0;
+        this.frameTiming.preprocessMs+=Math.max(0,(timing.processingMs||0)-(timing.inferenceMs||0));
+      }
+    }else{
+      const detectionRan=tracker.needsDetection(timestampMs),candidates=detectionRan?await this.detectFeet(image,roi):undefined;
+      result=tracker.update({image,timestampMs,candidates,roi});
+    }
+    const spec=this.sessions.get('focus-foot8-one2many').spec,modelId=learned?'google/causal-bootstapir':spec.id;
     return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},
       bbox:roi||[0,0,image.width,image.height],...result,inputMode:'feet',refinements:[],
       personDetection:{enabled:false,detected:null,selection:'foot-only',selectedBox:roi||null,candidateCount:0},
-      modelId:spec.id,modelHash:spec.actualHash,backend:this.backend,scoreKind:'uncalibratedModelAndFlowQuality',
-      timings:{...this.frameTiming,detectorMs:0,bodyMs:0,handsMs:0,feetMs:performance.now()-started,neuralFrame:detectionRan,totalMs:performance.now()-started}};
+      modelId,modelHash:learned?null:spec.actualHash,modelHashes:learned?Object.fromEntries(this.tapirMaster.manifest.models.map(model=>[model.id,model.sha256])):null,
+      backend:this.backend,footTrackingMethod:this.footTrackingMethod,scoreKind:learned?'uncalibratedLearnedVisibility':'uncalibratedModelAndFlowQuality',
+      timings:{...this.frameTiming,detectorMs:0,bodyMs:0,handsMs:0,feetMs:performance.now()-started,neuralFrame:this.frameTiming.modelRuns>0,totalMs:performance.now()-started}};
   }
   trackedBox(sourceId,width,height,roi,timestampMs){
     if(roi)return roi.slice();
@@ -182,14 +228,14 @@ export class PoseEngine {
     const box=prev?fresh.map((v,i)=>v*.7+prev.box[i]*.3):fresh;
     this.trackers.set(sourceId,{box,timestampMs,frames:(prev?.frames||0)+1});
   }
-  async estimate(source,{sourceId='a',timestampMs=performance.now(),timeUncertaintyMs=0,roi=null,mode='wholebody',footSeed=null,handRefinement=this.handRefinement,footRefinement=this.footRefinement}={}){
+  async estimate(source,{sourceId='a',timestampMs=performance.now(),timeUncertaintyMs=0,roi=null,mode='wholebody',footSeed=null,frameMediaTimeMs=null,handRefinement=this.handRefinement,footRefinement=this.footRefinement}={}){
     if(this.busy)throw new Error('PoseEngine executes one frame at a time. Keep the newest frame per input.');
     if(!this.sessions.has(mode==='feet'?'focus-foot8-one2many':this.bodyId))throw new Error('先に選択した入力方式のモデルを読み込んでください。');
     this.busy=true;const started=performance.now();
     this.frameTiming={preprocessMs:0,modelMs:0,modelRuns:0};
     try{
       const image=this.readFrame(source);this.frameTiming.preprocessMs=performance.now()-started;
-      if(mode==='feet')return await this.estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed},started);
+      if(mode==='feet')return await this.estimateFeet(image,{sourceId,timestampMs,timeUncertaintyMs,roi,footSeed,frameMediaTimeMs},started);
       const detectorStart=performance.now(),{bbox,personDetection}=await this.selectPersonBox(sourceId,image,roi,timestampMs),detectorMs=performance.now()-detectorStart;
       if(!bbox)return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox:[0,0,image.width,image.height],keypoints:Array.from({length:133},(_,id)=>({id,x:0,y:0,score:0,rawScore:0,observable:false,source:'missing'})),refinements:[],personDetection,modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{...this.frameTiming,neuralFrame:this.frameTiming.modelRuns>0,detectorMs,bodyMs:0,handsMs:0,feetMs:0,totalMs:performance.now()-started},depthKind:'none'};
       const bodyStart=performance.now();
@@ -212,6 +258,6 @@ export class PoseEngine {
       return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},bbox,keypoints:points,refinements,footRefinements,personDetection,inputMode:'wholebody',scoreKind:'uncalibratedClippedModelPeak',modelId:this.bodyId,modelHash:this.sessions.get(this.bodyId).spec.actualHash,backend:this.backend,timings:{...this.frameTiming,neuralFrame:true,detectorMs,bodyMs,handsMs,feetMs,totalMs:performance.now()-started},depthKind:this.sessions.get(this.bodyId).spec.dimensions===3?'rootRelativeModelEstimate':'none'};
     }finally{this.busy=false;}
   }
-  async dispose(){this.abort.abort();for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();this.footTrackers.clear();this.seedVersions.clear();}
-  resetSource(sourceId){this.trackers.delete(sourceId);this.footTrackers.delete(sourceId);this.seedVersions.delete(sourceId);}
+  async dispose(){this.abort.abort();for(const tracker of this.footTrackers.values())tracker.reset();await this.tapirMaster?.dispose();this.tapirMaster=null;for(const {session} of this.sessions.values())await session.release();this.sessions.clear();this.trackers.clear();this.footTrackers.clear();this.seedVersions.clear();this.footDetectionTimes.clear();this.manualFootSources.clear();}
+  resetSource(sourceId){this.trackers.delete(sourceId);this.footTrackers.get(sourceId)?.reset();this.footTrackers.delete(sourceId);this.seedVersions.delete(sourceId);this.footDetectionTimes.delete(sourceId);this.manualFootSources.delete(sourceId);}
 }

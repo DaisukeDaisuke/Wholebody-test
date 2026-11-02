@@ -62,22 +62,47 @@ function peak(data, offset, count) {
   return {index,value};
 }
 
-export function decodeSimCC(outputs, transform, {keypointCount=133,zRange=2.1744869,scoreThreshold=0.2}={}) {
+export function decodeSimCC(outputs, transform, {keypointCount=133,zRange=2.1744869,scoreThreshold=0.2,dimensions,simccOutputNames=null,simccInputSize=null,simccSplitRatio=2}={}) {
   const entries = Object.entries(outputs);
   const [iw,ih] = transform.inputWH;
-  const byName = axis => entries.find(([name]) => new RegExp('(?:simcc_|_)(?:'+axis+')$','i').test(name))?.[1];
-  const x = byName('x') || entries[0]?.[1], y = byName('y') || entries[1]?.[1], z = byName('z') || (entries.length===3?entries[2]?.[1]:null);
-  if (!x || !y || x.dims.length!==3 || y.dims.length!==3 || x.dims[1]!==keypointCount || y.dims[1]!==keypointCount || x.dims[2]!==iw*2 || y.dims[2]!==ih*2) throw new Error('Unexpected ONNX SimCC output shape. Check the selected model contract.');
-  if (z && (z.dims.length!==3 || z.dims[1]!==keypointCount || z.dims[2]!==iw*2)) throw new Error('Unexpected relative-depth output shape.');
+  const describe = () => entries.map(([name,value])=>`${name}:[${value?.dims?.join(',')||'?'}]/${value?.type||'float32'}`).join(', ');
+  if (!Number.isFinite(simccSplitRatio) || simccSplitRatio<=0) throw new Error('Invalid SimCC split ratio.');
+  if (simccInputSize && (!Array.isArray(simccInputSize) || simccInputSize.length!==3 || simccInputSize[0]!==iw || simccInputSize[1]!==ih || !simccInputSize.every(value=>Number.isInteger(value)&&value>0))) throw new Error('SimCC input-size contract does not match the selected crop.');
+  const depthSize=simccInputSize?.[2]??iw;
+  const named = axis => entries.find(([name]) => new RegExp('(?:^|_)'+axis+'$','i').test(name));
+  let axes;
+  if (simccOutputNames) {
+    axes=Object.fromEntries(['x','y','z'].map(axis=>[axis,simccOutputNames[axis]===undefined?null:[simccOutputNames[axis],outputs[simccOutputNames[axis]]]]));
+  } else {
+    axes={x:named('x'),y:named('y'),z:named('z')};
+    // Retain the two-output legacy 2D contract. An unnamed 3D graph must bind
+    // axes explicitly: X and Z can have identical shapes, so shape guessing
+    // cannot disambiguate them, and numeric object keys reorder themselves.
+    if ((!axes.x || !axes.y) && entries.length===2 && dimensions!==3) axes={x:entries[0],y:entries[1],z:null};
+    if ((!axes.x || !axes.y) || (entries.length===3 && !axes.z)) throw new Error(`Explicit SimCC axis names are required for this graph: ${describe()}`);
+  }
+  const x=axes.x?.[1],y=axes.y?.[1],z=axes.z?.[1]||null;
+  if (dimensions===3 && !z) throw new Error(`The selected 3D model has no bound Z head: ${describe()}`);
+  if (dimensions===2 && z) throw new Error(`A 2D model unexpectedly exposes a Z head: ${describe()}`);
+  for (const [axis,tensor,size] of [['x',x,iw],['y',y,ih],...(z?[['z',z,depthSize]]:[])]) {
+    const bins=size*simccSplitRatio;
+    if (!tensor || !Number.isInteger(bins) || tensor.dims?.length!==3 || tensor.dims[0]!==1 || tensor.dims[1]!==keypointCount || tensor.dims[2]!==bins || tensor.data?.length!==keypointCount*bins || (tensor.type && tensor.type!=='float32')) {
+      throw new Error(`Unexpected ONNX SimCC ${axis.toUpperCase()} head (${axes[axis]?.[0]??'unbound'}); expected float32 [1,${keypointCount},${bins}]. Actual outputs: ${describe()}`);
+    }
+  }
+  if (x===y || (z && (z===x || z===y))) throw new Error('SimCC axes must refer to distinct output tensors.');
   const points = [];
   for (let i=0;i<keypointCount;i++) {
     const px=peak(x.data,i*x.dims[2],x.dims[2]), py=peak(y.data,i*y.dims[2],y.dims[2]);
     const rawScore = Math.min(px.value,py.value);
     if(rawScore<=0){px.index=-1;py.index=-1;}
-    const point = {id:i,x:transform.left+(px.index/2)*transform.scale[0]/iw,y:transform.top+(py.index/2)*transform.scale[1]/ih,score:Number.isFinite(rawScore)?Math.max(0,Math.min(1,rawScore)):0,rawScore,observable:Number.isFinite(rawScore)&&rawScore>=scoreThreshold,source:'model2D'};
+    const point = {id:i,x:transform.left+(px.index/simccSplitRatio)*transform.scale[0]/iw,y:transform.top+(py.index/simccSplitRatio)*transform.scale[1]/ih,score:Number.isFinite(rawScore)?Math.max(0,Math.min(1,rawScore)):0,rawScore,observable:Number.isFinite(rawScore)&&rawScore>=scoreThreshold,source:'model2D'};
     if (z) {
       const pz=peak(z.data,i*z.dims[2],z.dims[2]);
-      point.relativeZ=(pz.index/2/iw*2-1)*zRange;
+      if(rawScore<=0)pz.index=-1;
+      // MMPose SimCC3DLabel uses the third codec input-size component (288 for
+      // this RTMW3D-X), not the image height and not a fixed absolute root Z.
+      point.relativeZ=(pz.index/simccSplitRatio/depthSize*2-1)*zRange;
       point.relativeZScore=Number.isFinite(pz.value)?Math.max(0,Math.min(1,pz.value)):0;
       point.source='modelRelative3D';
     }

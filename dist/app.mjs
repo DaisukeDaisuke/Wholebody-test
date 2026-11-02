@@ -128,7 +128,7 @@ async function initReceiver() {
     sources: new Map(), observations: new Map(), cameras: [], fused: null,
     records: [], totalFrames: 0, recentTimes: [], neuralTimes: [], stageTimes: [], latencies: [], lastObservationAt: 0,
     lastFusedTimestamp: 0, lastMissingTick: 0, latestPoseTimeDomain: null, latestPoseUpdatedAtMs: null, sceneDirty: true,
-    selectedModel: null, backend: null, loadedModes: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
+    selectedModel: null, backend: null, loadedModes: null, loadedFootTrackingMethod: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
     view: { yaw: .33, pitch: .17, zoom: 1, center: [0, 0, 0], extent: 1, initialized: false, metric: false }
   };
   let modulesPromise;
@@ -162,6 +162,7 @@ async function initReceiver() {
     $('backend-select').disabled = operation;
     $('person-detection').disabled = operation || state.running || state.processing;
     $('foot-refinement').disabled = operation || state.running || state.processing;
+    $('foot-tracking-method').disabled = operation || state.running || state.processing;
     $('hand-refinement').disabled = operation;
     for(const source of state.sources.values())$(`source-${source.id}-mode`).disabled=operation||state.running||state.processing;
   }
@@ -446,7 +447,7 @@ async function initReceiver() {
         if (!state.running || generation !== state.generation || source.epoch !== frame.epoch) continue;
         const targetVersion = source.targetVersion;
         const result = await state.engine.estimate(frame.canvas, { sourceId: source.id, timestampMs: frame.timestampMs,
-          roi: source.roi?.slice() || null, mode:$(`source-${source.id}-mode`).value,footSeed:source.footSeed,
+          roi: source.roi?.slice() || null, mode:$(`source-${source.id}-mode`).value,footSeed:source.footSeed,frameMediaTimeMs:frame.mediaTimeMs,
           handRefinement: $('hand-refinement').checked, footRefinement: $('foot-refinement').checked });
         if (generation !== state.generation || source.epoch !== frame.epoch) { state.engine.resetSource?.(source.id); continue; }
         if (source.targetVersion !== targetVersion) { state.engine.resetSource?.(source.id); continue; }
@@ -512,15 +513,24 @@ async function initReceiver() {
     const a = state.sources.get('a'); const b = state.sources.get('b');
     if (observation.timeDomain === 'media' && (!$('video-sync-confirmed').checked || (a.fileIdentity && a.fileIdentity === b.fileIdentity))) candidates = [observation];
     const hasBody=candidates.some(item=>item.inputMode!=='feet');
+    let usedObservation=observation;
     if(!hasBody){
       const fused=state.geometry.fusePose(candidates,state.cameras,{...fusionOptions(),timestampMs:observation.timestampMs});
-      state.fused=fused.diagnostics?.triangulatedJointCount>0?state.tracker.update(fused,observation.timestampMs):state.retarget.footObservationToPose(observation);
+      if(fused.diagnostics?.triangulatedJointCount>0)state.fused=state.tracker.update(fused,observation.timestampMs);
+      else{
+        // Image-plane angles from independent cameras cannot share one rest pose.
+        // Keep a stable display source; the second camera cannot refresh its age.
+        const preferred=state.observations.get(a.kind?'a':'b');
+        if(!preferred||preferred.inputMode!=='feet')return;
+        if(preferred!==observation&&state.fused?.timestampMs===preferred.timestampMs&&state.latestPoseTimeDomain===preferred.timeDomain)return;
+        usedObservation=preferred;state.fused=state.retarget.footObservationToPose(preferred);
+      }
     }else{
       const fused = state.geometry.fusePose(candidates, state.cameras, { ...fusionOptions(), timestampMs: observation.timestampMs });
       state.fused = state.tracker.update(fused, observation.timestampMs);
     }
-    state.latestPoseTimeDomain = observation.timeDomain; state.latestPoseUpdatedAtMs = performance.now();
-    state.lastFusedTimestamp = observation.timestampMs;
+    state.latestPoseTimeDomain = usedObservation.timeDomain; state.latestPoseUpdatedAtMs = usedObservation.inferredAtMs??performance.now();
+    state.lastFusedTimestamp = usedObservation.timestampMs;
     state.sceneDirty = true;
     updatePoseReadout();
     publishPose();
@@ -653,7 +663,7 @@ async function initReceiver() {
     if(source.selection==='foot'){
       source.footSeedPoints.push(point);
       if(source.footSeedPoints.length===3){
-        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice())};
+        source.footSeed={version:++source.seedSequence,side:$(`source-${source.id}-foot-side`).value,points:source.footSeedPoints.map(p=>p.slice()),mediaTimeMs:source.video.currentTime*1000};
         source.selection=null;source.screen.classList.remove('picking');
         targetChanged(source);
         $(`source-${source.id}-foot-seed-state`).textContent='3点を記録しました。推論開始後に動画を再生すると画像追跡します。';
@@ -957,7 +967,7 @@ async function initReceiver() {
   }
 
   createSource('a'); createSource('b'); bindCalibration();
-  for (const [id, label] of [['person-detection', '人物検出'], ['foot-refinement', '足先補正']]) $(id).onchange = () => {
+  for (const [id, label] of [['person-detection', '人物検出'], ['foot-refinement', '足先補正'], ['foot-tracking-method', '足の追跡方式']]) $(id).onchange = () => {
     for (const source of state.sources.values()) { targetChanged(source); updateTargetState(source); drawOverlay(source); }
     if (state.engine) engineStatus('idle', '設定変更', `次の開始時に${label}の設定を反映します。`);
   };
@@ -974,7 +984,7 @@ async function initReceiver() {
       const bodyModel = $('model-select').value, backend = $('backend-select').value, personDetection = $('person-detection').checked, footRefinement = $('foot-refinement').checked;
       const activeSources=Array.from(state.sources.values()).filter(source=>source.kind);
       if(!activeSources.length)throw new Error('入力AまたはBに動画かカメラを選んでください。');
-      const modes=activeSources.map(source=>$(`source-${source.id}-mode`).value),bodyEnabled=modes.includes('wholebody'),footTrackingEnabled=modes.includes('feet'),modeKey=JSON.stringify([bodyEnabled,footTrackingEnabled]);
+      const modes=activeSources.map(source=>$(`source-${source.id}-mode`).value),bodyEnabled=modes.includes('wholebody'),footTrackingEnabled=modes.includes('feet'),footTrackingMethod=$('foot-tracking-method').value,modeKey=JSON.stringify([bodyEnabled,footTrackingEnabled,footTrackingMethod]);
       if (!state.engine || bodyModel !== state.selectedModel || backend !== state.backend || state.loadedModes!==modeKey || state.loadedOffline !== state.offline || state.loadedPersonDetection !== personDetection || state.loadedFootRefinement !== footRefinement) {
         await state.engine?.dispose?.();
         if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
@@ -984,9 +994,9 @@ async function initReceiver() {
           $('load-progress').hidden = !Number.isFinite(progress);
           if (Number.isFinite(progress)) $('load-progress').value = clamp(progress > 1 ? progress / 100 : progress, 0, 1);
         } });
-        await state.engine.load({ bodyModel,bodyEnabled,footTrackingEnabled, handRefinement: $('hand-refinement').checked, personDetection, footRefinement, backend, offline: state.offline });
+        await state.engine.load({ bodyModel,bodyEnabled,footTrackingEnabled,footTrackingMethod, handRefinement: $('hand-refinement').checked, personDetection, footRefinement, backend, offline: state.offline });
         if (state.loadCanceled) throw new DOMException('Model loading canceled', 'AbortError');
-        state.selectedModel = bodyModel;state.loadedModes=modeKey; state.backend = backend; state.loadedOffline = state.offline; state.loadedPersonDetection = personDetection; state.loadedFootRefinement = footRefinement;
+        state.selectedModel = bodyModel;state.loadedModes=modeKey;state.loadedFootTrackingMethod=footTrackingEnabled?footTrackingMethod:null; state.backend = backend; state.loadedOffline = state.offline; state.loadedPersonDetection = personDetection; state.loadedFootRefinement = footRefinement;
       }
       state.tracker = new state.geometry.TemporalPoseTracker(trackerOptions());
       state.observations.clear(); state.latencies = []; state.recentTimes = [];state.neuralTimes=[];state.stageTimes=[]; state.running = true;
@@ -1098,7 +1108,7 @@ async function initReceiver() {
     const { priorPose, ...options } = fusionOptions();
     downloadJson(`wholebody-session-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
       schemaVersion: 1, application: 'Wholebody Studio / Phase 3', exportedAt: new Date().toISOString(), startedAt: state.startedAt,
-      model: state.selectedModel, backend: state.backend, handRefinement: $('hand-refinement').checked, personDetection: state.loadedPersonDetection, footRefinement: state.loadedFootRefinement, offline: state.offline, networkAudit: state.networkAudit,
+      model: state.selectedModel, backend: state.backend, footTrackingMethod:state.loadedFootTrackingMethod, handRefinement: $('hand-refinement').checked, personDetection: state.loadedPersonDetection, footRefinement: state.loadedFootRefinement, offline: state.offline, networkAudit: state.networkAudit,
       cameras: state.cameras, options, trackerOptions: trackerOptions(), totalFrames: state.totalFrames,
       latestPose: state.fused, latestPoseTimestampMs: state.fused?.timestampMs ?? null,
       latestPoseTimeDomain: state.fused ? state.latestPoseTimeDomain : null,

@@ -38,11 +38,16 @@ for(const id of ids){
   const preprocessMs=performance.now()-start;
   const inferenceStart=performance.now(),result=await session.run({[session.inputNames[0]]:tensor}),modelMs=performance.now()-inferenceStart;
   const outputs=Object.entries(result).map(([name,value])=>({name,shape:value.dims,type:value.type,finite:Array.from(value.data).every(Number.isFinite)}));
+  // Preserve actual graph metadata before decoding so a failed contract check
+  // leaves a useful Actions artifact. Object enumeration is not graph order.
+  const metadata={schemaVersion:1,metadataOnly:true,id,sha256:hash(weights[id]),backend:'wasm',threads:1,inputNames:session.inputNames,declaredOutputNames:session.outputNames,enumeratedOutputNames:Object.keys(result),inputWH:spec.inputWH,simccOutputNames:spec.simccOutputNames||null,simccInputSize:spec.simccInputSize||null,simccSplitRatio:spec.simccSplitRatio||null,outputs,preprocessMs,modelMs};
+  console.log('ACTUAL_ONNX_OUTPUT_METADATA '+JSON.stringify(metadata));
+  await writeFile(new URL(`phase3-real-model-${id}-metadata.json`,output),JSON.stringify(metadata,null,2)+'\n');
   if(!outputs.every(item=>item.finite))throw new Error('Non-finite actual ONNX output');
   let checks,summary;
   if(id==='rtmw3d-x'){
     const points=decodeSimCC(result,transform,spec);
-    checks={threeHeads:outputs.length===3,points133:points.length===133,finiteXY:points.every(p=>Number.isFinite(p.x+p.y)),finiteRelativeZ:points.every(p=>Number.isFinite(p.relativeZ))};
+    checks={threeHeads:outputs.length===3,axisNamesMatchDeclaredOrder:['x','y','z'].every((axis,index)=>spec.simccOutputNames[axis]===session.outputNames[index]),points133:points.length===133,finiteXY:points.every(p=>Number.isFinite(p.x+p.y)),finiteRelativeZ:points.every(p=>Number.isFinite(p.relativeZ))};
     bodyObservation={schemaVersion:1,sourceId:'public-reference',timestampMs:0,timeUncertaintyMs:Infinity,imageSize,bbox,keypoints:points,modelId:id,depthKind:'rootRelativeModelEstimate',inputMode:'wholebody'};
     const pose=fusePose([bodyObservation],[],{timestampMs:0,scaleConfirmed:false});
     checks.relativeOnly=pose.metric===false&&pose.root?.valid!==true;

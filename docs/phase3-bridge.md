@@ -4,6 +4,7 @@
 `server/bridge-ci.mjs` はGitHub Actions専用で、数値骨格からの回転、認証、実際のWebSocket受信からUDPパケット受信、座標変換、時間切れ・切断時の無効化を検査する。SteamVR・VMTドライバ・HMD・VRChatの実機はこの実験で稼働していない。UDPを受信できたことを実機FBT成功、カメラ精度、低遅延の証明としない。結果は `phase3-bridge-report.json` に保存する。
 ## 足だけの入力
 足専用の入力は元画像の足点だけを持ち、3D全身関節や骨盤位置を生成しない。初回フレームの踵→足先の画像内角度を基準にし、以降の角度差をVRMのFootボーンへ適用する。これは画面内の回転表示であり、3Dのyaw・pitchを測定した値ではない。入力・対象・seed版が変われば基準角を作り直す。自動モデルの左右割当は未確認のまま保持し、利用者が左右を明示した入力だけを確認済みとする。
+未校正の足だけVRM表示は入力Aを優先し、Bだけを表示する場合はAを閉じる。校正済み・同期済み2視点で三角測量の条件が成立する場合は、画像平面表示とは別の3D経路を使う。手動3点からの実動画追跡と、サンプルVRMを使ったsynthetic demoは[表示と実動画追跡の最小確認](./phase3-usage.md)の手順で区別する。
 3D全身入力でも、足首・母趾・小趾・踵から足の方向を推定する。独立した5本の足指の曲がりは未観測で、VRMの左右Toesボーンは足に従った基準姿勢を保つ。5指の曲がりを捏造して表示しない。足だけの2D入力はSteamVR送出の有効条件を満たさない。
 ## 起動
 Node.js 22以降で、ソース一式のルートから実行する。依存は `ws@8.22.1` をバージョン・integrity付きで固定した。
@@ -57,7 +58,7 @@ client.calibrate(roomCalibration);
 client.sendPose(pose, { captureAgeMs, timeDomain: 'capture' });
 client.disconnect();
 ```
-公開された私的動画・抽出フレーム・生poseは、この実装にもActions成果物にも含めない。公開するものはコード、公開データの既存評価、合成数値fixtureと通信検証の集計だけである。
+私有動画・抽出フレーム・生poseは、この公開実装にもActions成果物にも含めない。私有素材の内容、ファイル名、個別の測定値も公開手順へ記載しない。公開するものはコード、公開データの既存評価、合成数値fixtureと通信検証の集計だけである。
 ## 一次資料
 - [VMT API：port・enable・Room/Unity・座標系](https://gpsnmeajp.github.io/VirtualMotionTrackerDocument/api/)
 - [VMT公式リポジトリ](https://github.com/gpsnmeajp/VirtualMotionTracker)

@@ -9,6 +9,7 @@ import {resolve,relative,dirname,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {FootTracker,FOOT_TRACK_POLICY} from '../dist/foot-track.mjs';
+import {TapirTracker} from '../dist/tapir-tracker.mjs';
 import {footTransform,footTensor,decodeFootCandidates} from '../dist/foot-codec.mjs';
 import {MODEL_SPECS} from '../dist/models.mjs';
 
@@ -32,19 +33,28 @@ if(!Number.isInteger(stride)||!Number.isFinite(duration)||duration<=0)throw new 
 const annotations=args.annotations?JSON.parse(await readFile(resolve(args.annotations),'utf8')):{seeds:[],references:[]};
 if(args.annotations){const path=await realpath(resolve(args.annotations));if(!inside(path,privateRoot))throw new Error('Manual references must remain inside the private analysis root.');}
 const seeds=new Map((annotations.seeds||[]).map(x=>[x.frame,x])),references=new Map((annotations.references||[]).map(x=>[x.frame,x]));
-const tracker=new FootTracker(),records=[],inferenceTimes=[],flowTimes=[],baselineScores=[];
-let session=null,ort=null,modelHash=null;const spec=MODEL_SPECS['focus-foot8-one2many'];
-if(!args.flowOnly){
-  if(!args.model||!args['runtime-dir'])throw new Error('Provide local --model and --runtime-dir, or use --flow-only.');
+const tracker=new FootTracker(),records=[],inferenceTimes=[],flowTimes=[],baselineScores=[],neuralTimes=[];
+let session=null,ort=null,modelHash=null,tapir=null,tapirManifest=null,tapirManifestHash=null;const spec=MODEL_SPECS['focus-foot8-one2many'];
+if(!args.flowOnly||args['tapir-manifest']){
+  if(!args['runtime-dir'])throw new Error('Local --runtime-dir is required for model inference.');
   const runtime=await realpath(resolve(args['runtime-dir']));
   ort=await import(pathToFileURL(resolve(runtime,'ort.webgpu.min.mjs')).href);
   ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths=pathToFileURL(runtime+sep).href;
   ort.env.wasm.wasmBinary=new Uint8Array(await readFile(resolve(runtime,'ort-wasm-simd-threaded.jsep.wasm')));
-  const model=new Uint8Array(await readFile(resolve(args.model)));modelHash=createHash('sha256').update(model).digest('hex');
-  if(modelHash!==(args.sha256||spec.sha256))throw new Error('The local model does not match its pinned public SHA-256.');
   globalThis.fetch=async()=>{throw new Error('Network is disabled during private video analysis.');};
-  session=await ort.InferenceSession.create(model,{executionProviders:['wasm']});
+  if(!args.flowOnly){
+    if(!args.model)throw new Error('Provide a local --model for the FOCUS comparison, or use --flow-only.');
+    const model=new Uint8Array(await readFile(resolve(args.model)));modelHash=createHash('sha256').update(model).digest('hex');
+    if(modelHash!==(args.sha256||spec.sha256))throw new Error('The local model does not match its pinned public SHA-256.');
+    session=await ort.InferenceSession.create(model,{executionProviders:['wasm']});
+  }
 }else globalThis.fetch=async()=>{throw new Error('Network is disabled during private video analysis.');};
+if(args['tapir-manifest']){
+  const manifestFile=resolve(args['tapir-manifest']),raw=await readFile(manifestFile);tapirManifest=JSON.parse(raw);tapirManifestHash=createHash('sha256').update(raw).digest('hex');
+  const modelDirectory=resolve(args['tapir-model-dir']||dirname(manifestFile)),modelBuffers={};
+  for(const record of tapirManifest.models){if(!['encoder','query','step'].includes(record.id))continue;const file=resolve(modelDirectory,record.filename);if(!inside(file,modelDirectory))throw new Error('Unexpected graph path in model manifest.');modelBuffers[record.id]=new Uint8Array(await readFile(file));}
+  tapir=await TapirTracker.create({ort,modelBuffers,manifest:tapirManifest,executionProviders:['wasm']});
+}
 
 const ffmpegArgs=['-hide_banner','-loglevel','error','-ss',String(startFrame/fps),'-i',video,'-an','-t',String(duration),'-vf',`select=not(mod(n\\,${stride}))`,'-vsync','0','-pix_fmt','rgba','-f','rawvideo','pipe:1'];
 const ffmpeg=spawn('ffmpeg',ffmpegArgs,{stdio:['ignore','pipe','pipe']});let stderr='';ffmpeg.stderr.on('data',chunk=>stderr+=chunk.toString());
@@ -57,7 +67,8 @@ for await(const chunk of ffmpeg.stdout){
     const data=new Uint8Array(pending.subarray(0,frameBytes));pending=pending.subarray(frameBytes);
     const frameIndex=startFrame+decoded*stride,timestampMs=frameIndex/fps*1000,image={width:stream.width,height:stream.height,data};decoded++;
     const seed=seeds.get(frameIndex),reference=references.get(frameIndex);
-    if(seed){tracker.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image});lastSeed=seed;}
+    let neural=null;
+    if(seed){tracker.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image});lastSeed=seed;if(tapir)neural=await tapir.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image,roi:seed.roi??null});}
     let candidates,baseline=null,inferenceMs=null,maxDetectionScore=null;
     const modelNeeded=session&&(tracker.needsDetection(timestampMs)||reference||timestampMs-lastBaseline>=Number(args['baseline-every-ms']||500));
     if(modelNeeded){
@@ -68,41 +79,58 @@ for await(const chunk of ffmpeg.stdout){
       baselineScores.push(maxDetectionScore);const independent=new FootTracker();baseline=independent.update({image,timestampMs,candidates});lastBaseline=timestampMs;
     }
     const prediction=tracker.update({image,timestampMs,candidates:tracker.needsDetection(timestampMs)?candidates:undefined});flowTimes.push(prediction.diagnostics.processingMs);
-    records.push({frame:frameIndex,timestampMs,seeded:!!seed,reference:reference??null,prediction,baseline,seedHoldBaseline:lastSeed?.points??null,inferenceMs,maxDetectionScore});
+    if(tapir&&!seed)neural=await tapir.update({image,timestampMs});
+    if(neural?.diagnostics?.inferenceMs!==undefined)neuralTimes.push(neural.diagnostics.inferenceMs);
+    records.push({frame:frameIndex,timestampMs,seeded:!!seed,reference:reference??null,prediction,neural,baseline,seedHoldBaseline:lastSeed?.points??null,inferenceMs,maxDetectionScore});
+    if(tapir&&decoded%30===0){await writeFile(resolve(outputDir,'checkpoint-private.json'),JSON.stringify({processedFrames:decoded,records}));console.log(JSON.stringify({processedFrames:decoded,elapsedSeconds:(performance.now()-started)/1000,neuralVisiblePoints:neural?.diagnostics?.visiblePointCount??0}));}
   }
 }
 await ffmpegDone;if(pending.length)throw new Error('Incomplete RGBA frame from ffmpeg.');
 const percentile=(values,p)=>{if(!values.length)return null;const a=[...values].sort((x,y)=>x-y),index=p*(a.length-1),low=Math.floor(index),high=Math.ceil(index);return a[low]+(a[high]-a[low])*(index-low);};
 const average=values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:null;
 function metrics(kind){
-  let count=0,missing=0,within10px=0,withinFoot10pct=0,frames=0,allThreeWithin10pct=0;const errors=[];
+  let count=0,missing=0,within10px=0,withinFoot10pct=0,frames=0,allThreeWithin10pct=0,hiddenReferencePoints=0,falseVisibleHiddenPoints=0,toeRoleSwapFrames=0,geometricCollapseFrames=0,geometryDiagnosableFrames=0;const errors=[],pointErrors=[[],[],[]],pointCounts=[0,0,0],pointMissing=[0,0,0];
   for(const record of records){
     if(!record.reference||record.seeded)continue;frames++;
     const ref=record.reference,visible=ref.visible||[true,true,true],points=ref.points;
-    const length=Math.hypot((points[0][0]+points[1][0])*.5-points[2][0],(points[0][1]+points[1][1])*.5-points[2][1]);
+    const seed=record.seedHoldBaseline;
+    const length=annotations.normalizationLengthPx??(seed?Math.hypot((seed[0][0]+seed[1][0])*.5-seed[2][0],(seed[0][1]+seed[1][1])*.5-seed[2][1]):null);
     let predicted=null;
     if(kind==='seedHold')predicted=record.seedHoldBaseline;
     else{
-      const result=kind==='flow'?record.prediction:record.baseline;
+      const result=kind==='flow'?record.prediction:kind==='neural'?record.neural:record.baseline;
       const present=(result?.footTracks||[]).filter(t=>t.state!=='missing');
       // Diagnostic matching only: it never chooses runtime detections or changes
       // a tracker. A named track can be used to avoid this optimistic association.
       const track=ref.trackId?present.find(t=>t.trackId===ref.trackId):present.sort((a,b)=>{
-        const err=t=>[t.bigToe,t.littleToe,t.heel].reduce((sum,p,i)=>sum+(p?Math.hypot(p[0]-points[i][0],p[1]-points[i][1]):1e6),0);return err(a)-err(b);
+        const err=t=>[t.bigToe,t.littleToe,t.heel].reduce((sum,p,i)=>sum+(!visible[i]?0:p&&points[i]?Math.hypot(p[0]-points[i][0],p[1]-points[i][1]):1e6),0);return err(a)-err(b);
       })[0];
       if(track)predicted=[track.bigToe,track.littleToe,track.heel];
     }
-    let all=true;
+    let all=visible.some(Boolean);
     for(let i=0;i<3;i++){
-      if(!visible[i])continue;count++;
-      const p=predicted?.[i];if(!p||!Number.isFinite(p[0]+p[1])){missing++;all=false;continue;}
-      const error=Math.hypot(p[0]-points[i][0],p[1]-points[i][1]);errors.push(error);if(error<=10)within10px++;if(error<=length*.1)withinFoot10pct++;else all=false;
+      if(!visible[i]){hiddenReferencePoints++;if(predicted?.[i]&&Number.isFinite(predicted[i][0]+predicted[i][1]))falseVisibleHiddenPoints++;continue;}count++;pointCounts[i]++;
+      if(!points[i]||!Number.isFinite(points[i][0]+points[i][1]))throw new Error('A visible manual reference requires finite coordinates.');
+      const p=predicted?.[i];if(!p||!Number.isFinite(p[0]+p[1])){missing++;pointMissing[i]++;all=false;continue;}
+      const error=Math.hypot(p[0]-points[i][0],p[1]-points[i][1]);errors.push(error);pointErrors[i].push(error);if(error<=10)within10px++;if(length&&error<=length*.1)withinFoot10pct++;else all=false;
+    }
+    if(visible.every(Boolean)&&predicted?.every(p=>p&&Number.isFinite(p[0]+p[1]))){
+      geometryDiagnosableFrames++;const distance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+      const own=distance(predicted[0],points[0])+distance(predicted[1],points[1]),swapped=distance(predicted[0],points[1])+distance(predicted[1],points[0]);if(swapped+2<own)toeRoleSwapFrames++;
+      const mid=p=>[(p[0][0]+p[1][0])*.5,(p[0][1]+p[1][1])*.5];if(distance(predicted[0],predicted[1])<distance(points[0],points[1])*.25||distance(mid(predicted),predicted[2])<distance(mid(points),points[2])*.25)geometricCollapseFrames++;
     }
     if(all)allThreeWithin10pct++;
   }
-  return {referenceFrames:frames,visibleReferencePoints:count,predictedPoints:errors.length,missingPoints:missing,meanErrorPx:average(errors),medianErrorPx:percentile(errors,.5),p95ErrorPx:percentile(errors,.95),within10px:count?within10px/count:null,pckFootLength10pct:count?withinFoot10pct/count:null,allThreeWithinFootLength10pctFrames:allThreeWithin10pct};
+  return {referenceFrames:frames,visibleReferencePoints:count,predictedPoints:errors.length,missingPoints:missing,meanErrorPx:average(errors),medianErrorPx:percentile(errors,.5),p95ErrorPx:percentile(errors,.95),within10px:count?within10px/count:null,pckSeedFootLength10pct:count?withinFoot10pct/count:null,allVisibleWithinSeedFootLength10pctFrames:allThreeWithin10pct,hiddenReferencePoints,falseVisibleHiddenPoints,hiddenPointFalseVisibleRate:hiddenReferencePoints?falseVisibleHiddenPoints/hiddenReferencePoints:null,geometryDiagnosableFrames,toeRoleSwapFrames,geometricCollapseFrames,landmarks:Object.fromEntries(['bigToe','littleToe','heel'].map((name,i)=>[name,{referencePoints:pointCounts[i],missing:pointMissing[i],meanErrorPx:average(pointErrors[i]),p95ErrorPx:percentile(pointErrors[i],.95)}])),normalization:'10% of the manually seeded heel-to-midtoe distance; fixed within each seed interval'};
 }
 const summary={schemaVersion:1,privacy:'Local only: never upload frames, annotations, or raw traces.',policy:FOOT_TRACK_POLICY,model:{id:spec.id,sha256:modelHash,provider:session?'wasm-single-thread':null},video:{width:stream.width,height:stream.height,fps},analysis:{processedFrames:records.length,elapsedSeconds:(performance.now()-started)/1000,manualSeedCount:records.filter(r=>r.seeded).length,referenceFramesExcludingSeeds:records.filter(r=>r.reference&&!r.seeded).length,manualReferenceUncertaintyPx:annotations.uncertaintyPx??null,manualReferenceMeaning:annotations.meaning??null,modelRuns:inferenceTimes.length,modelInferenceMs:{mean:average(inferenceTimes),median:percentile(inferenceTimes,.5),p95:percentile(inferenceTimes,.95)},flowProcessingMs:{mean:average(flowTimes),median:percentile(flowTimes,.5),p95:percentile(flowTimes,.95)},modelDetectionThreshold:.25,modelFramesPassingDetectionThreshold:baselineScores.filter(x=>x>=.25).length,flowFramesWithImageSupport:records.filter(r=>r.prediction.footTracks.some(t=>t.source==='opticalFlow2D')).length},metrics:{uninitializedModel:metrics('model'),stationarySeed:metrics('seedHold'),manualSeedAndOpticalFlow:metrics('flow')},limitations:['Diagnostic nearest-reference matching is optimistic when multiple model tracks exist.','Manual seeds and references are not an independent benchmark. Seed frames are excluded from position metrics.','Missing output remains a PCK failure; finite-only mean error is reported with its missing count.','These are 2D image coordinates; depth, hidden joints, and anatomical side for an unknown seed are unobserved.','Processing timings include Node WASM and this host only, not browser or 60 Hz display performance.']};
 await writeFile(resolve(outputDir,'trace-private.json'),JSON.stringify({metadata,annotations,records}));
+summary.metrics.uninitializedModel.status=session?'evaluated':'not-run';
+if(tapir){
+  summary.neuralModel={id:'causal-bootstapir',manifestSha256:tapirManifestHash,graphs:tapirManifest.models.map(m=>({id:m.id,sha256:m.sha256,bytes:m.bytes})),queryCount:3,visibilityThreshold:.5,provider:'wasm-single-thread'};
+  summary.analysis.neuralInferenceMs={frames:neuralTimes.length,mean:average(neuralTimes),median:percentile(neuralTimes,.5),p95:percentile(neuralTimes,.95)};
+  summary.metrics.manualSeedAndLearnedTracking=metrics('neural');
+}
 await writeFile(resolve(outputDir,'summary-private.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary,null,2));
+await tapir?.dispose();await session?.release();

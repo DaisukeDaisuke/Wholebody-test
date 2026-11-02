@@ -1,6 +1,6 @@
-const VERSION='wholebody-app-20261102-v3';
+const VERSION='wholebody-app-20261102-v4';
 const SETTINGS='wholebody-settings-v1';
-const APP_FILES=['./','./index.html','./styles.css','./app.mjs','./evaluation-ui.mjs','./webrtc.mjs','./inference.mjs','./engine-client.mjs','./engine-worker.mjs','./foot-track.mjs','./retarget.mjs','./bridge-client.mjs','./phase3-ui.mjs','./vrm-view.mjs','./vrm-fixture.mjs','./pose-codec.mjs','./resize-codec.mjs','./foot-codec.mjs','./detector-codec.mjs','./models.mjs','./geometry.mjs','./calibration.mjs','./offline.mjs','./vendor/vrm-runtime.mjs'];
+const APP_FILES=['./','./index.html','./styles.css','./app.mjs','./evaluation-ui.mjs','./webrtc.mjs','./inference.mjs','./engine-client.mjs','./engine-worker.mjs','./foot-track.mjs','./tapir-tracker.mjs','./tapir-codec.mjs','./tapir-models.mjs','./retarget.mjs','./bridge-client.mjs','./phase3-ui.mjs','./vrm-view.mjs','./vrm-fixture.mjs','./pose-codec.mjs','./resize-codec.mjs','./foot-codec.mjs','./detector-codec.mjs','./models.mjs','./geometry.mjs','./calibration.mjs','./offline.mjs','./vendor/vrm-runtime.mjs'];
 const RUNTIME='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const RUNTIME_FILES=['ort.webgpu.min.mjs','ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'];
 let closedPromise;
