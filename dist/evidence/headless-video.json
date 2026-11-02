@@ -1,0 +1,2842 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "sourceCommit": "6754d2fc2046804ae208ab69a962f0d3f7bcf373",
+  "runId": "41394715364",
+  "checks": {
+    "atLeast72ActualDecodedFrames": true,
+    "allThreeModelsRanEveryFrame": true,
+    "allOutputsFinite": true,
+    "selectedMatchesPublishedBody": true,
+    "selectedCandidateSpeedGate": true,
+    "actualHumanoidLoaded": true,
+    "actualVrmUpdated": true,
+    "actualSpringSystemUpdated": true,
+    "finiteVrmTransforms": true,
+    "stableMotion": true,
+    "actualCroppedImageScenariosStable": true
+  },
+  "input": {
+    "kind": "pinnedOfficialPublicVideo",
+    "publicRevision": "sha256:8d029ab048f571b136a8c0afddbbac022606022ca95307a78655dbde9735a562",
+    "decodedFrames": 150,
+    "sampledFps": 15,
+    "sampledSeconds": 10,
+    "originalMediaRetained": false,
+    "frameImagesRetained": false,
+    "perFrameCoordinatesRetained": false
+  },
+  "environment": {
+    "runtime": "onnxruntime-node",
+    "runtimeVersion": "1.22.0",
+    "executionProvider": "CPUExecutionProvider",
+    "nodeVersion": "v22.23.4",
+    "intraOpThreads": 2,
+    "logicalCpus": 4,
+    "cpuModel": "AMD EPYC 7763 64-Core Processor",
+    "warmupCallsExcluded": 9
+  },
+  "stabilityModel": {
+    "id": "compact59-dwpose-t-distilled",
+    "sha256": "35c9524fecc929a6d6fdfc116b5ccae47cf07fb63383ed9bafbd024939e5bce0",
+    "role": "previous59",
+    "manifestRecommendedBody": "standard",
+    "selectedByPublishedBodySha": true
+  },
+  "models": {
+    "fast59": {
+      "id": "fast59-192-distilled",
+      "sha256": "f9bf8961b6962fcd433d2c43b281746c383c3ecefbd6f654a969e073d2cd033a",
+      "inputShape": [
+        1,
+        3,
+        192,
+        144
+      ],
+      "decodeWH": [
+        144,
+        192
+      ],
+      "cpu": {
+        "count": 150,
+        "meanMs": 7.997987746666674,
+        "medianMs": 6.744609999999739,
+        "p95Ms": 13.262588000000505,
+        "maxMs": 18.534616000000824
+      },
+      "preprocessing": {
+        "count": 150,
+        "meanMs": 2.783086160000042,
+        "medianMs": 2.680218999999852,
+        "p95Ms": 3.4973569999992833,
+        "maxMs": 9.24077699999998
+      }
+    },
+    "previous59": {
+      "id": "compact59-dwpose-t-distilled",
+      "sha256": "35c9524fecc929a6d6fdfc116b5ccae47cf07fb63383ed9bafbd024939e5bce0",
+      "inputShape": [
+        1,
+        3,
+        256,
+        192
+      ],
+      "decodeWH": [
+        192,
+        256
+      ],
+      "cpu": {
+        "count": 150,
+        "meanMs": 13.97147072666664,
+        "medianMs": 14.074826999999459,
+        "p95Ms": 20.474174999999377,
+        "maxMs": 28.26647000000048
+      },
+      "preprocessing": {
+        "count": 150,
+        "meanMs": 4.880103593333397,
+        "medianMs": 4.719166000000314,
+        "p95Ms": 6.078611000000819,
+        "maxMs": 11.082432000000153
+      }
+    },
+    "reference133": {
+      "id": "dwpose-t-independent-133",
+      "sha256": "fcaae4a08ea7610b4bcc5d0b9e8a7e80fd6f2d998be41438a1b2737056a7623f",
+      "inputShape": [
+        1,
+        3,
+        256,
+        192
+      ],
+      "decodeWH": [
+        192,
+        256
+      ],
+      "cpu": {
+        "count": 150,
+        "meanMs": 17.040486033333302,
+        "medianMs": 17.174871000001076,
+        "p95Ms": 26.81710000000021,
+        "maxMs": 33.60118800000055
+      },
+      "preprocessing": {
+        "count": 150,
+        "meanMs": 4.803142219999997,
+        "medianMs": 4.703998999999385,
+        "p95Ms": 5.28487000000041,
+        "maxMs": 7.599386999999751
+      }
+    }
+  },
+  "parts": {
+    "face": {
+      "id": "pfld-face68-upstream",
+      "sha256": "7d7bbd5c6a1d9272e58d9773898284a1905d872eba9a662df9b5f20f1ba6f83e",
+      "scheduledHz": 10,
+      "frequencyUnit": "one face",
+      "actualHz": 7.9,
+      "validCalls": 79,
+      "skippedInvalidRois": 21,
+      "warmupCallsExcluded": 3,
+      "cpu": {
+        "count": 79,
+        "meanMs": 4.2996372025316685,
+        "medianMs": 3.4546730000001844,
+        "p95Ms": 8.01093100000071,
+        "maxMs": 10.900213999999323
+      },
+      "preprocessing": {
+        "count": 79,
+        "meanMs": 1.6702111265822515,
+        "medianMs": 1.5510919999996986,
+        "p95Ms": 1.7800639999995838,
+        "maxMs": 5.750062000000071
+      }
+    },
+    "foot": {
+      "id": "foot-view-mobilenetv3-small",
+      "sha256": "5575fedf5987c4b3dbb19e840d1e954ec608bb5e6b6c4d236331ac08ad25771c",
+      "scheduledHz": 5,
+      "frequencyUnit": "per foot",
+      "actualHz": 0,
+      "validCalls": 0,
+      "skippedInvalidRois": 100,
+      "warmupCallsExcluded": 0,
+      "cpu": {
+        "count": 0,
+        "meanMs": null,
+        "medianMs": null,
+        "p95Ms": null,
+        "maxMs": null
+      },
+      "preprocessing": {
+        "count": 0,
+        "meanMs": null,
+        "medianMs": null,
+        "p95Ms": null,
+        "maxMs": null
+      },
+      "perSideCalls": {
+        "left": 0,
+        "right": 0
+      },
+      "predictedClassCounts": {
+        "sole": 0,
+        "dorsum": 0,
+        "side": 0,
+        "unknown": 0
+      }
+    }
+  },
+  "combinedSelectedCompute": {
+    "count": 150,
+    "meanMs": 23.301644013333345,
+    "medianMs": 23.034198000001197,
+    "p95Ms": 32.623458000002756,
+    "maxMs": 35.66652599999907,
+    "definition": "Sum of measured published-body inference/preprocessing, scheduled face/feet inference/preprocessing, and real VRM update compute per sampled video frame. Stages are timed separately; decoding, raster rendering, and candidate/reference-model comparison are excluded. Not wall-clock end-to-end latency."
+  },
+  "comparison": {
+    "sameActualFrames": true,
+    "sameSourceCrop": true,
+    "modelOrderRotatedPerFrame": true,
+    "personDetectionIncluded": false,
+    "fastVsPreviousMedianRatio": 0.4791966537137542,
+    "fastCandidateSelected": false,
+    "fastCandidateActuallyFaster": true,
+    "fastVsPrevious": {
+      "pointsCompared": 164,
+      "meanCanonicalPixels": 13.145141083884765,
+      "p95CanonicalPixels": 26.729613207493713,
+      "units": "pixels in the common 192x256 source crop",
+      "isGroundTruthAccuracy": false
+    },
+    "fastVsReference133": {
+      "pointsCompared": 164,
+      "meanCanonicalPixels": 13.223460147215889,
+      "p95CanonicalPixels": 27.071920672329277,
+      "units": "pixels in the common 192x256 source crop",
+      "isGroundTruthAccuracy": false
+    },
+    "previousVsReference133": {
+      "pointsCompared": 3490,
+      "meanCanonicalPixels": 0.5031406665724742,
+      "p95CanonicalPixels": 1.4142135623731111,
+      "units": "pixels in the common 192x256 source crop",
+      "isGroundTruthAccuracy": false
+    }
+  },
+  "vrm": {
+    "kind": "pinnedOfficialPublicAvatar",
+    "publicRevision": "94e82dd346fa6cf0337c4421728640e5252dd38e",
+    "humanoidBones": 51,
+    "springJointCount": 19,
+    "springUpdateCalls": 299,
+    "updateCalls": 299,
+    "faceDrivenExpressionUpdates": 235,
+    "updateCpu": {
+      "count": 299,
+      "meanMs": 0.6551586488294195,
+      "medianMs": 0.5111390000001848,
+      "p95Ms": 1.1766439999992144,
+      "maxMs": 5.151131000000532
+    },
+    "transformsChecked": 73554,
+    "transformsFinite": true,
+    "rendererUsed": false,
+    "texturePixelsLoaded": false
+  },
+  "stability": {
+    "schemaVersion": 1,
+    "source": "real ONNX inference observations; aggregate only",
+    "actual": {
+      "observationFrames": 150,
+      "renderFrames": 299,
+      "framesWithDrivenBones": 149,
+      "torsoFrames": 4,
+      "partialFrames": 146,
+      "lostFrames": 0,
+      "acceptedPoints": 9276,
+      "submittedPoints": 17794,
+      "rejectionReasons": {
+        "notObserved": 2156,
+        "lowConfidence": 7763,
+        "parentUnobserved": 270,
+        "reacquiring": 482,
+        "implausibleBoneLength": 3
+      },
+      "finiteRotations": true,
+      "maxFrameRotationDeg": 30.00000000000014,
+      "p95FrameRotationDeg": 1.7525199067640103,
+      "maxAngularSpeedDegPerSec": 900.0000000000031,
+      "maxRootStep": 0,
+      "maxRootSpeed": 0,
+      "maxUnobservedTorsoTiltDeg": 0,
+      "motionEvidence": {
+        "criterion": "accepted image limb direction changes >=12 degrees; observed bone has >=3 rendered frames",
+        "movingInputBones": [
+          "rightUpperArm",
+          "rightLowerArm",
+          "leftUpperLeg",
+          "leftLowerLeg",
+          "rightUpperLeg"
+        ],
+        "retainedMotionBones": [
+          "rightUpperArm",
+          "rightLowerArm",
+          "leftUpperLeg",
+          "leftLowerLeg",
+          "rightUpperLeg"
+        ],
+        "allMovingBonesFrozen": false,
+        "conclusion": "observableMotionRetained"
+      },
+      "bones": {
+        "rightUpperArm": {
+          "observedFrames": 26,
+          "heldFrames": 9,
+          "returningFrames": 53,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 12.050367679982823,
+          "maxAngularSpeedDegPerSec": 361.511030399488,
+          "renderedWorldRangeDeg": 21.39127366231809,
+          "acceptedImageDirectionRangeDeg": 55.938617813014936
+        },
+        "rightLowerArm": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 23.999999999999975,
+          "maxAngularSpeedDegPerSec": 719.9999999999993,
+          "renderedWorldRangeDeg": 38.20403322238797,
+          "acceptedImageDirectionRangeDeg": 28.519145113512554
+        },
+        "hips": {
+          "observedFrames": 5,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 292,
+          "maxFrameRotationDeg": 1.822118353564413,
+          "maxAngularSpeedDegPerSec": 54.66355060693438,
+          "renderedWorldRangeDeg": 1.8330318526020668,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "spine": {
+          "observedFrames": 5,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 292,
+          "maxFrameRotationDeg": 0.8687087499315079,
+          "maxAngularSpeedDegPerSec": 26.06126249794619,
+          "renderedWorldRangeDeg": 1.4712070589749011,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "chest": {
+          "observedFrames": 5,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 292,
+          "maxFrameRotationDeg": 0.41416552924353267,
+          "maxAngularSpeedDegPerSec": 12.424965877306432,
+          "renderedWorldRangeDeg": 1.1194333565128438,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "neck": {
+          "observedFrames": 19,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 234,
+          "maxFrameRotationDeg": 6.999999999999893,
+          "maxAngularSpeedDegPerSec": 209.99999999999693,
+          "renderedWorldRangeDeg": 16.03948157294293,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "head": {
+          "observedFrames": 19,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 234,
+          "maxFrameRotationDeg": 6.999999999999893,
+          "maxAngularSpeedDegPerSec": 209.99999999999676,
+          "renderedWorldRangeDeg": 34.61426009539449,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftUpperLeg": {
+          "observedFrames": 99,
+          "heldFrames": 6,
+          "returningFrames": 26,
+          "neutralFrames": 164,
+          "maxFrameRotationDeg": 8.54617956747969,
+          "maxAngularSpeedDegPerSec": 256.3853870243861,
+          "renderedWorldRangeDeg": 14.716376023078219,
+          "acceptedImageDirectionRangeDeg": 20.848891018656005
+        },
+        "leftLowerLeg": {
+          "observedFrames": 28,
+          "heldFrames": 6,
+          "returningFrames": 24,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 15.362527869596653,
+          "maxAngularSpeedDegPerSec": 460.87583608789123,
+          "renderedWorldRangeDeg": 37.218642384121694,
+          "acceptedImageDirectionRangeDeg": 27.076607043665057
+        },
+        "leftFoot": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftToes": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightUpperLeg": {
+          "observedFrames": 6,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 269,
+          "maxFrameRotationDeg": 6.654957109137834,
+          "maxAngularSpeedDegPerSec": 199.6487132741314,
+          "renderedWorldRangeDeg": 6.654957109137396,
+          "acceptedImageDirectionRangeDeg": 15.077870143936464
+        },
+        "rightLowerLeg": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightFoot": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightToes": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftShoulder": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftUpperArm": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftLowerArm": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftHand": {
+          "observedFrames": 34,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 24.000000000000036,
+          "maxAngularSpeedDegPerSec": 719.9999999999977,
+          "renderedWorldRangeDeg": 72.64246557270509,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightShoulder": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightHand": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 24.000000000000036,
+          "maxAngularSpeedDegPerSec": 720.000000000001,
+          "renderedWorldRangeDeg": 52.11830228792788,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftThumbMetacarpal": {
+          "observedFrames": 34,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 29.999999999999993,
+          "maxAngularSpeedDegPerSec": 900.0000000000003,
+          "renderedWorldRangeDeg": 102.4331398679642,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftThumbProximal": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftThumbDistal": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 299,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftIndexProximal": {
+          "observedFrames": 34,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 18.947065492876863,
+          "maxAngularSpeedDegPerSec": 568.4119647863072,
+          "renderedWorldRangeDeg": 33.567584221077354,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftIndexIntermediate": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 297,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftIndexDistal": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 297,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftMiddleProximal": {
+          "observedFrames": 34,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 19.222152017648533,
+          "maxAngularSpeedDegPerSec": 576.6645605294573,
+          "renderedWorldRangeDeg": 24.455970580571623,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftMiddleIntermediate": {
+          "observedFrames": 2,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 273,
+          "maxFrameRotationDeg": 29.999999999999993,
+          "maxAngularSpeedDegPerSec": 900.0000000000018,
+          "renderedWorldRangeDeg": 30.748002642771656,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftMiddleDistal": {
+          "observedFrames": 2,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 273,
+          "maxFrameRotationDeg": 22.70184663288171,
+          "maxAngularSpeedDegPerSec": 681.0553989864529,
+          "renderedWorldRangeDeg": 30.7292746027709,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftRingProximal": {
+          "observedFrames": 34,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 20.460608129710756,
+          "maxAngularSpeedDegPerSec": 613.8182438913241,
+          "renderedWorldRangeDeg": 16.35504537636101,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftRingIntermediate": {
+          "observedFrames": 2,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 273,
+          "maxFrameRotationDeg": 29.999999999999993,
+          "maxAngularSpeedDegPerSec": 900.0000000000018,
+          "renderedWorldRangeDeg": 32.61552914774709,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftRingDistal": {
+          "observedFrames": 2,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 273,
+          "maxFrameRotationDeg": 12.15297211267227,
+          "maxAngularSpeedDegPerSec": 364.58916338016894,
+          "renderedWorldRangeDeg": 39.16878303825754,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftLittleProximal": {
+          "observedFrames": 34,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 21.037368813076068,
+          "maxAngularSpeedDegPerSec": 631.1210643922791,
+          "renderedWorldRangeDeg": 53.49420279708129,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftLittleIntermediate": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 297,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "leftLittleDistal": {
+          "observedFrames": 0,
+          "heldFrames": 0,
+          "returningFrames": 0,
+          "neutralFrames": 297,
+          "maxFrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "renderedWorldRangeDeg": 0,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightThumbMetacarpal": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 27.469408216149326,
+          "maxAngularSpeedDegPerSec": 824.0822464844873,
+          "renderedWorldRangeDeg": 70.66680511175753,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightThumbProximal": {
+          "observedFrames": 6,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 267,
+          "maxFrameRotationDeg": 12.157015627400195,
+          "maxAngularSpeedDegPerSec": 364.7104688220058,
+          "renderedWorldRangeDeg": 77.91740414653256,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightThumbDistal": {
+          "observedFrames": 6,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 267,
+          "maxFrameRotationDeg": 7.741641380992336,
+          "maxAngularSpeedDegPerSec": 232.24924142977002,
+          "renderedWorldRangeDeg": 71.19031281932327,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightIndexProximal": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 18.210277156891344,
+          "maxAngularSpeedDegPerSec": 546.3083147067404,
+          "renderedWorldRangeDeg": 69.9708028053462,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightIndexIntermediate": {
+          "observedFrames": 14,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 29.99999999999994,
+          "maxAngularSpeedDegPerSec": 900.0000000000002,
+          "renderedWorldRangeDeg": 102.83264871275844,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightIndexDistal": {
+          "observedFrames": 14,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 19.36603682415962,
+          "maxAngularSpeedDegPerSec": 580.98110472479,
+          "renderedWorldRangeDeg": 103.49425737506344,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightMiddleProximal": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 11.948350072455533,
+          "maxAngularSpeedDegPerSec": 358.450502173666,
+          "renderedWorldRangeDeg": 63.67581604212593,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightMiddleIntermediate": {
+          "observedFrames": 14,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 30.000000000000085,
+          "maxAngularSpeedDegPerSec": 900.0000000000024,
+          "renderedWorldRangeDeg": 116.0572424282899,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightMiddleDistal": {
+          "observedFrames": 14,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 29.999999999999844,
+          "maxAngularSpeedDegPerSec": 899.9999999999974,
+          "renderedWorldRangeDeg": 115.07717946626505,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightRingProximal": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 13.296923677893684,
+          "maxAngularSpeedDegPerSec": 398.90771033681045,
+          "renderedWorldRangeDeg": 64.48246053030896,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightRingIntermediate": {
+          "observedFrames": 14,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 29.999999999999993,
+          "maxAngularSpeedDegPerSec": 900.0000000000018,
+          "renderedWorldRangeDeg": 107.169401009887,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightRingDistal": {
+          "observedFrames": 14,
+          "heldFrames": 6,
+          "returningFrames": 38,
+          "neutralFrames": 239,
+          "maxFrameRotationDeg": 29.99999999999994,
+          "maxAngularSpeedDegPerSec": 900.0000000000002,
+          "renderedWorldRangeDeg": 101.56855754618647,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightLittleProximal": {
+          "observedFrames": 20,
+          "heldFrames": 12,
+          "returningFrames": 56,
+          "neutralFrames": 209,
+          "maxFrameRotationDeg": 14.003488188269557,
+          "maxAngularSpeedDegPerSec": 420.1046456480862,
+          "renderedWorldRangeDeg": 65.32607344047952,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightLittleIntermediate": {
+          "observedFrames": 4,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 269,
+          "maxFrameRotationDeg": 30.00000000000014,
+          "maxAngularSpeedDegPerSec": 900.0000000000031,
+          "renderedWorldRangeDeg": 81.71731218226067,
+          "acceptedImageDirectionRangeDeg": 0
+        },
+        "rightLittleDistal": {
+          "observedFrames": 4,
+          "heldFrames": 3,
+          "returningFrames": 19,
+          "neutralFrames": 269,
+          "maxFrameRotationDeg": 21.90779197807065,
+          "maxAngularSpeedDegPerSec": 657.2337593421188,
+          "renderedWorldRangeDeg": 97.59311788865675,
+          "acceptedImageDirectionRangeDeg": 0
+        }
+      }
+    },
+    "challenge": {
+      "protocol": "repeat one real inferred observation for 14 frames; inject one out-of-image high-confidence spike; restore for 6 frames; remove shoulders/hips for 18 frames while retaining inferred lower segments; restore for 12 frames; remove every observation for 40 frames; restore for 5 frames; 30 Hz. These are observation-fault challenges, not model-accuracy measurements.",
+      "baselineDrivenBones": 34,
+      "baselineMaxDeviationFromNeutralDeg": 122.55952638508198,
+      "neutralPolicy": {
+        "upperArms": "rig-relative down with outward angle",
+        "outwardAngleDeg": 10,
+        "otherBones": "rest-local rotation",
+        "isObservation": false
+      },
+      "spikeAcceptedPoints": 0,
+      "spikeMaxObservedBoneRotationDeg": 0,
+      "earlyHoldErrorDeg": 0,
+      "neutralErrorDegAfterLoss": 0,
+      "recoveryDrivenBones": [
+        0,
+        0,
+        34,
+        34,
+        34
+      ],
+      "partialObservation": {
+        "applicable": true,
+        "expectedVisibleSubchains": [
+          "rightLowerArm"
+        ],
+        "retainedVisibleSubchains": [
+          "rightLowerArm"
+        ],
+        "rootSuppressed": true
+      },
+      "validPhysicalTrackersDuringLoss": 0,
+      "aggregate": {
+        "observationFrames": 96,
+        "renderFrames": 96,
+        "framesWithDrivenBones": 50,
+        "torsoFrames": 0,
+        "partialFrames": 53,
+        "lostFrames": 43,
+        "acceptedPoints": 6250,
+        "submittedPoints": 7266,
+        "rejectionReasons": {
+          "notObserved": 5502,
+          "lowConfidence": 642,
+          "outsideImage": 133,
+          "reacquiring": 241
+        },
+        "finiteRotations": true,
+        "maxFrameRotationDeg": 30.000000000000234,
+        "p95FrameRotationDeg": 5.2864274967505915,
+        "maxAngularSpeedDegPerSec": 900.000000000003,
+        "maxRootStep": 0,
+        "maxRootSpeed": 0,
+        "maxUnobservedTorsoTiltDeg": 0,
+        "motionEvidence": {
+          "criterion": "accepted image limb direction changes >=12 degrees; observed bone has >=3 rendered frames",
+          "movingInputBones": [],
+          "retainedMotionBones": [],
+          "allMovingBonesFrozen": false,
+          "conclusion": "insufficientAcceptedMotionToAssess"
+        },
+        "bones": {
+          "rightUpperArm": {
+            "observedFrames": 30,
+            "heldFrames": 11,
+            "returningFrames": 35,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 3.6803365480012307,
+            "maxAngularSpeedDegPerSec": 110.41009644003718,
+            "renderedWorldRangeDeg": 2.9227695297663154,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightLowerArm": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 24.000000000000156,
+            "maxAngularSpeedDegPerSec": 720.0000000000014,
+            "renderedWorldRangeDeg": 36.937599329766805,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "hips": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "spine": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "chest": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "neck": {
+            "observedFrames": 30,
+            "heldFrames": 11,
+            "returningFrames": 35,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 7.000000000000101,
+            "maxAngularSpeedDegPerSec": 210.00000000000352,
+            "renderedWorldRangeDeg": 17.55285154764563,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "head": {
+            "observedFrames": 30,
+            "heldFrames": 11,
+            "returningFrames": 35,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 7.000000000000101,
+            "maxAngularSpeedDegPerSec": 210.00000000000352,
+            "renderedWorldRangeDeg": 13.999999999999945,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftUpperLeg": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftLowerLeg": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftFoot": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftToes": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightUpperLeg": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightLowerLeg": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightFoot": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightToes": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftShoulder": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftUpperArm": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftLowerArm": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftHand": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 24.000000000000156,
+            "maxAngularSpeedDegPerSec": 720.0000000000014,
+            "renderedWorldRangeDeg": 23.99999999999985,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightShoulder": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightHand": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 20.681648975219215,
+            "maxAngularSpeedDegPerSec": 620.4494692565764,
+            "renderedWorldRangeDeg": 46.47849224488267,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftThumbMetacarpal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.000000000000234,
+            "maxAngularSpeedDegPerSec": 900.000000000003,
+            "renderedWorldRangeDeg": 110.93059730330891,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftThumbProximal": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftThumbDistal": {
+            "observedFrames": 0,
+            "heldFrames": 0,
+            "returningFrames": 0,
+            "neutralFrames": 96,
+            "maxFrameRotationDeg": 0,
+            "maxAngularSpeedDegPerSec": 0,
+            "renderedWorldRangeDeg": 0,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftIndexProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 9.445876061534321,
+            "maxAngularSpeedDegPerSec": 283.37628184602966,
+            "renderedWorldRangeDeg": 17.42245995083635,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftIndexIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000019,
+            "maxAngularSpeedDegPerSec": 900.0000000000016,
+            "renderedWorldRangeDeg": 49.7138560585854,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftIndexDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 25.792757367003762,
+            "maxAngularSpeedDegPerSec": 773.7827210101129,
+            "renderedWorldRangeDeg": 39.845533864138105,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftMiddleProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 7.913046265688297,
+            "maxAngularSpeedDegPerSec": 237.3913879706489,
+            "renderedWorldRangeDeg": 20.649232094259357,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftMiddleIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000019,
+            "maxAngularSpeedDegPerSec": 900.0000000000016,
+            "renderedWorldRangeDeg": 63.31930252217688,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftMiddleDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000019,
+            "maxAngularSpeedDegPerSec": 900.0000000000026,
+            "renderedWorldRangeDeg": 41.65555000192155,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftRingProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 17.55634936255487,
+            "maxAngularSpeedDegPerSec": 526.6904808766436,
+            "renderedWorldRangeDeg": 16.975704465286157,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftRingIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.000000000000085,
+            "maxAngularSpeedDegPerSec": 899.9999999999998,
+            "renderedWorldRangeDeg": 48.11574985848453,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftRingDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 24.717411841542784,
+            "maxAngularSpeedDegPerSec": 741.5223552462835,
+            "renderedWorldRangeDeg": 49.638728500070414,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftLittleProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 17.368038700159502,
+            "maxAngularSpeedDegPerSec": 521.0411610047827,
+            "renderedWorldRangeDeg": 16.95958954233077,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftLittleIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000014,
+            "maxAngularSpeedDegPerSec": 900,
+            "renderedWorldRangeDeg": 55.99800132958596,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "leftLittleDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 28.931591270138096,
+            "maxAngularSpeedDegPerSec": 867.9477381041429,
+            "renderedWorldRangeDeg": 53.6688230091363,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightThumbMetacarpal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 24.779852638191667,
+            "maxAngularSpeedDegPerSec": 743.3955791457482,
+            "renderedWorldRangeDeg": 64.94352903837063,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightThumbProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 20.474898919551276,
+            "maxAngularSpeedDegPerSec": 614.2469675865354,
+            "renderedWorldRangeDeg": 53.73000675038655,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightThumbDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 9.761625680818524,
+            "maxAngularSpeedDegPerSec": 292.8487704245557,
+            "renderedWorldRangeDeg": 50.29446523135349,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightIndexProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 12.93232077924134,
+            "maxAngularSpeedDegPerSec": 387.9696233772402,
+            "renderedWorldRangeDeg": 40.150518790007155,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightIndexIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000014,
+            "maxAngularSpeedDegPerSec": 900.000000000001,
+            "renderedWorldRangeDeg": 37.82826654985009,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightIndexDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 19.41455615400037,
+            "maxAngularSpeedDegPerSec": 582.4366846200111,
+            "renderedWorldRangeDeg": 23.502991292961994,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightMiddleProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 13.696666600062104,
+            "maxAngularSpeedDegPerSec": 410.8999980018612,
+            "renderedWorldRangeDeg": 38.517469809180895,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightMiddleIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.000000000000234,
+            "maxAngularSpeedDegPerSec": 900.000000000003,
+            "renderedWorldRangeDeg": 70.24158116170439,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightMiddleDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.000000000000085,
+            "maxAngularSpeedDegPerSec": 899.9999999999998,
+            "renderedWorldRangeDeg": 50.10009650956491,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightRingProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 15.385038026985494,
+            "maxAngularSpeedDegPerSec": 461.55114080956275,
+            "renderedWorldRangeDeg": 34.972340752801074,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightRingIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000014,
+            "maxAngularSpeedDegPerSec": 900.000000000001,
+            "renderedWorldRangeDeg": 68.13570363684683,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightRingDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.00000000000014,
+            "maxAngularSpeedDegPerSec": 900,
+            "renderedWorldRangeDeg": 47.59706751162388,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightLittleProximal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 12.553825986557737,
+            "maxAngularSpeedDegPerSec": 376.6147795967304,
+            "renderedWorldRangeDeg": 41.152522171796534,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightLittleIntermediate": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 30.000000000000085,
+            "maxAngularSpeedDegPerSec": 899.9999999999984,
+            "renderedWorldRangeDeg": 48.34451814206039,
+            "acceptedImageDirectionRangeDeg": 0
+          },
+          "rightLittleDistal": {
+            "observedFrames": 50,
+            "heldFrames": 7,
+            "returningFrames": 19,
+            "neutralFrames": 19,
+            "maxFrameRotationDeg": 25.07315684241006,
+            "maxAngularSpeedDegPerSec": 752.1947052723,
+            "renderedWorldRangeDeg": 30.01022483761044,
+            "acceptedImageDirectionRangeDeg": 0
+          }
+        }
+      },
+      "checks": {
+        "usefulBaseline": true,
+        "spikeRejected": true,
+        "spikeDidNotJump": true,
+        "briefLossHolds": true,
+        "lostReturnsToNeutral": true,
+        "partialVisibleSubchainsRemain": true,
+        "partialTorsoDoesNotMoveRoot": true,
+        "noFreshTrackersWhileLost": true,
+        "firstRecoveryFrameNotFresh": true,
+        "sustainedRecoveryResumesMotion": true,
+        "finiteRotations": true
+      }
+    },
+    "checks": {
+      "actualInferenceFrames": true,
+      "finiteRotations": true,
+      "boundedAngularVelocity": true,
+      "boundedRootVelocity": true,
+      "monocularYawPitchSuppressed": true,
+      "noCompleteMotionFreeze": true,
+      "usefulActualTracking": true,
+      "challenge_usefulBaseline": true,
+      "challenge_spikeRejected": true,
+      "challenge_spikeDidNotJump": true,
+      "challenge_briefLossHolds": true,
+      "challenge_lostReturnsToNeutral": true,
+      "challenge_partialVisibleSubchainsRemain": true,
+      "challenge_partialTorsoDoesNotMoveRoot": true,
+      "challenge_noFreshTrackersWhileLost": true,
+      "challenge_firstRecoveryFrameNotFresh": true,
+      "challenge_sustainedRecoveryResumesMotion": true,
+      "challenge_finiteRotations": true
+    },
+    "pass": true,
+    "limitations": [
+      "These metrics evaluate stability and preservation of accepted observable motion, not 3D pose accuracy.",
+      "Monocular torso yaw/pitch and unanchored absolute root are intentionally unobserved.",
+      "The fault challenge replays inferred landmarks and injects missing/out-of-image observations; it does not claim new model accuracy."
+    ]
+  },
+  "legacyComparison": {
+    "baselineCommit": "c5983daca5dd65e2ea806186a1a1775c1630f495",
+    "sourceModules": [
+      {
+        "role": "geometry",
+        "gitBlobSha": "3a20c5253212f4d23ed684e65c40abc456d7346c",
+        "sha256": "2b8f12ce74244051b67016b004133225b9eb3ac46d25eac16a22513fe7733c1d"
+      },
+      {
+        "role": "retarget",
+        "gitBlobSha": "0645e5e1506897e9f42763555732546d2b62cdba",
+        "sha256": "a41d2af11cc4f99f4fda5f4e9ad7bf8f9cc13938a8b68964c6fcb9a1f660d804"
+      },
+      {
+        "role": "calibrationDependency",
+        "gitBlobSha": "75d7bed85374aeb32613c5e38cf97540ba9a650c",
+        "sha256": "1bccfe66cbf235184090bba88b91a13b12d2a32285fa6e55c8de9210055443e9"
+      }
+    ],
+    "protocol": "Identical actual decoded-video inference observations and identical avatar rest rig. Pinned legacy geometry and retarget run unchanged at each inference arrival; legacy output holds between 30 Hz display samples, matching the previous app. Current guards and retarget run at 30 Hz. Both exclude initial activation and unprocessed gaps over 100 ms from adjacent-frame changes. No extra ONNX inference is performed.",
+    "oldNeutral": "avatar rest pose",
+    "newNeutral": "rig-relative relaxed upper arms, 10 degrees outward",
+    "sourceCodeRetained": false,
+    "isPoseAccuracy": false,
+    "status": "completed",
+    "previous": {
+      "renderFrames": 299,
+      "finiteTransforms": true,
+      "nonAdjacentGapsExcludedFromFrameChanges": 0,
+      "localBones": {
+        "p95FrameAngleDeg": 19.484625970958508,
+        "maxFrameAngleDeg": 180,
+        "p95AngularSpeedDegPerSec": 584.5387791287446,
+        "maxAngularSpeedDegPerSec": 5400.000000000048
+      },
+      "modelSpaceBones": {
+        "p95FrameAngleDeg": 100.71854147714397,
+        "maxFrameAngleDeg": 180,
+        "p95AngularSpeedDegPerSec": 3021.5562443144295,
+        "maxAngularSpeedDegPerSec": 5399.999999999903
+      },
+      "maxMonocularTorsoYawPitchDeg": 172.16981041494958,
+      "maxRootFrameDisplacement": 0
+    },
+    "current": {
+      "renderFrames": 299,
+      "finiteTransforms": true,
+      "nonAdjacentGapsExcludedFromFrameChanges": 0,
+      "localBones": {
+        "p95FrameAngleDeg": 1.75251990676401,
+        "maxFrameAngleDeg": 30.00000000000014,
+        "p95AngularSpeedDegPerSec": 52.57559720292078,
+        "maxAngularSpeedDegPerSec": 900.0000000000031
+      },
+      "modelSpaceBones": {
+        "p95FrameAngleDeg": 4.398087745494343,
+        "maxFrameAngleDeg": 66.81626154963803,
+        "p95AngularSpeedDegPerSec": 131.94263236482968,
+        "maxAngularSpeedDegPerSec": 2004.4878464891408
+      },
+      "maxMonocularTorsoYawPitchDeg": 0,
+      "maxRootFrameDisplacement": 0
+    },
+    "change": {
+      "maxLocalFrameAngleDeg": -149.99999999999986,
+      "maxModelSpaceFrameAngleDeg": -113.18373845036197,
+      "maxModelSpaceAngularSpeedDegPerSec": -3395.512153510762,
+      "maxMonocularTorsoYawPitchDeg": -172.16981041494958
+    }
+  },
+  "derivedImageScenarios": {
+    "upper60Percent": {
+      "source": "derived image crop from the pinned official public video",
+      "protocol": "Keep the upper or lower 60% of actual decoded RGB pixels, then rerun the published selected body ONNX. At most 90 frames in three contiguous 30-frame intervals (beginning/middle/end); short videos retain all frames. Original capture timestamps remain unchanged; unsampled gaps are missing inputs, not evidence that the person disappeared. Extra inference runs in a separate decoding pass after the CPU comparison.",
+      "naturallyCapturedCroppedVideo": false,
+      "model": "compact59-dwpose-t-distilled",
+      "inferenceCalls": 90,
+      "maximumSelectedFrames": 90,
+      "cpu": {
+        "count": 90,
+        "meanMs": 7.778248633333351,
+        "medianMs": 7.4769469999992,
+        "p95Ms": 8.047958000001017,
+        "maxMs": 16.76507599999968
+      },
+      "preprocessing": {
+        "count": 90,
+        "meanMs": 2.851525088888856,
+        "medianMs": 2.7850729999991017,
+        "p95Ms": 3.1504909999985102,
+        "maxMs": 4.897165000000314
+      },
+      "partsIncluded": false,
+      "frameImagesRetained": false,
+      "perFrameCoordinatesRetained": false,
+      "stability": {
+        "schemaVersion": 1,
+        "source": "real ONNX inference observations; aggregate only",
+        "actual": {
+          "observationFrames": 90,
+          "renderFrames": 296,
+          "framesWithDrivenBones": 0,
+          "torsoFrames": 0,
+          "partialFrames": 90,
+          "lostFrames": 0,
+          "acceptedPoints": 1147,
+          "submittedPoints": 6570,
+          "rejectionReasons": {
+            "notObserved": 5400,
+            "lowConfidence": 5337,
+            "parentUnobserved": 73,
+            "reacquiring": 13
+          },
+          "finiteRotations": true,
+          "maxFrameRotationDeg": 0,
+          "p95FrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 0,
+          "maxRootStep": 0,
+          "maxRootSpeed": 0,
+          "maxUnobservedTorsoTiltDeg": 0,
+          "motionEvidence": {
+            "criterion": "accepted image limb direction changes >=12 degrees; observed bone has >=3 rendered frames",
+            "movingInputBones": [],
+            "retainedMotionBones": [],
+            "allMovingBonesFrozen": false,
+            "conclusion": "insufficientAcceptedMotionToAssess"
+          },
+          "bones": {
+            "hips": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "spine": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "chest": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "neck": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 294,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "head": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 294,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftUpperLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLowerLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftFoot": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftToes": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightUpperLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLowerLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightFoot": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightToes": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftShoulder": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftUpperArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLowerArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftHand": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightShoulder": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightUpperArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLowerArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightHand": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftThumbMetacarpal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftThumbProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftThumbDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftIndexProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftIndexIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftIndexDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftMiddleProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftMiddleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftMiddleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftRingProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftRingIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftRingDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLittleProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLittleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLittleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightThumbMetacarpal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightThumbProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightThumbDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightIndexProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightIndexIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightIndexDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightMiddleProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightMiddleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightMiddleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightRingProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightRingIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightRingDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLittleProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLittleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLittleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            }
+          }
+        },
+        "challenge": null,
+        "checks": {
+          "actualInferenceFrames": true,
+          "finiteRotations": true,
+          "boundedAngularVelocity": true,
+          "boundedRootVelocity": true,
+          "monocularYawPitchSuppressed": true,
+          "noCompleteMotionFreeze": true,
+          "usefulActualTracking": false
+        },
+        "pass": false,
+        "limitations": [
+          "These metrics evaluate stability and preservation of accepted observable motion, not 3D pose accuracy.",
+          "Monocular torso yaw/pitch and unanchored absolute root are intentionally unobserved.",
+          "The fault challenge replays inferred landmarks and injects missing/out-of-image observations; it does not claim new model accuracy."
+        ]
+      },
+      "legacyComparison": {
+        "baselineCommit": "c5983daca5dd65e2ea806186a1a1775c1630f495",
+        "sourceModules": [
+          {
+            "role": "geometry",
+            "gitBlobSha": "3a20c5253212f4d23ed684e65c40abc456d7346c",
+            "sha256": "2b8f12ce74244051b67016b004133225b9eb3ac46d25eac16a22513fe7733c1d"
+          },
+          {
+            "role": "retarget",
+            "gitBlobSha": "0645e5e1506897e9f42763555732546d2b62cdba",
+            "sha256": "a41d2af11cc4f99f4fda5f4e9ad7bf8f9cc13938a8b68964c6fcb9a1f660d804"
+          },
+          {
+            "role": "calibrationDependency",
+            "gitBlobSha": "75d7bed85374aeb32613c5e38cf97540ba9a650c",
+            "sha256": "1bccfe66cbf235184090bba88b91a13b12d2a32285fa6e55c8de9210055443e9"
+          }
+        ],
+        "protocol": "Identical actual decoded-video inference observations and identical avatar rest rig. Pinned legacy geometry and retarget run unchanged at each inference arrival; legacy output holds between 30 Hz display samples, matching the previous app. Current guards and retarget run at 30 Hz. Both exclude initial activation and unprocessed gaps over 100 ms from adjacent-frame changes. No extra ONNX inference is performed.",
+        "oldNeutral": "avatar rest pose",
+        "newNeutral": "rig-relative relaxed upper arms, 10 degrees outward",
+        "sourceCodeRetained": false,
+        "isPoseAccuracy": false,
+        "status": "completed",
+        "previous": {
+          "renderFrames": 296,
+          "finiteTransforms": true,
+          "nonAdjacentGapsExcludedFromFrameChanges": 0,
+          "localBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 168.41509278986126,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 5052.452783695831
+          },
+          "modelSpaceBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 168.41509278986126,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 5052.452783695831
+          },
+          "maxMonocularTorsoYawPitchDeg": 0,
+          "maxRootFrameDisplacement": 0
+        },
+        "current": {
+          "renderFrames": 296,
+          "finiteTransforms": true,
+          "nonAdjacentGapsExcludedFromFrameChanges": 0,
+          "localBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 0,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 0
+          },
+          "modelSpaceBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 0,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 0
+          },
+          "maxMonocularTorsoYawPitchDeg": 0,
+          "maxRootFrameDisplacement": 0
+        },
+        "change": {
+          "maxLocalFrameAngleDeg": -168.41509278986126,
+          "maxModelSpaceFrameAngleDeg": -168.41509278986126,
+          "maxModelSpaceAngularSpeedDegPerSec": -5052.452783695831,
+          "maxMonocularTorsoYawPitchDeg": 0
+        }
+      },
+      "safetyChecks": {
+        "actualCroppedRgbWasInferred": true,
+        "finiteOutputs": true,
+        "finiteRotations": true,
+        "boundedAngularVelocity": true,
+        "boundedRootVelocity": true,
+        "monocularYawPitchSuppressed": true,
+        "noCompleteMotionFreezeWhenAcceptedInputMoves": true
+      },
+      "stable": true,
+      "poseAccuracy": null,
+      "interpretation": "Safety and accepted-motion retention are evaluated. Missing accepted landmarks are reported as lost/partial; their actual visibility and anatomical correctness have no ground-truth labels."
+    },
+    "lower60Percent": {
+      "source": "derived image crop from the pinned official public video",
+      "protocol": "Keep the upper or lower 60% of actual decoded RGB pixels, then rerun the published selected body ONNX. At most 90 frames in three contiguous 30-frame intervals (beginning/middle/end); short videos retain all frames. Original capture timestamps remain unchanged; unsampled gaps are missing inputs, not evidence that the person disappeared. Extra inference runs in a separate decoding pass after the CPU comparison.",
+      "naturallyCapturedCroppedVideo": false,
+      "model": "compact59-dwpose-t-distilled",
+      "inferenceCalls": 90,
+      "maximumSelectedFrames": 90,
+      "cpu": {
+        "count": 90,
+        "meanMs": 7.582897100000082,
+        "medianMs": 7.459805000000415,
+        "p95Ms": 8.298181999998633,
+        "maxMs": 9.489309000000503
+      },
+      "preprocessing": {
+        "count": 90,
+        "meanMs": 2.58787735555555,
+        "medianMs": 2.5278850000013335,
+        "p95Ms": 2.678894999999102,
+        "maxMs": 4.293333999999959
+      },
+      "partsIncluded": false,
+      "frameImagesRetained": false,
+      "perFrameCoordinatesRetained": false,
+      "stability": {
+        "schemaVersion": 1,
+        "source": "real ONNX inference observations; aggregate only",
+        "actual": {
+          "observationFrames": 90,
+          "renderFrames": 296,
+          "framesWithDrivenBones": 20,
+          "torsoFrames": 0,
+          "partialFrames": 82,
+          "lostFrames": 8,
+          "acceptedPoints": 918,
+          "submittedPoints": 6570,
+          "rejectionReasons": {
+            "lowConfidence": 5465,
+            "notObserved": 5400,
+            "parentUnobserved": 156,
+            "reacquiring": 31
+          },
+          "finiteRotations": true,
+          "maxFrameRotationDeg": 29.84221076013106,
+          "p95FrameRotationDeg": 0,
+          "maxAngularSpeedDegPerSec": 895.2663228039307,
+          "maxRootStep": 0,
+          "maxRootSpeed": 0,
+          "maxUnobservedTorsoTiltDeg": 0,
+          "motionEvidence": {
+            "criterion": "accepted image limb direction changes >=12 degrees; observed bone has >=3 rendered frames",
+            "movingInputBones": [],
+            "retainedMotionBones": [],
+            "allMovingBonesFrozen": false,
+            "conclusion": "insufficientAcceptedMotionToAssess"
+          },
+          "bones": {
+            "hips": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "spine": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "chest": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "neck": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "head": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftUpperLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLowerLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftFoot": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftToes": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightUpperLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLowerLeg": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightFoot": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightToes": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftShoulder": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftUpperArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLowerArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftHand": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightShoulder": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightUpperArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLowerArm": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightHand": {
+              "observedFrames": 20,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 252,
+              "maxFrameRotationDeg": 24.000000000000036,
+              "maxAngularSpeedDegPerSec": 720.0000000000002,
+              "renderedWorldRangeDeg": 38.30817524431404,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftThumbMetacarpal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftThumbProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftThumbDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftIndexProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftIndexIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftIndexDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftMiddleProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftMiddleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftMiddleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftRingProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftRingIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftRingDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLittleProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLittleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "leftLittleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightThumbMetacarpal": {
+              "observedFrames": 20,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 252,
+              "maxFrameRotationDeg": 29.84221076013106,
+              "maxAngularSpeedDegPerSec": 895.2663228039307,
+              "renderedWorldRangeDeg": 51.02611291410235,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightThumbProximal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightThumbDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightIndexProximal": {
+              "observedFrames": 20,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 252,
+              "maxFrameRotationDeg": 13.420837588180703,
+              "maxAngularSpeedDegPerSec": 402.6251276454206,
+              "renderedWorldRangeDeg": 28.788714026689448,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightIndexIntermediate": {
+              "observedFrames": 4,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 268,
+              "maxFrameRotationDeg": 6.170661818784741,
+              "maxAngularSpeedDegPerSec": 185.11985456354202,
+              "renderedWorldRangeDeg": 18.012549355596445,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightIndexDistal": {
+              "observedFrames": 4,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 268,
+              "maxFrameRotationDeg": 5.544397429052014,
+              "maxAngularSpeedDegPerSec": 166.33192287156024,
+              "renderedWorldRangeDeg": 13.9492819004678,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightMiddleProximal": {
+              "observedFrames": 20,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 252,
+              "maxFrameRotationDeg": 22.401814152805898,
+              "maxAngularSpeedDegPerSec": 672.0544245841761,
+              "renderedWorldRangeDeg": 31.095031448762153,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightMiddleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightMiddleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightRingProximal": {
+              "observedFrames": 20,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 252,
+              "maxFrameRotationDeg": 12.68234541594613,
+              "maxAngularSpeedDegPerSec": 380.4703624783842,
+              "renderedWorldRangeDeg": 20.364162803197544,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightRingIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightRingDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLittleProximal": {
+              "observedFrames": 20,
+              "heldFrames": 3,
+              "returningFrames": 19,
+              "neutralFrames": 252,
+              "maxFrameRotationDeg": 13.749349434220068,
+              "maxAngularSpeedDegPerSec": 412.4804830266023,
+              "renderedWorldRangeDeg": 32.00227676687738,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLittleIntermediate": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            },
+            "rightLittleDistal": {
+              "observedFrames": 0,
+              "heldFrames": 0,
+              "returningFrames": 0,
+              "neutralFrames": 296,
+              "maxFrameRotationDeg": 0,
+              "maxAngularSpeedDegPerSec": 0,
+              "renderedWorldRangeDeg": 0,
+              "acceptedImageDirectionRangeDeg": 0
+            }
+          }
+        },
+        "challenge": null,
+        "checks": {
+          "actualInferenceFrames": true,
+          "finiteRotations": true,
+          "boundedAngularVelocity": true,
+          "boundedRootVelocity": true,
+          "monocularYawPitchSuppressed": true,
+          "noCompleteMotionFreeze": true,
+          "usefulActualTracking": true
+        },
+        "pass": true,
+        "limitations": [
+          "These metrics evaluate stability and preservation of accepted observable motion, not 3D pose accuracy.",
+          "Monocular torso yaw/pitch and unanchored absolute root are intentionally unobserved.",
+          "The fault challenge replays inferred landmarks and injects missing/out-of-image observations; it does not claim new model accuracy."
+        ]
+      },
+      "legacyComparison": {
+        "baselineCommit": "c5983daca5dd65e2ea806186a1a1775c1630f495",
+        "sourceModules": [
+          {
+            "role": "geometry",
+            "gitBlobSha": "3a20c5253212f4d23ed684e65c40abc456d7346c",
+            "sha256": "2b8f12ce74244051b67016b004133225b9eb3ac46d25eac16a22513fe7733c1d"
+          },
+          {
+            "role": "retarget",
+            "gitBlobSha": "0645e5e1506897e9f42763555732546d2b62cdba",
+            "sha256": "a41d2af11cc4f99f4fda5f4e9ad7bf8f9cc13938a8b68964c6fcb9a1f660d804"
+          },
+          {
+            "role": "calibrationDependency",
+            "gitBlobSha": "75d7bed85374aeb32613c5e38cf97540ba9a650c",
+            "sha256": "1bccfe66cbf235184090bba88b91a13b12d2a32285fa6e55c8de9210055443e9"
+          }
+        ],
+        "protocol": "Identical actual decoded-video inference observations and identical avatar rest rig. Pinned legacy geometry and retarget run unchanged at each inference arrival; legacy output holds between 30 Hz display samples, matching the previous app. Current guards and retarget run at 30 Hz. Both exclude initial activation and unprocessed gaps over 100 ms from adjacent-frame changes. No extra ONNX inference is performed.",
+        "oldNeutral": "avatar rest pose",
+        "newNeutral": "rig-relative relaxed upper arms, 10 degrees outward",
+        "sourceCodeRetained": false,
+        "isPoseAccuracy": false,
+        "status": "completed",
+        "previous": {
+          "renderFrames": 296,
+          "finiteTransforms": true,
+          "nonAdjacentGapsExcludedFromFrameChanges": 0,
+          "localBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 180,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 5399.999999999999
+          },
+          "modelSpaceBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 173.7216457680491,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 5211.649373041476
+          },
+          "maxMonocularTorsoYawPitchDeg": 0,
+          "maxRootFrameDisplacement": 0
+        },
+        "current": {
+          "renderFrames": 296,
+          "finiteTransforms": true,
+          "nonAdjacentGapsExcludedFromFrameChanges": 0,
+          "localBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 29.84221076013106,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 895.2663228039307
+          },
+          "modelSpaceBones": {
+            "p95FrameAngleDeg": 0,
+            "maxFrameAngleDeg": 51.026112914102434,
+            "p95AngularSpeedDegPerSec": 0,
+            "maxAngularSpeedDegPerSec": 1530.7833874230712
+          },
+          "maxMonocularTorsoYawPitchDeg": 0,
+          "maxRootFrameDisplacement": 0
+        },
+        "change": {
+          "maxLocalFrameAngleDeg": -150.15778923986895,
+          "maxModelSpaceFrameAngleDeg": -122.69553285394664,
+          "maxModelSpaceAngularSpeedDegPerSec": -3680.865985618405,
+          "maxMonocularTorsoYawPitchDeg": 0
+        }
+      },
+      "safetyChecks": {
+        "actualCroppedRgbWasInferred": true,
+        "finiteOutputs": true,
+        "finiteRotations": true,
+        "boundedAngularVelocity": true,
+        "boundedRootVelocity": true,
+        "monocularYawPitchSuppressed": true,
+        "noCompleteMotionFreezeWhenAcceptedInputMoves": true
+      },
+      "stable": true,
+      "poseAccuracy": null,
+      "interpretation": "Safety and accepted-motion retention are evaluated. Missing accepted landmarks are reported as lost/partial; their actual visibility and anatomical correctness have no ground-truth labels."
+    }
+  },
+  "accuracy": null,
+  "gpuUtilization": null,
+  "gpuPower": null,
+  "limitations": [
+    "CPU timings are actual video inference; no user-GPU performance was measured.",
+    "Agreement with a reference model is not accuracy against annotations.",
+    "The wholebody path uses the full video rectangle as its person crop; no automatic person detector is included.",
+    "VRM humanoid and spring systems execute in Node; raster rendering and textures are excluded."
+  ]
+}

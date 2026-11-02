@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "foot-view-mobilenetv3-small",
+      "kind": "footView",
+      "filename": "foot-view.onnx",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/parts/foot-view.onnx",
+      "bytes": 3940401,
+      "sha256": "5575fedf5987c4b3dbb19e840d1e954ec608bb5e6b6c4d236331ac08ad25771c",
+      "inputName": "images",
+      "outputNames": [
+        "probabilities"
+      ],
+      "inputShape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "inputWH": [
+        128,
+        128
+      ],
+      "outputShape": [
+        1,
+        3
+      ],
+      "color": "RGB",
+      "scale": 0.00392156862745098,
+      "mean": [
+        0.48500001430511475,
+        0.4560000002384186,
+        0.4059999883174896
+      ],
+      "std": [
+        0.2290000021457672,
+        0.2240000069141388,
+        0.22499999403953552
+      ],
+      "crop": "square known-foot ROI with 1.15 padding",
+      "classOrder": [
+        "sole",
+        "dorsum",
+        "side"
+      ],
+      "classLabels": [
+        "足裏",
+        "足の甲",
+        "側面"
+      ],
+      "confidenceThreshold": 0.4,
+      "temperature": 0.800000011920929,
+      "parameters": 982691,
+      "trainableParameters": 55683,
+      "weightOrigin": "TorchVision IMAGENET1K_V1 MobileNetV3-Small features; new 576→96→3 head trained on FootNet",
+      "scope": "view classification of a provided foot crop; no foot-presence or generic object detection",
+      "license": "new head and integration under repository license; TorchVision BSD-3-Clause; FootNet CC-BY-4.0 attribution",
+      "source": "https://zenodo.org/records/20457253"
+    },
+    {
+      "id": "pfld-face68-upstream",
+      "kind": "faceLandmarks",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/parts/pfld68.onnx",
+      "upstreamRevision": "f575be168a24af6f4807c852173fdfedf6d2c67d",
+      "upstreamGitBlob": "8f9822861a3d18f60672db1410cf7ff5a28012a9",
+      "sha256": "7d7bbd5c6a1d9272e58d9773898284a1905d872eba9a662df9b5f20f1ba6f83e",
+      "bytes": 2987921,
+      "redistributed": true,
+      "inputName": "input",
+      "inputShape": [
+        1,
+        3,
+        112,
+        112
+      ],
+      "declaredInputShape": [
+        "batch_size",
+        3,
+        112,
+        112
+      ],
+      "inputWH": [
+        112,
+        112
+      ],
+      "freeDimensionOverrides": {
+        "batch_size": 1
+      },
+      "outputNames": [
+        "output"
+      ],
+      "keypointCount": 68,
+      "outputLayout": "flat interleaved normalized x,y in the square ROI",
+      "color": "RGB",
+      "scale": 0.00392156862745098,
+      "mean": [
+        0,
+        0,
+        0
+      ],
+      "std": [
+        1,
+        1,
+        1
+      ],
+      "crop": "square face ROI; max(width,height)*1.1; black outside image",
+      "stateOutputs": [
+        "eyeLeftEAR",
+        "eyeRightEAR",
+        "mouthOpenRatio",
+        "cheekWidthNormalized",
+        "noseXY"
+      ],
+      "cheekSemantics": "2D cheek-width ratio, not learned cheek-puff recognition",
+      "license": "Upstream checkpoint redistribution grant unverified; no MIT or blanket permissive license asserted.",
+      "source": "https://github.com/cunjian/pytorch_face_landmark",
+      "upstreamUrl": "https://raw.githubusercontent.com/cunjian/pytorch_face_landmark/f575be168a24af6f4807c852173fdfedf6d2c67d/onnx/pfld.onnx",
+      "filename": "pfld68.onnx"
+    }
+  ],
+  "provenance": {
+    "gitCommit": "9799f7a6c6a096fe4bc99d2a3294481137d4f640",
+    "workflowRunId": "41385649138",
+    "python": "3.11.17",
+    "torch": "2.6.0+cpu",
+    "onnxruntime": "1.20.1",
+    "privateVideoUsed": false
+  }
+}

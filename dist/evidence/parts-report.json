@@ -1,0 +1,1107 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "gitCommit": "9799f7a6c6a096fe4bc99d2a3294481137d4f640",
+    "workflowRunId": "41385649138",
+    "python": "3.11.17",
+    "torch": "2.6.0+cpu",
+    "onnxruntime": "1.20.1",
+    "privateVideoUsed": false
+  },
+  "foot": {
+    "model": {
+      "id": "foot-view-mobilenetv3-small",
+      "kind": "footView",
+      "filename": "foot-view.onnx",
+      "url": "./models/parts/foot-view.onnx",
+      "bytes": 3940401,
+      "sha256": "5575fedf5987c4b3dbb19e840d1e954ec608bb5e6b6c4d236331ac08ad25771c",
+      "inputName": "images",
+      "outputNames": [
+        "probabilities"
+      ],
+      "inputShape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "inputWH": [
+        128,
+        128
+      ],
+      "outputShape": [
+        1,
+        3
+      ],
+      "color": "RGB",
+      "scale": 0.00392156862745098,
+      "mean": [
+        0.48500001430511475,
+        0.4560000002384186,
+        0.4059999883174896
+      ],
+      "std": [
+        0.2290000021457672,
+        0.2240000069141388,
+        0.22499999403953552
+      ],
+      "crop": "square known-foot ROI with 1.15 padding",
+      "classOrder": [
+        "sole",
+        "dorsum",
+        "side"
+      ],
+      "classLabels": [
+        "足裏",
+        "足の甲",
+        "側面"
+      ],
+      "confidenceThreshold": 0.4,
+      "temperature": 0.800000011920929,
+      "parameters": 982691,
+      "trainableParameters": 55683,
+      "weightOrigin": "TorchVision IMAGENET1K_V1 MobileNetV3-Small features; new 576→96→3 head trained on FootNet",
+      "scope": "view classification of a provided foot crop; no foot-presence or generic object detection",
+      "license": "new head and integration under repository license; TorchVision BSD-3-Clause; FootNet CC-BY-4.0 attribution",
+      "source": "https://zenodo.org/records/20457253"
+    },
+    "training": {
+      "epochs": 180,
+      "selectedEpoch": 179,
+      "backboneFrozen": true,
+      "augmentationCopiesPerTrainImage": 8,
+      "temperatureSource": "validation only",
+      "thresholdSource": "validation only; first threshold with >=85% accepted accuracy and >=1/3 coverage, fallback .7",
+      "history": [
+        {
+          "epoch": 1,
+          "trainLoss": 0.5940411936153065,
+          "validationLoss": 0.27331554889678955
+        },
+        {
+          "epoch": 21,
+          "trainLoss": 0.2514875260266391,
+          "validationLoss": 0.2934376001358032
+        },
+        {
+          "epoch": 41,
+          "trainLoss": 0.24988711232488806,
+          "validationLoss": 0.26575496792793274
+        },
+        {
+          "epoch": 61,
+          "trainLoss": 0.2493760588494214,
+          "validationLoss": 0.293690025806427
+        },
+        {
+          "epoch": 81,
+          "trainLoss": 0.24926217713139273,
+          "validationLoss": 0.2784635126590729
+        },
+        {
+          "epoch": 101,
+          "trainLoss": 0.2492146074771881,
+          "validationLoss": 0.27623987197875977
+        },
+        {
+          "epoch": 121,
+          "trainLoss": 0.24929987517270175,
+          "validationLoss": 0.2679550349712372
+        },
+        {
+          "epoch": 141,
+          "trainLoss": 0.2494697088545019,
+          "validationLoss": 0.2885627746582031
+        },
+        {
+          "epoch": 161,
+          "trainLoss": 0.24896228503097187,
+          "validationLoss": 0.2811008095741272
+        },
+        {
+          "epoch": 180,
+          "trainLoss": 0.2490570837801153,
+          "validationLoss": 0.2627681493759155
+        }
+      ]
+    },
+    "validation": {
+      "examples": 44,
+      "accuracy": 0.9318181818181818,
+      "classOrder": [
+        "sole",
+        "dorsum",
+        "side"
+      ],
+      "confusionMatrix": [
+        [
+          18,
+          0,
+          0
+        ],
+        [
+          0,
+          14,
+          1
+        ],
+        [
+          0,
+          2,
+          9
+        ]
+      ],
+      "recall": {
+        "sole": 1.0,
+        "dorsum": 0.9333333333333333,
+        "side": 0.8181818181818182
+      },
+      "confidenceThreshold": 0.4,
+      "accepted": 44,
+      "coverage": 1.0,
+      "acceptedAccuracy": 0.9318181818181818
+    },
+    "heldout": {
+      "examples": 37,
+      "accuracy": 0.8918918918918919,
+      "classOrder": [
+        "sole",
+        "dorsum",
+        "side"
+      ],
+      "confusionMatrix": [
+        [
+          11,
+          1,
+          0
+        ],
+        [
+          1,
+          11,
+          1
+        ],
+        [
+          0,
+          1,
+          11
+        ]
+      ],
+      "recall": {
+        "sole": 0.9166666666666666,
+        "dorsum": 0.8461538461538461,
+        "side": 0.9166666666666666
+      },
+      "confidenceThreshold": 0.4,
+      "accepted": 37,
+      "coverage": 1.0,
+      "acceptedAccuracy": 0.8918918918918919
+    },
+    "onnxMaxAbsoluteProbabilityError": 3.5762786865234375e-06,
+    "inference": {
+      "provider": "CPUExecutionProvider",
+      "threads": 2,
+      "meanMs": 0.41979421667406314,
+      "p50Ms": 0.40694500000881817,
+      "p95Ms": 0.5386187999476988,
+      "samples": 60
+    },
+    "dataset": {
+      "name": "FootNet v1.0",
+      "doi": "10.5281/zenodo.20457253",
+      "images": 191,
+      "license": "CC-BY-4.0",
+      "zipMD5": "d3a756d30e2051115c13f044558754a6",
+      "zipBytes": 556662306,
+      "authors": [
+        "Adith Vijay",
+        "Akash Prabhune",
+        "Vinay R Srihari",
+        "Akhila Rayampalli"
+      ],
+      "cropSource": "ground-truth segmentation mask bounding box; raw RGB crop retains background"
+    },
+    "limits": [
+      "No subject identifiers; image-group holdout does not prove unseen-person accuracy.",
+      "Clinical still-image domain differs from motion video and extreme foot rotations.",
+      "Accuracy assumes a known foot crop; it does not measure automatic foot localization.",
+      "Three anatomical views do not provide toe articulation, ankle rotation, or depth.",
+      "CPU inference timing is not browser WebGPU timing or GPU utilization."
+    ]
+  },
+  "face": {
+    "model": {
+      "id": "pfld-face68-upstream",
+      "kind": "faceLandmarks",
+      "url": "https://raw.githubusercontent.com/cunjian/pytorch_face_landmark/f575be168a24af6f4807c852173fdfedf6d2c67d/onnx/pfld.onnx",
+      "upstreamRevision": "f575be168a24af6f4807c852173fdfedf6d2c67d",
+      "upstreamGitBlob": "8f9822861a3d18f60672db1410cf7ff5a28012a9",
+      "sha256": "7d7bbd5c6a1d9272e58d9773898284a1905d872eba9a662df9b5f20f1ba6f83e",
+      "bytes": 2987921,
+      "redistributed": false,
+      "inputName": "input",
+      "inputShape": [
+        1,
+        3,
+        112,
+        112
+      ],
+      "declaredInputShape": [
+        "batch_size",
+        3,
+        112,
+        112
+      ],
+      "inputWH": [
+        112,
+        112
+      ],
+      "freeDimensionOverrides": {
+        "batch_size": 1
+      },
+      "outputNames": [
+        "output"
+      ],
+      "keypointCount": 68,
+      "outputLayout": "flat interleaved normalized x,y in the square ROI",
+      "color": "RGB",
+      "scale": 0.00392156862745098,
+      "mean": [
+        0,
+        0,
+        0
+      ],
+      "std": [
+        1,
+        1,
+        1
+      ],
+      "crop": "square face ROI; max(width,height)*1.1; black outside image",
+      "stateOutputs": [
+        "eyeLeftEAR",
+        "eyeRightEAR",
+        "mouthOpenRatio",
+        "cheekWidthNormalized",
+        "noseXY"
+      ],
+      "cheekSemantics": "2D cheek-width ratio, not learned cheek-puff recognition",
+      "license": "Upstream checkpoint redistribution grant unresolved; fetch from its author's pinned URL only.",
+      "source": "https://github.com/cunjian/pytorch_face_landmark"
+    },
+    "dataset": {
+      "name": "COCO-WholeBody v1.0 validation faces",
+      "source": "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json",
+      "annotationSHA256": "f8272e9c12f3a42457033ebc75da1167546edf1be5e2ffaf586d6ee97541ff6e",
+      "annotationLicense": "CC-BY-NC-4.0; images retain their individual source licenses",
+      "imageURLTemplate": "https://s3.amazonaws.com/images.cocodataset.org/val2017/{image_id:012d}.jpg",
+      "faceSelection": "face_valid; face_box minimum side >=64; >=55 labeled points; sorted image/id, first requested count",
+      "roiSource": "ground-truth face box; face detection is not evaluated",
+      "images": 57,
+      "faces": 64,
+      "landmarks": 4352
+    },
+    "interocularNME": 0.09160372327742887,
+    "featureRatioMAE": {
+      "eyeLeftEAR": {
+        "samples": 64,
+        "mae": 0.05402373936754003
+      },
+      "eyeRightEAR": {
+        "samples": 64,
+        "mae": 0.055733986089660924
+      },
+      "mouthOpenRatio": {
+        "samples": 64,
+        "mae": 0.052825477748178
+      },
+      "cheekWidthNormalized": {
+        "samples": 64,
+        "mae": 0.23106224372386377
+      }
+    },
+    "cases": [
+      {
+        "imageId": 1296,
+        "annotationId": 470530,
+        "faceBox": [
+          135.99,
+          144.21,
+          160.40999999999997,
+          154.04999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06352279913766029
+      },
+      {
+        "imageId": 4134,
+        "annotationId": 421744,
+        "faceBox": [
+          369.46,
+          94.72,
+          68.68,
+          74.94999999999999
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.2223297074743395
+      },
+      {
+        "imageId": 4395,
+        "annotationId": 1727967,
+        "faceBox": [
+          174.98,
+          21.46,
+          157.9,
+          187.95
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.07568380145603283
+      },
+      {
+        "imageId": 6763,
+        "annotationId": 197649,
+        "faceBox": [
+          207.49,
+          172.22,
+          76.13,
+          79.14000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.058765404247959896
+      },
+      {
+        "imageId": 6763,
+        "annotationId": 212640,
+        "faceBox": [
+          126.89,
+          147.34,
+          71.27,
+          74.15
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.05704511511936115
+      },
+      {
+        "imageId": 6771,
+        "annotationId": 1251463,
+        "faceBox": [
+          -14.69,
+          57.37,
+          77.31,
+          114.74000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.3792472822766455
+      },
+      {
+        "imageId": 6771,
+        "annotationId": 1301774,
+        "faceBox": [
+          267.23,
+          176.67,
+          87.72999999999996,
+          85.69000000000003
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.0401912483744502
+      },
+      {
+        "imageId": 6894,
+        "annotationId": 493059,
+        "faceBox": [
+          415.87,
+          26.46,
+          116.07000000000005,
+          116.44999999999999
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.12422914410725736
+      },
+      {
+        "imageId": 6954,
+        "annotationId": 456717,
+        "faceBox": [
+          26.02,
+          139.74,
+          80.68,
+          71.03
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04704421338874296
+      },
+      {
+        "imageId": 8532,
+        "annotationId": 464797,
+        "faceBox": [
+          351.39531,
+          114.43909,
+          176.37082999999996,
+          197.23913000000002
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03919719688634299
+      },
+      {
+        "imageId": 8690,
+        "annotationId": 200151,
+        "faceBox": [
+          406.18,
+          133.74,
+          67.69999999999999,
+          65.5
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04657035242142547
+      },
+      {
+        "imageId": 9378,
+        "annotationId": 460404,
+        "faceBox": [
+          350.94,
+          80.44,
+          83.60000000000002,
+          94.53999999999999
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04478126401686076
+      },
+      {
+        "imageId": 9448,
+        "annotationId": 2158783,
+        "faceBox": [
+          174.32,
+          149.07,
+          87.70999999999998,
+          93.47
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03620309273772974
+      },
+      {
+        "imageId": 11051,
+        "annotationId": 530192,
+        "faceBox": [
+          493.54,
+          153.23,
+          95.91000000000003,
+          101.28
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.045418026850582605
+      },
+      {
+        "imageId": 11051,
+        "annotationId": 539627,
+        "faceBox": [
+          171.94,
+          90.95,
+          102.19,
+          92.23
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.09660548432588394
+      },
+      {
+        "imageId": 12748,
+        "annotationId": 215760,
+        "faceBox": [
+          250.41,
+          230.95,
+          82.60999999999999,
+          75.27000000000004
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.055334216455974944
+      },
+      {
+        "imageId": 15335,
+        "annotationId": 1230490,
+        "faceBox": [
+          282.25,
+          200.27,
+          75.80000000000001,
+          70.03
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.12521979536941602
+      },
+      {
+        "imageId": 16598,
+        "annotationId": 430275,
+        "faceBox": [
+          177.67,
+          108.0,
+          124.58000000000001,
+          139.7
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04672576403169851
+      },
+      {
+        "imageId": 18150,
+        "annotationId": 521385,
+        "faceBox": [
+          418.96,
+          171.98,
+          91.03000000000003,
+          84.32000000000002
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.6106351581315635
+      },
+      {
+        "imageId": 18150,
+        "annotationId": 532200,
+        "faceBox": [
+          113.57,
+          76.9,
+          104.67000000000002,
+          99.32999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.07639107579142927
+      },
+      {
+        "imageId": 18193,
+        "annotationId": 1207285,
+        "faceBox": [
+          211.98,
+          98.47,
+          83.15,
+          104.61000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.09424922586418737
+      },
+      {
+        "imageId": 20333,
+        "annotationId": 446896,
+        "faceBox": [
+          142.25,
+          194.15,
+          98.16999999999999,
+          90.35999999999999
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.037182169944687815
+      },
+      {
+        "imageId": 20992,
+        "annotationId": 449274,
+        "faceBox": [
+          193.45,
+          58.58,
+          172.57,
+          228.88
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.08071261410038345
+      },
+      {
+        "imageId": 21167,
+        "annotationId": 1708034,
+        "faceBox": [
+          255.48,
+          90.64,
+          64.24000000000004,
+          67.73
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.09560749048342537
+      },
+      {
+        "imageId": 21604,
+        "annotationId": 506315,
+        "faceBox": [
+          189.99,
+          96.76,
+          100.64999999999998,
+          110.54
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.062289576932255286
+      },
+      {
+        "imageId": 22935,
+        "annotationId": 467158,
+        "faceBox": [
+          251.54,
+          76.1,
+          76.1,
+          83.97
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.030944578179325537
+      },
+      {
+        "imageId": 23034,
+        "annotationId": 190083,
+        "faceBox": [
+          473.53,
+          57.4,
+          82.25,
+          94.84
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.8536042418962753
+      },
+      {
+        "imageId": 23899,
+        "annotationId": 428948,
+        "faceBox": [
+          82.79,
+          81.73,
+          106.96,
+          113.7
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.12270647455935366
+      },
+      {
+        "imageId": 25386,
+        "annotationId": 528465,
+        "faceBox": [
+          85.25,
+          164.34,
+          84.6,
+          89.46000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06098270996292392
+      },
+      {
+        "imageId": 25603,
+        "annotationId": 430771,
+        "faceBox": [
+          471.0,
+          179.43,
+          90.23000000000002,
+          87.36000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04682737655076505
+      },
+      {
+        "imageId": 27186,
+        "annotationId": 469199,
+        "faceBox": [
+          229.43,
+          70.59,
+          77.32999999999998,
+          71.88
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04936103605585209
+      },
+      {
+        "imageId": 32334,
+        "annotationId": 483269,
+        "faceBox": [
+          235.85,
+          144.46,
+          85.08000000000001,
+          98.67999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.02964600109437136
+      },
+      {
+        "imageId": 35682,
+        "annotationId": 423064,
+        "faceBox": [
+          165.24,
+          62.63,
+          84.25999999999999,
+          94.42000000000002
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.041466708540220464
+      },
+      {
+        "imageId": 38678,
+        "annotationId": 443774,
+        "faceBox": [
+          200.52,
+          189.94,
+          128.23999999999998,
+          130.64999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03706957031245539
+      },
+      {
+        "imageId": 47801,
+        "annotationId": 449043,
+        "faceBox": [
+          253.48,
+          158.73,
+          150.14000000000001,
+          156.45000000000002
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.07293612298924841
+      },
+      {
+        "imageId": 48396,
+        "annotationId": 217773,
+        "faceBox": [
+          216.88,
+          37.18,
+          75.81,
+          68.16
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.05877766873931343
+      },
+      {
+        "imageId": 48564,
+        "annotationId": 454910,
+        "faceBox": [
+          89.87,
+          94.08,
+          159.29,
+          136.37
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.08094937583170506
+      },
+      {
+        "imageId": 50811,
+        "annotationId": 451781,
+        "faceBox": [
+          205.47,
+          135.9,
+          106.78,
+          104.07999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.02671169310640205
+      },
+      {
+        "imageId": 54654,
+        "annotationId": 425686,
+        "faceBox": [
+          209.99,
+          104.81,
+          70.0,
+          75.18
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04892405964841599
+      },
+      {
+        "imageId": 55528,
+        "annotationId": 470033,
+        "faceBox": [
+          372.17,
+          99.81,
+          101.57999999999998,
+          105.57
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04596935221354902
+      },
+      {
+        "imageId": 58350,
+        "annotationId": 454153,
+        "faceBox": [
+          541.28,
+          137.71,
+          81.95000000000005,
+          81.25
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.056519523938022474
+      },
+      {
+        "imageId": 58539,
+        "annotationId": 559122,
+        "faceBox": [
+          298.02,
+          138.51,
+          79.28000000000003,
+          74.27000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.05503765657199744
+      },
+      {
+        "imageId": 58705,
+        "annotationId": 493157,
+        "faceBox": [
+          132.44,
+          154.73,
+          115.88,
+          121.60999999999999
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.02545813095963939
+      },
+      {
+        "imageId": 60102,
+        "annotationId": 478442,
+        "faceBox": [
+          212.57,
+          47.24,
+          77.81,
+          77.80000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.0493318488437211
+      },
+      {
+        "imageId": 60932,
+        "annotationId": 1239375,
+        "faceBox": [
+          500.67,
+          118.84,
+          76.61999999999995,
+          74.10999999999999
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03852926489062127
+      },
+      {
+        "imageId": 62808,
+        "annotationId": 485382,
+        "faceBox": [
+          55.68,
+          74.91,
+          86.38,
+          81.53
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03850953245001037
+      },
+      {
+        "imageId": 63047,
+        "annotationId": 443463,
+        "faceBox": [
+          198.65,
+          285.88,
+          81.28,
+          70.18
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06612383609185206
+      },
+      {
+        "imageId": 66771,
+        "annotationId": 190633,
+        "faceBox": [
+          106.21,
+          33.46,
+          104.28000000000002,
+          110.57999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06055349441159259
+      },
+      {
+        "imageId": 66771,
+        "annotationId": 207221,
+        "faceBox": [
+          463.0,
+          127.13,
+          106.85000000000002,
+          75.68
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.08797397154619088
+      },
+      {
+        "imageId": 73533,
+        "annotationId": 446281,
+        "faceBox": [
+          358.52,
+          184.83,
+          138.22000000000003,
+          87.47
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.05783156008363683
+      },
+      {
+        "imageId": 73533,
+        "annotationId": 1734346,
+        "faceBox": [
+          119.61,
+          165.3,
+          137.06,
+          107.28999999999996
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06081776328911168
+      },
+      {
+        "imageId": 74256,
+        "annotationId": 226880,
+        "faceBox": [
+          407.93,
+          127.06,
+          75.48000000000002,
+          75.16
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.04433432897365664
+      },
+      {
+        "imageId": 79014,
+        "annotationId": 2155027,
+        "faceBox": [
+          90.58584,
+          178.83398,
+          178.83398,
+          210.97735
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.17012172587976
+      },
+      {
+        "imageId": 80932,
+        "annotationId": 188312,
+        "faceBox": [
+          184.04,
+          295.02,
+          112.65,
+          84.21000000000004
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.1413052213623211
+      },
+      {
+        "imageId": 82688,
+        "annotationId": 423924,
+        "faceBox": [
+          223.06,
+          179.95,
+          77.82999999999998,
+          67.99000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.09648027436175437
+      },
+      {
+        "imageId": 82688,
+        "annotationId": 2153895,
+        "faceBox": [
+          429.02,
+          88.67,
+          78.5,
+          73.42
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.0991104412609115
+      },
+      {
+        "imageId": 84674,
+        "annotationId": 206340,
+        "faceBox": [
+          299.82,
+          217.34,
+          71.37,
+          74.23999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.05388609337404258
+      },
+      {
+        "imageId": 86956,
+        "annotationId": 2154575,
+        "faceBox": [
+          335.83,
+          164.82,
+          66.52000000000004,
+          64.1
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06078109311921166
+      },
+      {
+        "imageId": 88345,
+        "annotationId": 439853,
+        "faceBox": [
+          231.32708,
+          253.13569,
+          76.71959000000001,
+          73.21463
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03963767405690103
+      },
+      {
+        "imageId": 92091,
+        "annotationId": 190980,
+        "faceBox": [
+          349.21,
+          210.65,
+          67.25,
+          66.98999999999998
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.06716605646338773
+      },
+      {
+        "imageId": 92416,
+        "annotationId": 200893,
+        "faceBox": [
+          196.33,
+          148.8,
+          100.66,
+          100.03
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.05014205292613556
+      },
+      {
+        "imageId": 96493,
+        "annotationId": 451795,
+        "faceBox": [
+          191.57,
+          87.89,
+          97.84000000000003,
+          90.97000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.10502523526581242
+      },
+      {
+        "imageId": 99182,
+        "annotationId": 450435,
+        "faceBox": [
+          207.45,
+          45.1,
+          82.0,
+          81.19
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.03957436592996392
+      },
+      {
+        "imageId": 99810,
+        "annotationId": 425076,
+        "faceBox": [
+          126.79,
+          48.8,
+          131.78999999999996,
+          108.35000000000001
+        ],
+        "annotatedLandmarks": 68,
+        "interocularNME": 0.030328954098719267
+      }
+    ],
+    "inference": {
+      "provider": "CPUExecutionProvider",
+      "threads": 2,
+      "meanMs": 0.9924418095200357,
+      "p95Ms": 1.5446686000132104,
+      "samples": 64,
+      "warmupExcluded": true
+    },
+    "limits": [
+      "No binary blink, cheek-puff, or mouth-state labels: geometric-ratio error is measured instead.",
+      "This fixed 64-face diagnostic subset is not the model author's 300W benchmark or a representative COCO AP result.",
+      "The source model is a pretrained dependency, not a newly trained face model.",
+      "The upstream ONNX example uses RGB; its separate PyTorch batch example uses BGR.",
+      "No face confidence head; unreliable or unobserved faces must not be treated as measured expressions."
+    ]
+  }
+}

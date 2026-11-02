@@ -1,0 +1,487 @@
+{
+  "schema": "compact-vrc-evaluation-v1",
+  "status": "completed",
+  "run_url": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41385649138",
+  "commit": "9799f7a6c6a096fe4bc99d2a3294481137d4f640",
+  "hardware": {
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.43",
+    "machine": "x86_64",
+    "logical_cpus": 4,
+    "torch": "2.6.0+cpu",
+    "onnxruntime": "1.20.1"
+  },
+  "data": {
+    "train_images": 512,
+    "train_crops": 1024,
+    "heldout_images": 128,
+    "heldout_persons": 128,
+    "private_videos_used": false,
+    "image_id_overlap": 0,
+    "evaluation_uses_annotation_person_boxes": true,
+    "evaluation_protocol": "custom COCO-WholeBody subset, not COCO AP",
+    "normalization": "PCK distance / 256, in the 192x256 padded person crop",
+    "evaluation_used_for_checkpoint_selection": false
+  },
+  "training": {
+    "steps": 1800,
+    "batch_size": 16,
+    "seed": 20261102,
+    "learning_rate": 2e-05,
+    "distillation_weight": 0.85,
+    "frozen_pretrained_backbone": true,
+    "trainable_module": "59-token RTMCC head",
+    "teacher": "DWPose-t 133, not RTMW3D-X"
+  },
+  "reconstruction_reference": {
+    "reference_sha256": "fcaae4a08ea7610b4bcc5d0b9e8a7e80fd6f2d998be41438a1b2737056a7623f",
+    "public_images": 8,
+    "same_rgb_normalized_input": true,
+    "maximum_absolute_logit_error": 6.8694353103637695e-06,
+    "rmse_logits": 6.084299771455281e-07,
+    "mean_keypoint_error_input_px": 0.00046992481203007516,
+    "p95_keypoint_error_input_px": 0.0,
+    "maximum_keypoint_error_input_px": 0.5,
+    "per_image": [
+      {
+        "maximum_absolute_logit_error": 6.8694353103637695e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      },
+      {
+        "maximum_absolute_logit_error": 3.0994415283203125e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      },
+      {
+        "maximum_absolute_logit_error": 4.250556230545044e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      },
+      {
+        "maximum_absolute_logit_error": 5.081295967102051e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      },
+      {
+        "maximum_absolute_logit_error": 3.993511199951172e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      },
+      {
+        "maximum_absolute_logit_error": 3.516674041748047e-06,
+        "maximum_keypoint_error_input_px": 0.5
+      },
+      {
+        "maximum_absolute_logit_error": 5.6996941566467285e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      },
+      {
+        "maximum_absolute_logit_error": 4.380941390991211e-06,
+        "maximum_keypoint_error_input_px": 0.0
+      }
+    ],
+    "passed": true,
+    "source_url": "https://huggingface.co/RabbitDaisuke/RTMPose-Wholebody-onnx/resolve/9d7f318c43452baf33f1b39d39c1f8c03512aeb5/rtmpose-t-256x192-fp32.onnx"
+  },
+  "teacher133": {
+    "selected59_accuracy": {
+      "all": {
+        "labelled": {
+          "points": 4903,
+          "mean_error_input_px": 9.41402530670166,
+          "pck_0025": 0.6981440186500549,
+          "pck_005": 0.8576381802558899,
+          "pck_010": 0.9237201809883118
+        },
+        "visible": {
+          "points": 1911,
+          "mean_error_input_px": 10.765522956848145,
+          "pck_0025": 0.5808477401733398,
+          "pck_005": 0.8069073557853699,
+          "pck_010": 0.9094714522361755
+        }
+      },
+      "body": {
+        "labelled": {
+          "points": 1385,
+          "mean_error_input_px": 10.586047172546387,
+          "pck_0025": 0.5783393383026123,
+          "pck_005": 0.800000011920929,
+          "pck_010": 0.9054151773452759
+        },
+        "visible": {
+          "points": 1284,
+          "mean_error_input_px": 9.895005226135254,
+          "pck_0025": 0.6066977977752686,
+          "pck_005": 0.8255451917648315,
+          "pck_010": 0.9151090383529663
+        }
+      },
+      "feet": {
+        "labelled": {
+          "points": 332,
+          "mean_error_input_px": 13.303627014160156,
+          "pck_0025": 0.3855421543121338,
+          "pck_005": 0.7048192620277405,
+          "pck_010": 0.891566276550293
+        },
+        "visible": {
+          "points": 332,
+          "mean_error_input_px": 13.303627014160156,
+          "pck_0025": 0.3855421543121338,
+          "pck_005": 0.7048192620277405,
+          "pck_010": 0.891566276550293
+        }
+      },
+      "left_hand": {
+        "labelled": {
+          "points": 1241,
+          "mean_error_input_px": 9.523139953613281,
+          "pck_0025": 0.7477840185165405,
+          "pck_005": 0.8896051645278931,
+          "pck_010": 0.9323126673698425
+        },
+        "visible": {
+          "points": 177,
+          "mean_error_input_px": 15.566981315612793,
+          "pck_0025": 0.6779661178588867,
+          "pck_005": 0.7966101765632629,
+          "pck_010": 0.8418079018592834
+        }
+      },
+      "right_hand": {
+        "labelled": {
+          "points": 1275,
+          "mean_error_input_px": 11.343241691589355,
+          "pck_0025": 0.7043137550354004,
+          "pck_005": 0.8541176319122314,
+          "pck_010": 0.9035294055938721
+        },
+        "visible": {
+          "points": 108,
+          "mean_error_input_px": 6.263883113861084,
+          "pck_0025": 0.6759259104728699,
+          "pck_005": 0.8981481194496155,
+          "pck_010": 1.0
+        }
+      },
+      "face": {
+        "labelled": {
+          "points": 670,
+          "mean_error_input_px": 1.1904983520507812,
+          "pck_0025": 0.9970149397850037,
+          "pck_005": 1.0,
+          "pck_010": 1.0
+        },
+        "visible": {
+          "points": 10,
+          "mean_error_input_px": 1.9068565368652344,
+          "pck_0025": 1.0,
+          "pck_005": 1.0,
+          "pck_010": 1.0
+        }
+      },
+      "hands": {
+        "labelled": {
+          "points": 2516,
+          "mean_error_input_px": 10.445487976074219,
+          "pck_0025": 0.7257551550865173,
+          "pck_005": 0.8716216087341309,
+          "pck_010": 0.9177265763282776
+        },
+        "visible": {
+          "points": 285,
+          "mean_error_input_px": 12.041597366333008,
+          "pck_0025": 0.6771929860115051,
+          "pck_005": 0.8350877165794373,
+          "pck_010": 0.9017543792724609
+        }
+      }
+    },
+    "parameters": 5519779,
+    "multiply_accumulates": 548147072,
+    "onnx_bytes": 22104107,
+    "latency": {
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "warmup": 10,
+      "iterations": 120,
+      "median_ms": 10.029977000016288,
+      "mean_ms": 10.08892865833341,
+      "p95_ms": 10.25259749998213,
+      "decode_and_render_included": false,
+      "gpu_latency_measured": false
+    }
+  },
+  "sliced59_before_training": {
+    "accuracy": {
+      "all": {
+        "labelled": {
+          "points": 4903,
+          "mean_error_input_px": 9.418584823608398,
+          "pck_0025": 0.6991637945175171,
+          "pck_005": 0.858657956123352,
+          "pck_010": 0.9239241480827332
+        },
+        "visible": {
+          "points": 1911,
+          "mean_error_input_px": 10.785133361816406,
+          "pck_0025": 0.5818942785263062,
+          "pck_005": 0.8084772229194641,
+          "pck_010": 0.9099947810173035
+        }
+      },
+      "body": {
+        "labelled": {
+          "points": 1385,
+          "mean_error_input_px": 10.595233917236328,
+          "pck_0025": 0.5797833800315857,
+          "pck_005": 0.7992779612541199,
+          "pck_010": 0.9061371684074402
+        },
+        "visible": {
+          "points": 1284,
+          "mean_error_input_px": 9.901556015014648,
+          "pck_0025": 0.6082554459571838,
+          "pck_005": 0.8255451917648315,
+          "pck_010": 0.9158878326416016
+        }
+      },
+      "feet": {
+        "labelled": {
+          "points": 332,
+          "mean_error_input_px": 13.14990234375,
+          "pck_0025": 0.3885542154312134,
+          "pck_005": 0.7138554453849792,
+          "pck_010": 0.8945783376693726
+        },
+        "visible": {
+          "points": 332,
+          "mean_error_input_px": 13.14990234375,
+          "pck_0025": 0.3885542154312134,
+          "pck_005": 0.7138554453849792,
+          "pck_010": 0.8945783376693726
+        }
+      },
+      "left_hand": {
+        "labelled": {
+          "points": 1241,
+          "mean_error_input_px": 9.566740989685059,
+          "pck_0025": 0.7461724281311035,
+          "pck_005": 0.8887993693351746,
+          "pck_010": 0.9323126673698425
+        },
+        "visible": {
+          "points": 177,
+          "mean_error_input_px": 16.083967208862305,
+          "pck_0025": 0.6723163723945618,
+          "pck_005": 0.790960431098938,
+          "pck_010": 0.8361582159996033
+        }
+      },
+      "right_hand": {
+        "labelled": {
+          "points": 1275,
+          "mean_error_input_px": 11.338602066040039,
+          "pck_0025": 0.7066666483879089,
+          "pck_005": 0.8572549223899841,
+          "pck_010": 0.9027451276779175
+        },
+        "visible": {
+          "points": 108,
+          "mean_error_input_px": 6.172965049743652,
+          "pck_0025": 0.6759259104728699,
+          "pck_005": 0.9074074029922485,
+          "pck_010": 1.0
+        }
+      },
+      "face": {
+        "labelled": {
+          "points": 670,
+          "mean_error_input_px": 1.209123969078064,
+          "pck_0025": 0.9985074400901794,
+          "pck_005": 1.0,
+          "pck_010": 1.0
+        },
+        "visible": {
+          "points": 10,
+          "mean_error_input_px": 1.7483001947402954,
+          "pck_0025": 1.0,
+          "pck_005": 1.0,
+          "pck_010": 1.0
+        }
+      },
+      "hands": {
+        "labelled": {
+          "points": 2516,
+          "mean_error_input_px": 10.464642524719238,
+          "pck_0025": 0.7261525988578796,
+          "pck_005": 0.8728139996528625,
+          "pck_010": 0.9173290729522705
+        },
+        "visible": {
+          "points": 285,
+          "mean_error_input_px": 12.328218460083008,
+          "pck_0025": 0.6736842393875122,
+          "pck_005": 0.8350877165794373,
+          "pck_010": 0.898245632648468
+        }
+      }
+    },
+    "teacher_agreement": {
+      "mean_error_input_px": 0.8556506633758545,
+      "p95_error_input_px": 1.1180340051651,
+      "within_2_input_px": 0.9774894118309021,
+      "within_5_input_px": 0.9903336763381958,
+      "not_ground_truth_accuracy": true
+    }
+  },
+  "compact59": {
+    "accuracy": {
+      "all": {
+        "labelled": {
+          "points": 4903,
+          "mean_error_input_px": 9.369888305664062,
+          "pck_0025": 0.7005914449691772,
+          "pck_005": 0.8566184043884277,
+          "pck_010": 0.923312246799469
+        },
+        "visible": {
+          "points": 1911,
+          "mean_error_input_px": 10.695108413696289,
+          "pck_0025": 0.5777080059051514,
+          "pck_005": 0.8053375482559204,
+          "pck_010": 0.9089481830596924
+        }
+      },
+      "body": {
+        "labelled": {
+          "points": 1385,
+          "mean_error_input_px": 10.561970710754395,
+          "pck_0025": 0.5819494724273682,
+          "pck_005": 0.7971119284629822,
+          "pck_010": 0.9054151773452759
+        },
+        "visible": {
+          "points": 1284,
+          "mean_error_input_px": 9.888429641723633,
+          "pck_0025": 0.6098130941390991,
+          "pck_005": 0.8239875435829163,
+          "pck_010": 0.9151090383529663
+        }
+      },
+      "feet": {
+        "labelled": {
+          "points": 332,
+          "mean_error_input_px": 13.25767707824707,
+          "pck_0025": 0.3614457845687866,
+          "pck_005": 0.6927710771560669,
+          "pck_010": 0.8855421543121338
+        },
+        "visible": {
+          "points": 332,
+          "mean_error_input_px": 13.25767707824707,
+          "pck_0025": 0.3614457845687866,
+          "pck_005": 0.6927710771560669,
+          "pck_010": 0.8855421543121338
+        }
+      },
+      "left_hand": {
+        "labelled": {
+          "points": 1241,
+          "mean_error_input_px": 9.415264129638672,
+          "pck_0025": 0.7550362348556519,
+          "pck_005": 0.8904109597206116,
+          "pck_010": 0.9323126673698425
+        },
+        "visible": {
+          "points": 177,
+          "mean_error_input_px": 14.994354248046875,
+          "pck_0025": 0.6666666865348816,
+          "pck_005": 0.8022598624229431,
+          "pck_010": 0.8474576473236084
+        }
+      },
+      "right_hand": {
+        "labelled": {
+          "points": 1275,
+          "mean_error_input_px": 11.315435409545898,
+          "pck_0025": 0.7090196013450623,
+          "pck_005": 0.8556862473487854,
+          "pck_010": 0.9035294055938721
+        },
+        "visible": {
+          "points": 108,
+          "mean_error_input_px": 6.177093982696533,
+          "pck_0025": 0.6759259104728699,
+          "pck_005": 0.9166666865348816,
+          "pck_010": 1.0
+        }
+      },
+      "face": {
+        "labelled": {
+          "points": 670,
+          "mean_error_input_px": 1.1927785873413086,
+          "pck_0025": 0.9970149397850037,
+          "pck_005": 1.0,
+          "pck_010": 1.0
+        },
+        "visible": {
+          "points": 10,
+          "mean_error_input_px": 1.8930919170379639,
+          "pck_0025": 1.0,
+          "pck_005": 1.0,
+          "pck_010": 1.0
+        }
+      },
+      "hands": {
+        "labelled": {
+          "points": 2516,
+          "mean_error_input_px": 10.378189086914062,
+          "pck_0025": 0.7317169904708862,
+          "pck_005": 0.8728139996528625,
+          "pck_010": 0.9177265763282776
+        },
+        "visible": {
+          "points": 285,
+          "mean_error_input_px": 11.653076171875,
+          "pck_0025": 0.6701754331588745,
+          "pck_005": 0.8456140160560608,
+          "pck_010": 0.9052631855010986
+        }
+      }
+    },
+    "teacher_agreement": {
+      "mean_error_input_px": 1.5499602556228638,
+      "p95_error_input_px": 2.5495097637176514,
+      "within_2_input_px": 0.9306144118309021,
+      "within_5_input_px": 0.9751059412956238,
+      "not_ground_truth_accuracy": true
+    },
+    "parameters": 4127321,
+    "trainable_parameters": 1778621,
+    "multiply_accumulates": 422813568,
+    "onnx_bytes": 16534271,
+    "latency": {
+      "provider": "CPUExecutionProvider",
+      "threads": 4,
+      "warmup": 10,
+      "iterations": 120,
+      "median_ms": 7.773490000033689,
+      "mean_ms": 7.800632508337439,
+      "p95_ms": 7.947065749957005,
+      "decode_and_render_included": false,
+      "gpu_latency_measured": false
+    },
+    "export_parity": {
+      "images": 8,
+      "maximum_absolute_logit_error": 5.345791578292847e-06,
+      "maximum_coordinate_axis_error_input_px": 0,
+      "comparison": "exported ONNX versus same trained PyTorch model"
+    }
+  },
+  "acceptance": {
+    "pck005_difference_vs_teacher": -0.0010197758674621582,
+    "pck005_within_3_percentage_points": true,
+    "median_latency_ratio": 0.7750257054448944,
+    "gpu_load_or_gpu_latency_measured": false,
+    "private_video_accuracy_measured": false,
+    "complete_vrc_tracking_validated": false
+  },
+  "elapsed_seconds": 214.559735675
+}

@@ -1,0 +1,970 @@
+{
+  "seed": 17513,
+  "totalImages": 191,
+  "duplicateGroups": 180,
+  "unit": "image/near-duplicate group, not identified subject",
+  "method": "seeded 60/20/20 groups within anatomical view folder; dHash distance <=3 kept together",
+  "splits": {
+    "train": [
+      {
+        "id": "dataset/dataset_leftside/images/leftside_028.png",
+        "class": "side",
+        "sha256": "861fef262c4e60ab278ec3adeb0f5ac1c241cc8f3531e591a2bd9223dd357e91"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_001.png",
+        "class": "side",
+        "sha256": "294bad559867b7887e436bafded46935a1f04fb79c6f195bc96711ff48507d04"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_026.png",
+        "class": "side",
+        "sha256": "20991cd6da85d29102a3847cc23f058c4a38914359f48d80c0c29f4129ba180d"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_029.png",
+        "class": "side",
+        "sha256": "020d83d29b90cdc9ef8cd2780f25e3bc441fe652b96c94e22dbf957320bcf099"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_008.png",
+        "class": "side",
+        "sha256": "ee6d954eb2e96755e8e5782d7f7a23f442391b6b30135ac2d7d1ead8aa9efb47"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_009.png",
+        "class": "side",
+        "sha256": "6f155c39fac481c9f575a30d541c1bf9735f31f0d4ad8582df763c5bd8a112f1"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_010.png",
+        "class": "side",
+        "sha256": "7b27d8606025548758fd59db256d16c2b3f0ef851473be3d1880fe7965c68dc8"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_021.png",
+        "class": "side",
+        "sha256": "c0918f43d91971ab9e3ead183161176e123af0b1e25195b95df3ee09de1f48ea"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_019.png",
+        "class": "side",
+        "sha256": "0cd352a5abf946a7a9081e774c84774aedbdcf4f72f7456c5f2ac00a5acee1ef"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_014.png",
+        "class": "side",
+        "sha256": "359591c12b8f5aec7610de01c11b7fb2f7382bf5711cda0527137720ef3924ac"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_020.png",
+        "class": "side",
+        "sha256": "a1eaf20188fb6656f745f9ab4df7968c0d2bd8869fedd45586c44480cc041fb5"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_012.png",
+        "class": "side",
+        "sha256": "4db241297fde2d5e641bbb3f3266340e9c9f08c194988d679a4a22aa9ba941a6"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_015.png",
+        "class": "side",
+        "sha256": "aeb7f6c22fb6209877b6907f894f9d0baa135fed22760b727f65ab1024e6d73c"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_027.png",
+        "class": "side",
+        "sha256": "8fc4898e010fbe8e8d5fda757631475fe2a9ce0af873661256167108cdded38c"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_005.png",
+        "class": "side",
+        "sha256": "951e7754db748bae68df889bf6a3ce45e8fd28aaecbec6900be3497bad5885cc"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_013.png",
+        "class": "side",
+        "sha256": "8037aaee3de418c94b18f621dc3f250ba3141d338850fe2563f50313b27429ab"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_004.png",
+        "class": "side",
+        "sha256": "707146cab0e6de85c93bfb4d77401bf952451eb2d8156ae97bab8945e1eeddb3"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_002.png",
+        "class": "side",
+        "sha256": "5ee3182a93be9b2b71452901ddf2c98ee237e5df9823f3d30e86b617a99324ce"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_017.png",
+        "class": "side",
+        "sha256": "0e8840d65f86d31f5da5a50ba5a7b44bec5244c99358e2cf6e1796d62d8e2ff8"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_016.png",
+        "class": "sole",
+        "sha256": "a15e8518e34e7e60714ec38fbb72685aec7031af94353a20704391775bd0f2cc"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_032.png",
+        "class": "sole",
+        "sha256": "202fc59cb157b811129160a65356e117653b2ed45788c60bfbb708e6e3bb5f2d"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_028.png",
+        "class": "sole",
+        "sha256": "2637db110f581f95e0128f175719e2115a8e45b27058947c6466752d39f60496"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_013.png",
+        "class": "sole",
+        "sha256": "98916d1589834e79ef4233bd19ed4096db877e53a17b08820ea3cbcf3f5ce995"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_014.png",
+        "class": "sole",
+        "sha256": "0b68958b00c04e394ac957755c41b76bbdbde766b90674ed270f0b60cf48c607"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_004.png",
+        "class": "sole",
+        "sha256": "be83433932a6a0b83a9a5c6cb6a74367c30ffa44b8fa34e75d8079d70a728c1b"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_017.png",
+        "class": "sole",
+        "sha256": "00ac56abba1ef0f3b1ee90af7996453877d6c0ec16cb51589acffdac64effdf9"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_001.png",
+        "class": "sole",
+        "sha256": "4733d241c37247598cb1a8112c5cff5e2fde83ca907870c320d2170d7499467f"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_002.png",
+        "class": "sole",
+        "sha256": "4f4e5b24c3d8fa4ae92386f5c94d7d8c892986f906445a074cbb148d2c350220"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_033.png",
+        "class": "sole",
+        "sha256": "16cd853f3e770e114398c624f837163c92245edab9d856ff548df314a89a2ec9"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_019.png",
+        "class": "sole",
+        "sha256": "18e04ac8016a6a7541a5a212f0e47ab0931070c5fbeca8ec9d0774408e874dca"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_018.png",
+        "class": "sole",
+        "sha256": "e72a87b3023dc26dcdd123b53ca57bdc7ad57f35b1a3827653d907031f4b0484"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_006.png",
+        "class": "sole",
+        "sha256": "352b817619edea86d570e58f8ae3e72a5823672f8abc39e170192e10469354b7"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_009.png",
+        "class": "sole",
+        "sha256": "06cabdf493409412e2d7c756dfec9c470ed121f625003650d927a5954d3583b9"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_030.png",
+        "class": "sole",
+        "sha256": "4f5aab01010cba08e98ff0f517fe5ca49437d2c1b458f372527d03c60f150d52"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_026.png",
+        "class": "sole",
+        "sha256": "a5d787456b091a1a50ce11259ef7b8ca5ab4a6de996d2b8380c6621fa89ca394"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_031.png",
+        "class": "sole",
+        "sha256": "e02e6284c2f3b3ac6e5ee8929d0e00b5ce690e4747898aa68f46a626138d9362"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_011.png",
+        "class": "sole",
+        "sha256": "a2d7ac028dcaaa61e61a9a54e7aa879f8d66915575b89a634365e932faf92597"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_024.png",
+        "class": "sole",
+        "sha256": "598009f858aaab4000bdcc11ae89f59b18370fa412b0ebb8fa6907f62cf46750"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_019.png",
+        "class": "dorsum",
+        "sha256": "1e3d630da8402e9d5b6fd1088cb623a7885e0629be7d4a1b65523d862bcfad72"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_015.png",
+        "class": "dorsum",
+        "sha256": "4dcff35b2be99c9e3b5a910df5fadd903b6213dbfa69da5fbc1fc25f1a9b9205"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_023.png",
+        "class": "dorsum",
+        "sha256": "98443091bedb4c21d5fc75d48b7e09d2d37682817a72f9d20d9c37f6b8d7105c"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_018.png",
+        "class": "dorsum",
+        "sha256": "aef9cefe250f8d15a2083107a9455ecd5909ee1918d7bc9f64f009c25791feb2"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_008.png",
+        "class": "dorsum",
+        "sha256": "3f635e735e7cc74c6d47e0ac5ed0ea28c9e3ae4ebc735adfbd20b621daeb9374"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_002.png",
+        "class": "dorsum",
+        "sha256": "a87de8749f6ea6ec962b855addabca30fb3a76062e9b1847fe19c556fa82366e"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_009.png",
+        "class": "dorsum",
+        "sha256": "1543350a0170d1e7882319b5b496e075cc4f7d10c305e967efc30e7293b7d87e"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_027.png",
+        "class": "dorsum",
+        "sha256": "40dedc1595fe1f550f029515ef6df0b007d3de64e5902582772d05c78c5bd88b"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_025.png",
+        "class": "dorsum",
+        "sha256": "6df4afe1a1f64381e7e38325d30bf8b8b4e034e8d036950852aca7b397190137"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_017.png",
+        "class": "dorsum",
+        "sha256": "41aaaaa02de0b075ea0d73bd7ed022a0481cb34077b8d013bfd60d30ff98073f"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_010.png",
+        "class": "dorsum",
+        "sha256": "49c94a45504e711254c9bbfaeaa22e84afec17dcfbdb977314316ccc9b0323e6"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_020.png",
+        "class": "dorsum",
+        "sha256": "968e9c4256cbdba06b9a6359561ad67ab921e3cfeca5d046f0c46f5fde81d0f5"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_021.png",
+        "class": "dorsum",
+        "sha256": "4d1e2eca4cb3f8c0acbb4fbfea89af9e262d097e50613cb1776ef0b13fdddd9a"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_016.png",
+        "class": "dorsum",
+        "sha256": "9dcc862a7c59a5ebdcee4d8afa96277d2e0629e83653895b6d96bf37de47fa5d"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_013.png",
+        "class": "dorsum",
+        "sha256": "dee6f0812b3bc53c26da4d9a47f0e563fc0a2347e850d3aae312b04d24f007ea"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_030.png",
+        "class": "dorsum",
+        "sha256": "4e686ae89e17391cf156b5491ebab1f82d8a95c43d082899156fac846624c922"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_006.png",
+        "class": "dorsum",
+        "sha256": "3c55ec12b6549774218d62c8826a1131038e407d34665ac49f54513940f28c2d"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_007.png",
+        "class": "dorsum",
+        "sha256": "c224555643a9ccce1547391970f491b83ab78f4251b319c45dcb26b63b4dfb15"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_005.jpg",
+        "class": "dorsum",
+        "sha256": "b8e71b59762a3bdc26b6c6fd50f4a0fd5e478972eb92bd58dea7480c83b5a2ea"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_014.png",
+        "class": "side",
+        "sha256": "e12ab1dded01362306b34264c99f85d77dced7239c345f2057130d5eafefe052"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_016.png",
+        "class": "side",
+        "sha256": "826706f277aaf373b35bfe31943e401e1afee518cffeb4957111e90bd59313c2"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_006.png",
+        "class": "side",
+        "sha256": "ab756ab9559cf4346236770f27a05bef1e96389702315c3a88643a9cbad747d6"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_025.png",
+        "class": "side",
+        "sha256": "f86ce2c6f187ce7e4b8c93a72abaf1e81e973d2678adba06a6e4cf639742b264"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_024.png",
+        "class": "side",
+        "sha256": "9bad3101dc25a14b5a479a89b09d3259ce4ce9a3f791c75b4e825a428414f33f"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_002.png",
+        "class": "side",
+        "sha256": "450be13ba72a2ac7ae516937018ef861a0ebca0a36a56a785f30f338ba1ce837"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_017.png",
+        "class": "side",
+        "sha256": "5c56d70ebe23380701429780906cfc696cbe8d7181eb193ffcd880720d2474de"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_001.png",
+        "class": "side",
+        "sha256": "8c864a61e0a3b97f8b55bf1e938f14abc6915018c6ee8459812de09e15a1cf3a"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_010.png",
+        "class": "side",
+        "sha256": "792c1184e2e6148df421d16c45f1bc573053a94dc831c5daf61b8cf42c1d96ad"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_023.png",
+        "class": "side",
+        "sha256": "1a367bc0ae0a262a545f161e8b96a546a88ea1ee41ae9edc502d9ef8109ad9ca"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_003.png",
+        "class": "side",
+        "sha256": "557f90a2b995f82f6f0289e4ea970439fdfd9783166c015920b34d7a1dab1963"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_022.png",
+        "class": "side",
+        "sha256": "ae7ed3353e9357936fdd28abd15619d0eafd859415c21e65188af20b1741f7b4"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_007.png",
+        "class": "side",
+        "sha256": "cdeeddb968559d900259c3e5f91dfdafe261b9134068b98a085e538a47365c2d"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_020.png",
+        "class": "side",
+        "sha256": "4f6fa2011a4de597b5a25dc88c78ec54a55519a02850ceb588968337cb2ddcbe"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_026.png",
+        "class": "side",
+        "sha256": "0a496d9fc40bcd4f3ae0f4bfb748cf29e867da1d67c5b9a2a9858b185aaddee7"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_005.png",
+        "class": "side",
+        "sha256": "44d69a27ed485c84de65ef5be9252475752e1ddce3524d09edbcedb196fae65b"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_015.png",
+        "class": "side",
+        "sha256": "f2a2f11ebf6c93bed72d2fd63df5a57530c10ce0d975f5212b12766502cb4555"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_006.png",
+        "class": "sole",
+        "sha256": "16f28e37c027f4d133fe9b92350ff33d713b4b31e382d32cd0d962e30d72178f"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_020.png",
+        "class": "sole",
+        "sha256": "7b0807e7c82ac0105e9ac08e2f8b2a4b0f6591d4ca7cfff8519e97e6fb766010"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_004.png",
+        "class": "sole",
+        "sha256": "c0364affe40ba5cc3466e078c5e2ec6011e6f72abf221dcc23e7b4d62d18c398"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_018.png",
+        "class": "sole",
+        "sha256": "f533488a81e55e96a62b805cfadcc4ffc09ee095bfa018e749e32b7a7fc59cf3"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_005.png",
+        "class": "sole",
+        "sha256": "cd02888c56c11b6b1120336003f336f05d2cac0b41dba561da386ebb95370c66"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_009.png",
+        "class": "sole",
+        "sha256": "45f579b3397789f98c51ff30bf9cb32d7e6c80cae18a0bb2787b0def6ca9d969"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_024.png",
+        "class": "sole",
+        "sha256": "906101877fa2e83618c4f111460734504323a7370810de40c162ee9f9bfeaf05"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_015.png",
+        "class": "sole",
+        "sha256": "b43d90b1c6e17cb0d2eab995ee56eb71ca99cabfa1d546e1b3b044ba340cc1e2"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_029.png",
+        "class": "sole",
+        "sha256": "8cfb53b8b5afae63cf8a42465a2ae372bb926f096597e3c299353b1d5e5fabe9"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_010.png",
+        "class": "sole",
+        "sha256": "3834a9dd4d9e97f67490da9ac0c47307d669afdc6cb3c17df13a58645a8e5598"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_011.png",
+        "class": "sole",
+        "sha256": "da4a1a5d88d78222bc9db63b835d280adf407ded5dac8a94828f9b862f0cc295"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_008.png",
+        "class": "sole",
+        "sha256": "89f1bfef637cbd5f4f39def25d62b1aad8ad08abfce3cf4ab33f447dcb30fc59"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_002.png",
+        "class": "sole",
+        "sha256": "a81e6a0356ea030d525386fb228d45ac427ad06b4363dad3039211e7290162ff"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_030.png",
+        "class": "sole",
+        "sha256": "00a5196af35971b82aaea79c85793bae96f41b1b646a8bd6913ecd2877e1d00a"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_016.jpg",
+        "class": "dorsum",
+        "sha256": "989ca314ad1844d7cc8fc9bb7bc6aa1d790c42729eed038b41e7b37e21508187"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_031.jpg",
+        "class": "dorsum",
+        "sha256": "41c1a88342ed3903eb8c1cf6a48e9d71890f9381319791e249e63c05cfb7afea"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_034.jpg",
+        "class": "dorsum",
+        "sha256": "ad3fdd98d159d273a2b948c8f7b3cda2339977d6014ce9edc1dc1f77b06d5da5"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_035.jpg",
+        "class": "dorsum",
+        "sha256": "4cb1eb9189b83dd7c2bb4942c938e3081732e6a461dc552206b440128b37027c"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_018.jpg",
+        "class": "dorsum",
+        "sha256": "afda31fcd08795acda731c266f7ef6219da8107eb489d67a50ec61d4a11d9af5"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_007.jpg",
+        "class": "dorsum",
+        "sha256": "9271f100b292a64ac50a02c9d180ad9508027500d9ed4199aeae2bb070e0741f"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_015.jpg",
+        "class": "dorsum",
+        "sha256": "749a440a056e525b4a6c6b14b834ee8408f1559c32ecede0f0aac211b8244638"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_011.jpg",
+        "class": "dorsum",
+        "sha256": "a4167dda178c255d2e9b6ac0b1565ccb29fdf6c00bc42cb7cc686d2c0b3f97d3"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_027.jpg",
+        "class": "dorsum",
+        "sha256": "e6fdd7506a431937b75ab009f5bc70714caa65f280ece92514cc381d0f000147"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_030.jpg",
+        "class": "dorsum",
+        "sha256": "763ede10a4bd2323238efd5e7446ffdadece3cedbd8a0106c0992cef4265f662"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_023.jpg",
+        "class": "dorsum",
+        "sha256": "72325fbc22a5667d8c2658b8bccc07b804dcb5f1b2c7bdbf931a4941076923fd"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_026.jpg",
+        "class": "dorsum",
+        "sha256": "565f9ff0edd17a007afc61913146b57d607706a3e264448f2f9a0530139a6485"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_009.jpg",
+        "class": "dorsum",
+        "sha256": "c54bf58b2ccec2fa47a73c6a45a865e34e692ac85d20127351cc39f587a3ca92"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_021.jpg",
+        "class": "dorsum",
+        "sha256": "9a84cf410955043732c0a2f59c04da967f28595560ad7e6c58cd07da76581fe2"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_037.jpg",
+        "class": "dorsum",
+        "sha256": "baad399d56b3568c63bcae771ff9e91d5a93a6fef36051ae965febb0aecd714c"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_010.jpg",
+        "class": "dorsum",
+        "sha256": "b7794082b4339850e38143dc7210eab172d53bb1d76383c8665aa2c769a5273d"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_033.jpg",
+        "class": "dorsum",
+        "sha256": "d285f97436b4937ac03b81357da0289059bb44d35f4e166878c0d5ca6fca9e7f"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_022.jpg",
+        "class": "dorsum",
+        "sha256": "85ce47b936f10348fc2e3e57fb7dddd0891cb0072776eb3adb98b370cae7f5dd"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_006.jpg",
+        "class": "dorsum",
+        "sha256": "940fff2a60a623f3e5bafc7a660be5f6f62842949ea53d42184a68dfa19f19e2"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_001.jpg",
+        "class": "dorsum",
+        "sha256": "d3d2d980b29ec946f4ad095748f31aefc688477718a219f224e0e8dd3790eaaa"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_032.jpg",
+        "class": "dorsum",
+        "sha256": "17e82f25080c5c8747c760708a8ce0029ddfc50e3cabcdd0f8d06f2319440f48"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_036.jpg",
+        "class": "dorsum",
+        "sha256": "811460923e52dcc60697219bd77aa713d246eb5a803ec0c33c2078f5bc335682"
+      }
+    ],
+    "validation": [
+      {
+        "id": "dataset/dataset_leftside/images/leftside_025.png",
+        "class": "side",
+        "sha256": "2b233a8b44802f912df376071d50d159e9df527d85ba87117f468403d994dcb7"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_003.png",
+        "class": "side",
+        "sha256": "dc023f6a2a1973ba35673ea57b03ba831f199fa1922f159d35c3ff2003eb96f1"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_011.png",
+        "class": "side",
+        "sha256": "35a4a73181155f16edc0679db0c2eaffdda2febe05ca17757323ac974f4882e3"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_016.png",
+        "class": "side",
+        "sha256": "a7ac401fb22831ee9f94cbcaed36dee067a1f1689c5139000cc327bff348e867"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_018.png",
+        "class": "side",
+        "sha256": "df3a9173777262fa7d3f7a8cf1b4a5e883ae2ed6ef9d101fd02ab774fbba0241"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_024.png",
+        "class": "side",
+        "sha256": "bf064a9afd24107c2edd7aa8530ab1942390fc3d1fd26300f3283b4a37ff9a78"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_005.png",
+        "class": "sole",
+        "sha256": "fce2443a3899a3c20f774159f5dd3b0cadc06bafd60b6dec953aa2c84301d49a"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_021.png",
+        "class": "sole",
+        "sha256": "bd6349d4b325553efbeec73fa7ab056405eb1dbe8e3b3d2c5c00c9948af4f68c"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_008.png",
+        "class": "sole",
+        "sha256": "72b064d9bc48544bbec1ffbdaad4ac9746afb96e4f719ea71b83522edfe35cbd"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_025.png",
+        "class": "sole",
+        "sha256": "b862fd364f4a4d004b54596ec66d49995f94a2372bf468ef94dc63ea968718ed"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_012.png",
+        "class": "sole",
+        "sha256": "a9e7c75eb115ccd54ce95bb649c748e11ca5d3304f263d3737c5b641c0530142"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_015.png",
+        "class": "sole",
+        "sha256": "8f75e36e1e9e6b7abcc5ff50ebadbc31d1651b625f50930e040707090eae9e72"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_022.png",
+        "class": "sole",
+        "sha256": "7ddb880d7086330d47acae7d0028ef4d72c401cd3279edb32fa736a41f6d1ef0"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_012.png",
+        "class": "dorsum",
+        "sha256": "65e77b96640850395990828016ceaf9797574f364294a656edeeadf34efe0e88"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_026.png",
+        "class": "dorsum",
+        "sha256": "5c1220a17eebf480d065066eecdc15cef72a783b2baf1a5e26e7177292c66589"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_028.png",
+        "class": "dorsum",
+        "sha256": "6f97a9adbeed99d140cca7562e726d74ee3eaff86310153bdb8ee1d4e2033f34"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_004.png",
+        "class": "dorsum",
+        "sha256": "dc3e829f3ec934e77a5bebf0446331108e10cd6123c9e09f5627dce8804a6c3b"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_001.png",
+        "class": "dorsum",
+        "sha256": "26dd2ae89f416992652a7af41aa483574f3efbbba1d14467624de3b629e07ad9"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_005.png",
+        "class": "dorsum",
+        "sha256": "7aea33223450bc40a45423edf1db102e9d4d1af50a1a173ab62a8cf122b786f8"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_008.png",
+        "class": "side",
+        "sha256": "1fa79236efd31c943268a9c9d41ea69b15924e2c470e96aadd580913c7d176a0"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_004.png",
+        "class": "side",
+        "sha256": "d8cf740ba606500a63da9efac5f1b4f3a17f0ed12c10d4be4db4b4031de3b0bc"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_021.png",
+        "class": "side",
+        "sha256": "7fcb806dc85401fcdcfae278163dc3e8d9377d89332e998f2b9e30ce381bfe0e"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_027.png",
+        "class": "side",
+        "sha256": "c04139adaa3f1d813ec5081f7df7211213af3987733a8a625b8d2d662cb824cd"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_018.png",
+        "class": "side",
+        "sha256": "61d028383a2e358b832e9d3ca13fe9c763cd3d3d27fbce7805b22eeb1907bfe6"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_013.png",
+        "class": "sole",
+        "sha256": "b14beaf514bec32592ac02d67e40b38eac244ab5fe23f71ea6479ac792e5638e"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_001.png",
+        "class": "sole",
+        "sha256": "be28a195a23d578a32847565fcf60e9446eeb89021d3640b198ef6d482e2a971"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_012.png",
+        "class": "sole",
+        "sha256": "9a514a45aad9a5527697532b104a23250ecca58a061618c75c7900948863d23e"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_023.png",
+        "class": "sole",
+        "sha256": "e5b977b0eefe3aab13e014d2be18c990504a6068918166408a59829ec3d20870"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_025.png",
+        "class": "sole",
+        "sha256": "42bb47b6f82d82f3328771d533a8e225189ea2b1ba75e57d73e4f3fffa7a9459"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_026.png",
+        "class": "sole",
+        "sha256": "9cf055c1ec872a866290fd99bb4fa35c44c3132ee18781310922d7613c19bf9e"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_027.png",
+        "class": "sole",
+        "sha256": "7308c996e374e9f18c23112c04a07713444b883c7d599c82c08e2fd89e972150"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_028.png",
+        "class": "sole",
+        "sha256": "699e657e0dd7a55b7e30f6317e530c8c07bbf89489bca8d21beb510b57c82023"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_003.png",
+        "class": "sole",
+        "sha256": "ad3164a49c663b1c8ec06e0b8dcbb3154736c2e56b6b48fe03c41adacd879f98"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_014.png",
+        "class": "sole",
+        "sha256": "c61bd4feb4746636256f65d60fb5c3373662b84f57aa84c886d1992ff3283cb4"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_019.png",
+        "class": "sole",
+        "sha256": "c13f904aa52d886269903497d5f951ffeea301add3256ea5438422bc8295f54a"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_039.jpg",
+        "class": "dorsum",
+        "sha256": "4986a4e287c068fc9ff240d19679c62a2a82cba01348482af3921c057b6ffd50"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_028.jpg",
+        "class": "dorsum",
+        "sha256": "b9656aeb9861e39c7cc31cace4c3dc8b9cab1dc2a5ea6b333902b834b3f1a7ea"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_017.jpg",
+        "class": "dorsum",
+        "sha256": "a07ec44d3f07bb9d422c0b5264a790027660cf71a2b44a8dbeb9d7dd462a5506"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_024.jpg",
+        "class": "dorsum",
+        "sha256": "3cf74644f13fe9570fe16fd1c49a74cb08dd1a4c301d5ea24d3416f7bf46df55"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_038.jpg",
+        "class": "dorsum",
+        "sha256": "cf9ea131141eb4f7b5c4e88885cede1746e3e6eb1010a2d882cc26fe23c5ff99"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_008.jpg",
+        "class": "dorsum",
+        "sha256": "18367ff5fc2f85a5e84b6aa49418e5d4c3a759de22a0646b506905f9173fc1f5"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_025.jpg",
+        "class": "dorsum",
+        "sha256": "ed73e6bd4f01049a85b2b83990ae2a67fdb693777c38a1234d5fbbadaf29dcae"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_012.jpg",
+        "class": "dorsum",
+        "sha256": "5a2ca43a99d18c2aea9b36fda121cca1ba21dcaa452bbef36eec9db1242518db"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_013.jpg",
+        "class": "dorsum",
+        "sha256": "8303101191232c15c4d6c7ed8ac7a29317a97cc6ff24fd691199e9557f3a96ea"
+      }
+    ],
+    "test": [
+      {
+        "id": "dataset/dataset_leftside/images/leftside_022.png",
+        "class": "side",
+        "sha256": "57801a988eed389b0421f4f567bfc963a9fc6f437f9491e1ef050b52cb4e7928"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_030.png",
+        "class": "side",
+        "sha256": "b552feb4675257018b2594dce87f8b73f0acb3907514bcdf5e368644c7db0163"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_006.png",
+        "class": "side",
+        "sha256": "4cb851ebfdd2db5ab6bd8a581de6f58d539b19a4f7e23d3b40ded44e990e7c53"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_031.png",
+        "class": "side",
+        "sha256": "8f1efe40eb9131b2803175359adea486ad733fae12b094db4509fbbf00900c4a"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_007.png",
+        "class": "side",
+        "sha256": "d5eaa51618b772946d5cdfa4b014c1103403ecfa1dc8da63659a7b30f08ef9ba"
+      },
+      {
+        "id": "dataset/dataset_leftside/images/leftside_023.png",
+        "class": "side",
+        "sha256": "67e7ace5ce66acdf89555dfac56953552f247edc6b66b14352943caa0eb669f5"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_007.png",
+        "class": "sole",
+        "sha256": "b673384754aff5da3a7d365bf1277313f211d9845add2bd3481c2daba13c4d4d"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_003.png",
+        "class": "sole",
+        "sha256": "abfbe8190378d984286525657fa9eac9b2e8c42932822039584d3c677b4b1843"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_020.png",
+        "class": "sole",
+        "sha256": "2c1e0cea8b2a1aae908895fccf2bc6ddf0c0d2bf165e58c20a1061fdf4ab35d1"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_027.png",
+        "class": "sole",
+        "sha256": "cad31f3f41e0e66152e656add84ff1580bdc049586d928114fed6c130167be43"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_023.png",
+        "class": "sole",
+        "sha256": "b50f8da8d4d4bdb1a91502c8f3a11259f96032d10a1a845ffc29dcdb962c8533"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_010.png",
+        "class": "sole",
+        "sha256": "71d112b875e0e2c8dd81250c98681c25f5412cc884793600e27d21f9c68d1322"
+      },
+      {
+        "id": "dataset/dataset_leftsole/images/leftsole_029.png",
+        "class": "sole",
+        "sha256": "790628bd4e1ea221aca6a8d78e39e5319e1d31c58bdc170dbb8ff1554d876726"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_014.png",
+        "class": "dorsum",
+        "sha256": "fe507bb555f8349a3eb6bc452d4deb0c424e1d589f6ce3a9aea2e5f0d356537b"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_003.png",
+        "class": "dorsum",
+        "sha256": "66b695f1bcdf25f80d7ee17c98f8a8b19bbb0323b9cf7a87728675592ede2d1b"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_029.png",
+        "class": "dorsum",
+        "sha256": "a995faace682f1c0b409aefe9fd434dc4d316cd7b29ed3cabff5564901996c1f"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_022.png",
+        "class": "dorsum",
+        "sha256": "8274e9bfa7a99d9f03eb9c1acd19f8911faf8c739318299e3b07a11927280ca1"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_024.png",
+        "class": "dorsum",
+        "sha256": "a0a5d548ca0eed3a36ec74d5be585de936f57cda649db03554584b6ff53592cb"
+      },
+      {
+        "id": "dataset/dataset_lefttop/images/lefttop_011.png",
+        "class": "dorsum",
+        "sha256": "4d8fcfd91144f5fd880c1b9af61cd3c804176ef26cd784363b649fc62b832980"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_009.png",
+        "class": "side",
+        "sha256": "b4f710243f54c83ec347c61a4ec94c60bc3f1425ceb542026d609316190352d9"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_019.png",
+        "class": "side",
+        "sha256": "1280098d3dc73e7d040e348009f7da8bdfdf85e65562a0ed5c4d999ddbd974b8"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_028.png",
+        "class": "side",
+        "sha256": "157dc3851b904cd31bb6037e5644b60150bddcc329ee8b1d4fa1221a01d7274d"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_011.png",
+        "class": "side",
+        "sha256": "cdc976ba3ec02ff9e415ae730e2a69badfc0f9729cea5155a2741e7a4e322ba8"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_012.png",
+        "class": "side",
+        "sha256": "8d2e0da5cac833cb864f893282da90a26c7cbd5843c8e8ac4403bfe3d204df28"
+      },
+      {
+        "id": "dataset/dataset_rightside/images/rightside_013.png",
+        "class": "side",
+        "sha256": "3fdddaa23162df5fda1f8aedfbea12dc5633ab03806c99414355a9c0af2cf3bb"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_017.png",
+        "class": "sole",
+        "sha256": "f48b9102aba05e98ce745920ad5fc2d28b9014e9a56fd6d261b99ec05eebd724"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_021.png",
+        "class": "sole",
+        "sha256": "e4a203993fb1b91caf476dbbcf854c446530c121009a65d3949a03175db8e1a1"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_016.png",
+        "class": "sole",
+        "sha256": "4e8e2de194a1a6930eabb64968cdc51b787d285ec808d2b88192fcee10c96ce3"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_022.png",
+        "class": "sole",
+        "sha256": "b0a3d187c9aabf398414999583e9f5d217fc69e100b0872db1ae28b54c1a9108"
+      },
+      {
+        "id": "dataset/dataset_rightsole/images/rightsole_007.png",
+        "class": "sole",
+        "sha256": "ecc1b12c3f80ae9a5353db606fcf9d77c2c4cd9a683be3bf4496430dbd29e78a"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_014.jpg",
+        "class": "dorsum",
+        "sha256": "330e1971faea0db32a2213c4afd3d7a80b557dd81412e6c5a271ab74187abaf8"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_020.jpg",
+        "class": "dorsum",
+        "sha256": "a0580af5dee765258e67eb6a98caf74539c179f7dc87cc039a7f5ae6c728c9cc"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_003.jpg",
+        "class": "dorsum",
+        "sha256": "a0549c2120b1f15dfdb3f19c9eb18d937e731f08fdec4a04ddc0ee316861eee6"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_004.jpg",
+        "class": "dorsum",
+        "sha256": "42d02d5dabed4c40dc45c04baf9d328d781d9b7905e3e59d9d393d016d017709"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_019.jpg",
+        "class": "dorsum",
+        "sha256": "76c9f5aa50f23d448e3c23eb42bbde078eefe03de38a623369aa052b652f0eec"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_029.jpg",
+        "class": "dorsum",
+        "sha256": "df51f9804fed195a488616dc35b4c33aadcd5648a481bda44d9cccaf8bbc75d9"
+      },
+      {
+        "id": "dataset/dataset_righttop/images/righttop_002.jpg",
+        "class": "dorsum",
+        "sha256": "ab3c957a80e7a9e33433a96dba7012c549637f55f66c07e76f30a4cc0d21f650"
+      }
+    ]
+  }
+}

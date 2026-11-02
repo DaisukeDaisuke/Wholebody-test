@@ -1,0 +1,85 @@
+{
+  "status": "published",
+  "repoId": "RabbitDaisuke/VRC-Compact59-7fe4fac1",
+  "repoUrl": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1",
+  "modelRevision": "5c59352d2913f7e9da69e76894691c02e929c49a",
+  "manifestRevision": "532b23c3ac9daf153414faeddecc6c3307c6a012",
+  "manifestUrl": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/532b23c3ac9daf153414faeddecc6c3307c6a012/models.json",
+  "publicAnonymousHashVerified": true,
+  "privateInputsIncluded": false,
+  "fileCount": 12,
+  "files": [
+    {
+      "path": "body/fast59.onnx",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/body/fast59.onnx",
+      "bytes": 14111405,
+      "sha256": "f9bf8961b6962fcd433d2c43b281746c383c3ecefbd6f654a969e073d2cd033a"
+    },
+    {
+      "path": "body/compact59.onnx",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/body/compact59.onnx",
+      "bytes": 16534271,
+      "sha256": "35c9524fecc929a6d6fdfc116b5ccae47cf07fb63383ed9bafbd024939e5bce0"
+    },
+    {
+      "path": "parts/foot-view.onnx",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/parts/foot-view.onnx",
+      "bytes": 3940401,
+      "sha256": "5575fedf5987c4b3dbb19e840d1e954ec608bb5e6b6c4d236331ac08ad25771c"
+    },
+    {
+      "path": "parts/pfld68.onnx",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/parts/pfld68.onnx",
+      "bytes": 2987921,
+      "sha256": "7d7bbd5c6a1d9272e58d9773898284a1905d872eba9a662df9b5f20f1ba6f83e"
+    },
+    {
+      "path": "evidence/compact59-metrics.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/evidence/compact59-metrics.json",
+      "bytes": 13891,
+      "sha256": "87dd8ac297af99e01b5930afc396eba3c5246cba86dfc10f8c752ee844b63dbd"
+    },
+    {
+      "path": "evidence/fast59-metrics.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/evidence/fast59-metrics.json",
+      "bytes": 26184,
+      "sha256": "8d4b1ae33cb8e802be8b5c8f43af1998b21b9740a16aa2c84de793c420665032"
+    },
+    {
+      "path": "evidence/parts-metrics.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/evidence/parts-metrics.json",
+      "bytes": 4776,
+      "sha256": "b6b57c5fbbd4732b92a7109e6190104ca13e82cd029e614f8d2d494c038321c1"
+    },
+    {
+      "path": "README.md",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/README.md",
+      "bytes": 6165,
+      "sha256": "9a9c2e0546d21062aea3e874536f8ec48ae7181274fcf522284067dbc94909f3"
+    },
+    {
+      "path": "models.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/532b23c3ac9daf153414faeddecc6c3307c6a012/models.json",
+      "bytes": 21915,
+      "sha256": "6048572286dac092eef010b7c8c021a1cec71829a23175b1e8fdb9200ba4ca16"
+    },
+    {
+      "path": "configs/fast59.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/532b23c3ac9daf153414faeddecc6c3307c6a012/configs/fast59.json",
+      "bytes": 5722,
+      "sha256": "1068fa103cfbb358bfb33d9bf240d350d57b35ec230cdf93a628c2e4580abbd4"
+    },
+    {
+      "path": "configs/compact59.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/532b23c3ac9daf153414faeddecc6c3307c6a012/configs/compact59.json",
+      "bytes": 4704,
+      "sha256": "ac6ca6cd818c16bda9e8944005eadaeba3a8385f51039139775bc824faa3793a"
+    },
+    {
+      "path": "configs/parts.json",
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/532b23c3ac9daf153414faeddecc6c3307c6a012/configs/parts.json",
+      "bytes": 3783,
+      "sha256": "b1a4f402ff7f6078967bfdb1c9d24e2e40d876a16580c9dbf182e1b2e57a9b50"
+    }
+  ]
+}

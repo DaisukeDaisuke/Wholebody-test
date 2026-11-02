@@ -12,7 +12,19 @@ Hugging Faceへの公開とヘッドレスNode.js推論は `compact.yml` で行�
 
 動画とVRMは常に横並び。単眼では胴体の画像平面上の傾きを反映し、観測できないyaw/pitch・絶対root移動を抑制する。範囲外・不自然な骨長・時間跳躍を除外し、腰や肩が見えなくても可視の前腕・下腿は残す。部位単位の短い保持と腕を下げた待機姿勢への復帰、再検出の連続確認、角速度制限を行う。観測がない点をトラッカーの新しい観測として送らない。
 
-推論はCPU/WASMが既定で、全身だけWebGPUへ切り替えられる。顔はCPU/WASMで最大10Hz、足はCPU/WASMで最大5Hz、有効な領域があるときだけ推論する。VRMは30Hzで1回だけ更新し、一時停止中は視点の変更時だけ再描画する。
+推論はCPU/WASM・全身15Hzが既定で、全身の頻度とWebGPU利用を変更できる。顔はCPU/WASMで最大10Hz、足はCPU/WASMで最大5Hz、有効な領域があるときだけ推論する。VRMは30Hzで1回だけ更新し、一時停止中は視点の変更時だけ再描画する。15Hzは実Node検証と同じ頻度であり、1回のモデル推論時間を短縮したこととは区別する。
+
+## Colab GPU 学習
+
+[GPUノートブックを開く](https://colab.research.google.com/github/DaisukeDaisuke/Wholebody-test/blob/8cae0c0b9243628a3910060a0bdc09d8b04b13e8/colab/VRC_Compact59_GPU_7fe4fac1.ipynb)。学習用ZIPを選択し、GPUランタイムですべてのセルを実行する。2種類の低解像度backbone候補を4000 stepずつ学習し、元解像度を保つINT8候補も2種類比較する。詳しい構成は[colab/README-ja.md](colab/README-ja.md)。返却ファイル名は `VRC_Compact59_Colab_Result_7fe4fac1.zip`。
+
+[Actions run 41394188181](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41394188181) で、Python 3.13の依存導入、実画像での短い学習更新、ONNX書き出しと数値照合、INT8校正と推論まで確認済み。これはCPUでの実行確認であり、本番のCUDA学習や精度達成を意味しない。
+
+## 実動画とVRMの検証
+
+[Actions run 41394715364](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41394715364) で、公式公開動画10秒・150フレームを実際に推論し、実VRMを299回更新した。同じ観測からの旧版比較で、骨ローカル回転変化のp95は19.485°/frameから1.753°/frame、最大は180°から30°となった。149描画フレームで観測骨の駆動を保持している。詳細・測定範囲は[RESULTS.md](RESULTS.md)。
+
+非公開動画はActionsの入力secretが未設定のため未実行。公開動画の結果をその代わりとは扱わない。新しいGPU候補もColabの本学習結果が戻るまで採用しない。
 
 ## 先行Compact59の実測結果
 
@@ -26,7 +38,7 @@ PCK@0.05は192×256人物切り抜き上の距離12.8px以内を正解とする�
 
 身体13点、足6点、両手30点、顔10点の59点。DWPose-tの学習済みCSPNeXtを保持し、133チャネルの7×7出力畳み込みと133 tokenのGAUを59へ縮め、PyTorchで教師分布と座標ラベルから再学習する。出力をGatherで間引くだけの変換ではない。
 
-公開COCO画像512枚を学習、画像IDが重複しない128枚を評価に使用する。元の133点、構造縮小した直後、蒸留後を同じ入力で比較し、PCK・部位別誤差・重み数・MACs・ONNXサイズ・CPU中央値/p95を記録する。精度は人物の正解矩形を使用する条件付き評価であり、画像全体からの人物検出精度ではない。
+先行Compact59では公開COCO画像512枚を学習、画像IDが重複しない128枚を評価に使用した。元の133点、構造縮小した直後、蒸留後を同じ入力で比較し、PCK・部位別誤差・重み数・MACs・ONNXサイズ・CPU中央値/p95を記録した。精度は人物の正解矩形を使用する条件付き評価であり、画像全体からの人物検出精度ではない。
 
 足の向きはFootNet公開191画像の足裏・甲・側面ラベルで別途学習する。MobileNetV3-smallの固定特徴から独自分類層を学習し、validationで温度と閾値を設定した後、独立testで精度を測る。近接画像を分割間で分離するが人物IDがないため、人物が独立した評価とは断言しない。
 

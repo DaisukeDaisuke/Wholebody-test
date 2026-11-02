@@ -1,0 +1,46 @@
+{
+  "reference_sha256": "fcaae4a08ea7610b4bcc5d0b9e8a7e80fd6f2d998be41438a1b2737056a7623f",
+  "public_images": 8,
+  "same_rgb_normalized_input": true,
+  "maximum_absolute_logit_error": 6.8694353103637695e-06,
+  "rmse_logits": 6.084299771455281e-07,
+  "mean_keypoint_error_input_px": 0.00046992481203007516,
+  "p95_keypoint_error_input_px": 0.0,
+  "maximum_keypoint_error_input_px": 0.5,
+  "per_image": [
+    {
+      "maximum_absolute_logit_error": 6.8694353103637695e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    },
+    {
+      "maximum_absolute_logit_error": 3.0994415283203125e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    },
+    {
+      "maximum_absolute_logit_error": 4.250556230545044e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    },
+    {
+      "maximum_absolute_logit_error": 5.081295967102051e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    },
+    {
+      "maximum_absolute_logit_error": 3.993511199951172e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    },
+    {
+      "maximum_absolute_logit_error": 3.516674041748047e-06,
+      "maximum_keypoint_error_input_px": 0.5
+    },
+    {
+      "maximum_absolute_logit_error": 5.6996941566467285e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    },
+    {
+      "maximum_absolute_logit_error": 4.380941390991211e-06,
+      "maximum_keypoint_error_input_px": 0.0
+    }
+  ],
+  "passed": true,
+  "source_url": "https://huggingface.co/RabbitDaisuke/RTMPose-Wholebody-onnx/resolve/9d7f318c43452baf33f1b39d39c1f8c03512aeb5/rtmpose-t-256x192-fp32.onnx"
+}

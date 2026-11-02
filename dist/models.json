@@ -1,0 +1,870 @@
+{
+  "schemaVersion": 2,
+  "body": {
+    "id": "compact59-dwpose-t-distilled",
+    "format": "onnx",
+    "file": "compact59.onnx",
+    "sha256": "35c9524fecc929a6d6fdfc116b5ccae47cf07fb63383ed9bafbd024939e5bce0",
+    "bytes": 16534271,
+    "input": {
+      "name": "input",
+      "shape": [
+        1,
+        3,
+        256,
+        192
+      ],
+      "dtype": "float32",
+      "color": "RGB",
+      "mean": [
+        123.67500305175781,
+        116.27999877929688,
+        103.52999877929688
+      ],
+      "std": [
+        58.39500045776367,
+        57.119998931884766,
+        57.375
+      ],
+      "crop": {
+        "source": "person bounding box xyxy",
+        "padding": 1.25,
+        "aspect_width_over_height": 0.75,
+        "resize": "affine bilinear",
+        "border": "constant RGB 0",
+        "coordinate_mapping": "source_xy = (argmax(simcc)/2)/[192,256]*padded_extent + center - padded_extent/2"
+      }
+    },
+    "outputs": [
+      {
+        "name": "simcc_x",
+        "shape": [
+          1,
+          59,
+          384
+        ]
+      },
+      {
+        "name": "simcc_y",
+        "shape": [
+          1,
+          59,
+          512
+        ]
+      }
+    ],
+    "simcc_split_ratio": 2,
+    "coco133_indices": [
+      0,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      92,
+      93,
+      95,
+      96,
+      97,
+      99,
+      100,
+      101,
+      103,
+      104,
+      105,
+      107,
+      108,
+      109,
+      111,
+      113,
+      114,
+      116,
+      117,
+      118,
+      120,
+      121,
+      122,
+      124,
+      125,
+      126,
+      128,
+      129,
+      130,
+      132,
+      60,
+      64,
+      67,
+      69,
+      71,
+      77,
+      85,
+      89,
+      25,
+      37
+    ],
+    "score": {
+      "formula": "min(max(simcc_x), max(simcc_y))",
+      "calibrated_probability": false,
+      "validity": "Low score means uncertain. A high score is not proof of visibility."
+    },
+    "keypoints": [
+      "nose",
+      "left_shoulder",
+      "right_shoulder",
+      "left_elbow",
+      "right_elbow",
+      "left_wrist",
+      "right_wrist",
+      "left_hip",
+      "right_hip",
+      "left_knee",
+      "right_knee",
+      "left_ankle",
+      "right_ankle",
+      "left_big_toe",
+      "left_small_toe",
+      "left_heel",
+      "right_big_toe",
+      "right_small_toe",
+      "right_heel",
+      "left_thumb_base",
+      "left_thumb_middle",
+      "left_thumb_tip",
+      "left_index_base",
+      "left_index_middle",
+      "left_index_tip",
+      "left_middle_base",
+      "left_middle_middle",
+      "left_middle_tip",
+      "left_ring_base",
+      "left_ring_middle",
+      "left_ring_tip",
+      "left_little_base",
+      "left_little_middle",
+      "left_little_tip",
+      "right_thumb_base",
+      "right_thumb_middle",
+      "right_thumb_tip",
+      "right_index_base",
+      "right_index_middle",
+      "right_index_tip",
+      "right_middle_base",
+      "right_middle_middle",
+      "right_middle_tip",
+      "right_ring_base",
+      "right_ring_middle",
+      "right_ring_tip",
+      "right_little_base",
+      "right_little_middle",
+      "right_little_tip",
+      "eye_a_upper",
+      "eye_a_lower",
+      "eye_b_upper",
+      "eye_b_lower",
+      "mouth_left",
+      "mouth_right",
+      "mouth_inner_upper",
+      "mouth_inner_lower",
+      "cheek_contour_a",
+      "cheek_contour_b"
+    ],
+    "groups": {
+      "body": [
+        0,
+        13
+      ],
+      "feet": [
+        13,
+        19
+      ],
+      "left_hand": [
+        19,
+        34
+      ],
+      "right_hand": [
+        34,
+        49
+      ],
+      "face": [
+        49,
+        59
+      ]
+    },
+    "training": {
+      "steps": 1800,
+      "batch_size": 16,
+      "seed": 20261102,
+      "learning_rate": 0.00002,
+      "distillation_weight": 0.85,
+      "frozen_pretrained_backbone": true,
+      "trainable_module": "59-token RTMCC head",
+      "teacher": "DWPose-t 133, not RTMW3D-X"
+    },
+    "evaluation": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/evidence/compact59-metrics.json",
+    "pretrained_checkpoint": {
+      "url": "https://huggingface.co/yzd-v/DWPose/resolve/main/dw-tt_ucoco.pth",
+      "sha256": "7097f5af7f100609acffe58eb01734f02ffbfe22794fe029c2ea0a4d68d0f42d",
+      "license": "Apache-2.0"
+    },
+    "training_annotations": {
+      "source": "COCO-WholeBody",
+      "url": "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json",
+      "license": "CC BY-NC 4.0; research and noncommercial use"
+    },
+    "limitations": [
+      "2D landmarks; no measured metric depth from a single uncalibrated camera",
+      "Cheek contour is a geometry cue, not a learned cheek-puff label",
+      "Sole versus dorsum needs the separate foot-state model",
+      "Unobserved landmarks are estimates, not measurements",
+      "GitHub Actions CPU benchmark is not a user-GPU measurement"
+    ],
+    "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/body/compact59.onnx"
+  },
+  "recommendedBody": "standard",
+  "bodies": {
+    "fast": {
+      "id": "fast59-192-distilled",
+      "format": "onnx",
+      "file": "fast59.onnx",
+      "sha256": "f9bf8961b6962fcd433d2c43b281746c383c3ecefbd6f654a969e073d2cd033a",
+      "bytes": 14111405,
+      "input": {
+        "name": "input",
+        "shape": [
+          1,
+          3,
+          192,
+          144
+        ],
+        "dtype": "float32",
+        "color": "RGB",
+        "mean": [
+          123.67500305175781,
+          116.27999877929688,
+          103.52999877929688
+        ],
+        "std": [
+          58.39500045776367,
+          57.119998931884766,
+          57.375
+        ],
+        "crop": {
+          "source": "person bounding box xywh",
+          "padding": 1.25,
+          "aspect_width_over_height": 0.75,
+          "resize": "affine bilinear",
+          "border": "constant RGB 0",
+          "coordinate_mapping": "source_xy = (argmax(simcc)/2)/[input_width,input_height]*padded_extent + center - padded_extent/2"
+        }
+      },
+      "outputs": [
+        {
+          "name": "simcc_x",
+          "shape": [
+            1,
+            59,
+            288
+          ]
+        },
+        {
+          "name": "simcc_y",
+          "shape": [
+            1,
+            59,
+            384
+          ]
+        }
+      ],
+      "simcc_split_ratio": 2,
+      "coco133_indices": [
+        0,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        92,
+        93,
+        95,
+        96,
+        97,
+        99,
+        100,
+        101,
+        103,
+        104,
+        105,
+        107,
+        108,
+        109,
+        111,
+        113,
+        114,
+        116,
+        117,
+        118,
+        120,
+        121,
+        122,
+        124,
+        125,
+        126,
+        128,
+        129,
+        130,
+        132,
+        60,
+        64,
+        67,
+        69,
+        71,
+        77,
+        85,
+        89,
+        25,
+        37
+      ],
+      "score": {
+        "formula": "min(max(simcc_x), max(simcc_y))",
+        "calibrated_probability": false,
+        "validity": "Low score means uncertain. A high score is not proof of visibility."
+      },
+      "keypoints": [
+        "nose",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle",
+        "left_big_toe",
+        "left_small_toe",
+        "left_heel",
+        "right_big_toe",
+        "right_small_toe",
+        "right_heel",
+        "left_thumb_base",
+        "left_thumb_middle",
+        "left_thumb_tip",
+        "left_index_base",
+        "left_index_middle",
+        "left_index_tip",
+        "left_middle_base",
+        "left_middle_middle",
+        "left_middle_tip",
+        "left_ring_base",
+        "left_ring_middle",
+        "left_ring_tip",
+        "left_little_base",
+        "left_little_middle",
+        "left_little_tip",
+        "right_thumb_base",
+        "right_thumb_middle",
+        "right_thumb_tip",
+        "right_index_base",
+        "right_index_middle",
+        "right_index_tip",
+        "right_middle_base",
+        "right_middle_middle",
+        "right_middle_tip",
+        "right_ring_base",
+        "right_ring_middle",
+        "right_ring_tip",
+        "right_little_base",
+        "right_little_middle",
+        "right_little_tip",
+        "eye_a_upper",
+        "eye_a_lower",
+        "eye_b_upper",
+        "eye_b_lower",
+        "mouth_left",
+        "mouth_right",
+        "mouth_inner_upper",
+        "mouth_inner_lower",
+        "cheek_contour_a",
+        "cheek_contour_b"
+      ],
+      "groups": {
+        "body": [
+          0,
+          13
+        ],
+        "feet": [
+          13,
+          19
+        ],
+        "left_hand": [
+          19,
+          34
+        ],
+        "right_hand": [
+          34,
+          49
+        ],
+        "face": [
+          49,
+          59
+        ]
+      },
+      "training": {
+        "teacher": "DWPose-t 133",
+        "initialization": "previous trained Compact59 plus native operator resizing",
+        "steps_per_candidate": 2400,
+        "warmup_head_steps": 600,
+        "full_model_steps": 1800,
+        "batch_size": 16,
+        "seed": 20261104,
+        "distillation_weight": 0.9,
+        "feature_distillation_weight": 0.05,
+        "batchnorm_statistics_frozen": true,
+        "backbone_learning_rate": 0.000004,
+        "head_learning_rate": 0.0002,
+        "candidates": [
+          {
+            "id": "fast59-128",
+            "width": 96,
+            "height": 128,
+            "kernel": 3
+          },
+          {
+            "id": "fast59-160",
+            "width": 120,
+            "height": 160,
+            "kernel": 5
+          },
+          {
+            "id": "fast59-192",
+            "width": 144,
+            "height": 192,
+            "kernel": 5
+          }
+        ],
+        "selected_checkpoint_step": 2000,
+        "baseline_checkpoint_sha256": "d02fae81b19029c8b450ac0794083465f0c5f98518cf399cd63159844e5d718a"
+      },
+      "evaluation": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/evidence/fast59-metrics.json",
+      "source_run": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41389814327",
+      "pretrained_checkpoint": {
+        "url": "https://huggingface.co/yzd-v/DWPose/resolve/main/dw-tt_ucoco.pth",
+        "sha256": "7097f5af7f100609acffe58eb01734f02ffbfe22794fe029c2ea0a4d68d0f42d",
+        "license": "Apache-2.0"
+      },
+      "training_annotations": {
+        "source": "COCO-WholeBody",
+        "url": "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json",
+        "license": "CC BY-NC 4.0; research and noncommercial use"
+      },
+      "limitations": [
+        "2D landmarks; no measured metric depth from a single uncalibrated camera",
+        "Cheek contour is a geometry cue, not a learned cheek-puff label",
+        "Sole versus dorsum needs the separate foot-state model",
+        "Unobserved landmarks are estimates, not measurements",
+        "GitHub Actions CPU benchmark is not a user-GPU measurement",
+        "Validation chooses resolution/checkpoint; the final test cannot change that choice",
+        "Lower spatial resolution can lose small hand and foot detail",
+        "MAC reduction is architecture evidence, not a measured user-GPU utilization reduction"
+      ],
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/body/fast59.onnx"
+    },
+    "standard": {
+      "id": "compact59-dwpose-t-distilled",
+      "format": "onnx",
+      "file": "compact59.onnx",
+      "sha256": "35c9524fecc929a6d6fdfc116b5ccae47cf07fb63383ed9bafbd024939e5bce0",
+      "bytes": 16534271,
+      "input": {
+        "name": "input",
+        "shape": [
+          1,
+          3,
+          256,
+          192
+        ],
+        "dtype": "float32",
+        "color": "RGB",
+        "mean": [
+          123.67500305175781,
+          116.27999877929688,
+          103.52999877929688
+        ],
+        "std": [
+          58.39500045776367,
+          57.119998931884766,
+          57.375
+        ],
+        "crop": {
+          "source": "person bounding box xyxy",
+          "padding": 1.25,
+          "aspect_width_over_height": 0.75,
+          "resize": "affine bilinear",
+          "border": "constant RGB 0",
+          "coordinate_mapping": "source_xy = (argmax(simcc)/2)/[192,256]*padded_extent + center - padded_extent/2"
+        }
+      },
+      "outputs": [
+        {
+          "name": "simcc_x",
+          "shape": [
+            1,
+            59,
+            384
+          ]
+        },
+        {
+          "name": "simcc_y",
+          "shape": [
+            1,
+            59,
+            512
+          ]
+        }
+      ],
+      "simcc_split_ratio": 2,
+      "coco133_indices": [
+        0,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        92,
+        93,
+        95,
+        96,
+        97,
+        99,
+        100,
+        101,
+        103,
+        104,
+        105,
+        107,
+        108,
+        109,
+        111,
+        113,
+        114,
+        116,
+        117,
+        118,
+        120,
+        121,
+        122,
+        124,
+        125,
+        126,
+        128,
+        129,
+        130,
+        132,
+        60,
+        64,
+        67,
+        69,
+        71,
+        77,
+        85,
+        89,
+        25,
+        37
+      ],
+      "score": {
+        "formula": "min(max(simcc_x), max(simcc_y))",
+        "calibrated_probability": false,
+        "validity": "Low score means uncertain. A high score is not proof of visibility."
+      },
+      "keypoints": [
+        "nose",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle",
+        "left_big_toe",
+        "left_small_toe",
+        "left_heel",
+        "right_big_toe",
+        "right_small_toe",
+        "right_heel",
+        "left_thumb_base",
+        "left_thumb_middle",
+        "left_thumb_tip",
+        "left_index_base",
+        "left_index_middle",
+        "left_index_tip",
+        "left_middle_base",
+        "left_middle_middle",
+        "left_middle_tip",
+        "left_ring_base",
+        "left_ring_middle",
+        "left_ring_tip",
+        "left_little_base",
+        "left_little_middle",
+        "left_little_tip",
+        "right_thumb_base",
+        "right_thumb_middle",
+        "right_thumb_tip",
+        "right_index_base",
+        "right_index_middle",
+        "right_index_tip",
+        "right_middle_base",
+        "right_middle_middle",
+        "right_middle_tip",
+        "right_ring_base",
+        "right_ring_middle",
+        "right_ring_tip",
+        "right_little_base",
+        "right_little_middle",
+        "right_little_tip",
+        "eye_a_upper",
+        "eye_a_lower",
+        "eye_b_upper",
+        "eye_b_lower",
+        "mouth_left",
+        "mouth_right",
+        "mouth_inner_upper",
+        "mouth_inner_lower",
+        "cheek_contour_a",
+        "cheek_contour_b"
+      ],
+      "groups": {
+        "body": [
+          0,
+          13
+        ],
+        "feet": [
+          13,
+          19
+        ],
+        "left_hand": [
+          19,
+          34
+        ],
+        "right_hand": [
+          34,
+          49
+        ],
+        "face": [
+          49,
+          59
+        ]
+      },
+      "training": {
+        "steps": 1800,
+        "batch_size": 16,
+        "seed": 20261102,
+        "learning_rate": 0.00002,
+        "distillation_weight": 0.85,
+        "frozen_pretrained_backbone": true,
+        "trainable_module": "59-token RTMCC head",
+        "teacher": "DWPose-t 133, not RTMW3D-X"
+      },
+      "evaluation": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/evidence/compact59-metrics.json",
+      "pretrained_checkpoint": {
+        "url": "https://huggingface.co/yzd-v/DWPose/resolve/main/dw-tt_ucoco.pth",
+        "sha256": "7097f5af7f100609acffe58eb01734f02ffbfe22794fe029c2ea0a4d68d0f42d",
+        "license": "Apache-2.0"
+      },
+      "training_annotations": {
+        "source": "COCO-WholeBody",
+        "url": "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json",
+        "license": "CC BY-NC 4.0; research and noncommercial use"
+      },
+      "limitations": [
+        "2D landmarks; no measured metric depth from a single uncalibrated camera",
+        "Cheek contour is a geometry cue, not a learned cheek-puff label",
+        "Sole versus dorsum needs the separate foot-state model",
+        "Unobserved landmarks are estimates, not measurements",
+        "GitHub Actions CPU benchmark is not a user-GPU measurement"
+      ],
+      "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/body/compact59.onnx"
+    }
+  },
+  "parts": {
+    "schemaVersion": 1,
+    "models": [
+      {
+        "id": "foot-view-mobilenetv3-small",
+        "kind": "footView",
+        "filename": "foot-view.onnx",
+        "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/parts/foot-view.onnx",
+        "bytes": 3940401,
+        "sha256": "5575fedf5987c4b3dbb19e840d1e954ec608bb5e6b6c4d236331ac08ad25771c",
+        "inputName": "images",
+        "outputNames": [
+          "probabilities"
+        ],
+        "inputShape": [
+          1,
+          3,
+          128,
+          128
+        ],
+        "inputWH": [
+          128,
+          128
+        ],
+        "outputShape": [
+          1,
+          3
+        ],
+        "color": "RGB",
+        "scale": 0.00392156862745098,
+        "mean": [
+          0.48500001430511475,
+          0.4560000002384186,
+          0.4059999883174896
+        ],
+        "std": [
+          0.2290000021457672,
+          0.2240000069141388,
+          0.22499999403953552
+        ],
+        "crop": "square known-foot ROI with 1.15 padding",
+        "classOrder": [
+          "sole",
+          "dorsum",
+          "side"
+        ],
+        "classLabels": [
+          "足裏",
+          "足の甲",
+          "側面"
+        ],
+        "confidenceThreshold": 0.4,
+        "temperature": 0.800000011920929,
+        "parameters": 982691,
+        "trainableParameters": 55683,
+        "weightOrigin": "TorchVision IMAGENET1K_V1 MobileNetV3-Small features; new 576→96→3 head trained on FootNet",
+        "scope": "view classification of a provided foot crop; no foot-presence or generic object detection",
+        "license": "new head and integration under repository license; TorchVision BSD-3-Clause; FootNet CC-BY-4.0 attribution",
+        "source": "https://zenodo.org/records/20457253"
+      },
+      {
+        "id": "pfld-face68-upstream",
+        "kind": "faceLandmarks",
+        "url": "https://huggingface.co/RabbitDaisuke/VRC-Compact59-7fe4fac1/resolve/5c59352d2913f7e9da69e76894691c02e929c49a/parts/pfld68.onnx",
+        "upstreamRevision": "f575be168a24af6f4807c852173fdfedf6d2c67d",
+        "upstreamGitBlob": "8f9822861a3d18f60672db1410cf7ff5a28012a9",
+        "sha256": "7d7bbd5c6a1d9272e58d9773898284a1905d872eba9a662df9b5f20f1ba6f83e",
+        "bytes": 2987921,
+        "redistributed": true,
+        "inputName": "input",
+        "inputShape": [
+          1,
+          3,
+          112,
+          112
+        ],
+        "declaredInputShape": [
+          "batch_size",
+          3,
+          112,
+          112
+        ],
+        "inputWH": [
+          112,
+          112
+        ],
+        "freeDimensionOverrides": {
+          "batch_size": 1
+        },
+        "outputNames": [
+          "output"
+        ],
+        "keypointCount": 68,
+        "outputLayout": "flat interleaved normalized x,y in the square ROI",
+        "color": "RGB",
+        "scale": 0.00392156862745098,
+        "mean": [
+          0,
+          0,
+          0
+        ],
+        "std": [
+          1,
+          1,
+          1
+        ],
+        "crop": "square face ROI; max(width,height)*1.1; black outside image",
+        "stateOutputs": [
+          "eyeLeftEAR",
+          "eyeRightEAR",
+          "mouthOpenRatio",
+          "cheekWidthNormalized",
+          "noseXY"
+        ],
+        "cheekSemantics": "2D cheek-width ratio, not learned cheek-puff recognition",
+        "license": "Upstream checkpoint redistribution grant unverified; no MIT or blanket permissive license asserted.",
+        "source": "https://github.com/cunjian/pytorch_face_landmark",
+        "upstreamUrl": "https://raw.githubusercontent.com/cunjian/pytorch_face_landmark/f575be168a24af6f4807c852173fdfedf6d2c67d/onnx/pfld.onnx",
+        "filename": "pfld68.onnx"
+      }
+    ],
+    "provenance": {
+      "gitCommit": "9799f7a6c6a096fe4bc99d2a3294481137d4f640",
+      "workflowRunId": "41385649138",
+      "python": "3.11.17",
+      "torch": "2.6.0+cpu",
+      "onnxruntime": "1.20.1",
+      "privateVideoUsed": false
+    }
+  },
+  "hub": {
+    "repoId": "RabbitDaisuke/VRC-Compact59-7fe4fac1",
+    "modelRevision": "5c59352d2913f7e9da69e76894691c02e929c49a",
+    "publicAnonymousHashVerified": true
+  }
+}
