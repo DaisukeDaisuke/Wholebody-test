@@ -8,6 +8,9 @@ upload/
 *.avi
 *.webm
 *.mkv
+*.tar
+*.tar.*
+private-vrc-input/
 *.pt
 *.pth
 artifacts/

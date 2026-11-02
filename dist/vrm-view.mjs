@@ -96,7 +96,7 @@ function updateGeometry(geometry, positions, colors) {
 
 // Shared by the browser viewer and the Node integration in GitHub Actions.
 // No renderer or DOM is required for this local-buffer loading path.
-export async function loadEmbeddedVRM(buffer) {
+export async function loadEmbeddedVRM(buffer, { headless = false } = {}) {
   readEmbeddedGLB(buffer);
   const blobURLs = new Set();
   let pendingScene = null;
@@ -110,6 +110,9 @@ export async function loadEmbeddedVRM(buffer) {
       throw new Error('VRMの外部リソース参照を拒否しました。テクスチャを埋め込んだファイルを選択してください。');
     });
     const loader = new GLTFLoader(manager);
+    // Headless evaluation updates the real rig, expressions and spring bones;
+    // textures are irrelevant to those operations and need no DOM image codec.
+    if (headless) loader.register(() => ({ name: 'VRC_HEADLESS_TEXTURES', loadTexture: async () => new THREE.Texture() }));
     loader.register(parser => new VRMLoaderPlugin(parser));
     const gltf = await loader.parseAsync(buffer, '');
     pendingScene = gltf.scene;
@@ -134,7 +137,7 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   scene.background = new THREE.Color(0x101b24);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100);
   camera.position.set(2.3, 1.65, 4.3);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'low-power' });
   renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.setAttribute('aria-label', 'VRMと推定骨格の3D表示。ドラッグで回転、ホイールで拡大。');
@@ -164,6 +167,9 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   let disposed = false, loading = false, generation = 0, lastRetarget = null, poseIdentity = null, framed = false;
   let frameId = 0, lastTick = performance.now(), lastDraw = -Infinity, enabled = true, metricStart = lastTick, renderFrames = 0, renderMsTotal = 0;
   let lastStateKey = '', loadError = '', lastPoseError = '';
+  let poseReceivedAt = -Infinity, paused = false, pauseStartedAt = 0, pauseTotalMs = 0, skeletonDirty = false;
+  let expression = null, expressionReceivedAt = -Infinity, viewDirty = true;
+  const visualTime = () => (paused ? pauseStartedAt : performance.now()) - pauseTotalMs;
 
   const poseSummary = () => {
     const validJointCount = (pose?.joints || []).filter((joint, id) => visibleJoint(id) && usableJoint(joint)).length;
@@ -187,6 +193,7 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
     skeletonGroup.visible = !vrm || displayMode === 'skeleton';
   }
   function resetView() {
+    viewDirty = true;
     const object = avatarGroup.visible ? avatarGroup : skeletonGroup;
     object.updateMatrixWorld(true);
     object.traverse(node => { if (node.isSkinnedMesh) node.computeBoundingBox(); });
@@ -236,26 +243,16 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   }
   function updatePose(nextPose, options = {}) {
     if (disposed) return;
-    pose = nextPose || null;
+    viewDirty = true;
+    poseReceivedAt = visualTime();
+    pose = nextPose ? { ...nextPose, mediaTimestampMs: nextPose.timestampMs,
+      timestampMs: poseReceivedAt, observationTimestampMs: poseReceivedAt } : null;
     sourceMode = options.sourceMode === 'demo' ? 'demo' : 'live';
     const identity = [sourceMode, pose?.inputMode || 'wholebody', pose?.sourceId || pose?.footHintsSourceId || '', pose?.targetVersion || '', pose?.coordinateFrame || '', pose?.worldCalibrationId || '', pose?.units || ''].join('|');
     if (identity !== poseIdentity) { poseIdentity = identity; lastRetarget = null; framed = false; }
-    drawSkeleton(pose);
-    if (vrm && rig) {
-      try {
-        vrm.humanoid.resetNormalizedPose();
-        lastRetarget = retargetPose(pose, rig, { previous: lastRetarget, footHints: pose?.footHints });
-        vrm.humanoid.setNormalizedPose(lastRetarget.normalizedPose || {});
-        // retargetPose includes calibrated root displacement in hips.position.
-        // The display group never adds root.position a second time.
-        vrm.update(0);
-        lastPoseError = '';
-      } catch (error) {
-        lastRetarget = null;
-        if (lastPoseError !== error.message) { lastPoseError = error.message; onError(error); }
-      }
-    }
+    skeletonDirty = true;
     visibility();
+    if (skeletonGroup.visible) { drawSkeleton(pose); skeletonDirty = false; }
     const info = poseSummary();
     if (!framed && (info.validJointCount || info.planarFeet || vrm)) { resetView(); framed = true; }
     notify();
@@ -297,19 +294,38 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   }
   function setDisplayMode(mode) {
     displayMode = mode === 'avatar' && vrm ? 'avatar' : 'skeleton';
+    if (displayMode === 'skeleton') { drawSkeleton(pose); skeletonDirty = false; }
     visibility(); resetView(); notify();
   }
   function updateExpressions(face) {
+    expression = face; expressionReceivedAt = visualTime(); viewDirty = true;
+  }
+  function applyExpressions(now) {
     if (!vrm?.expressionManager) return;
+    const face = now - expressionReceivedAt < 400 ? expression : null;
     const clamp = value => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
     vrm.expressionManager.setValue('blinkLeft', face?.valid ? clamp(face.blinkLeft) : 0);
     vrm.expressionManager.setValue('blinkRight', face?.valid ? clamp(face.blinkRight) : 0);
     vrm.expressionManager.setValue('aa', face?.valid ? clamp(face.mouthOpen) : 0);
     // A contour-width proxy is not a cheek-puff blendshape observation.
-    vrm.expressionManager.update();
+  }
+  function applyPose(now) {
+    if (!vrm || !rig) return;
+    const stale = pose && now - poseReceivedAt > 250;
+    const current = !pose ? null : stale ? { ...pose, timestampMs: now,
+      joints: pose.joints.map((joint, id) => ({ ...joint, id, position: null, score: 0, source: 'missing', observable2D: false })),
+      root: { ...pose.root, valid: false, position: null }, footHints: {} } : { ...pose, timestampMs: now };
+    try {
+      lastRetarget = retargetPose(current, rig, { previous: lastRetarget, timestampMs: now, footHints: current?.footHints });
+      vrm.humanoid.setNormalizedPose(lastRetarget.normalizedPose || {});
+      lastPoseError = '';
+    } catch (error) {
+      if (lastPoseError !== error.message) { lastPoseError = error.message; onError(error); }
+    }
   }
   const resize = () => {
     if (disposed) return;
+    viewDirty = true;
     const width = Math.max(container.clientWidth, 1), height = Math.max(container.clientHeight, 1);
     renderer.setSize(width, height, false);
     camera.aspect = width / height; camera.updateProjectionMatrix();
@@ -326,13 +342,19 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
     lastDraw = now;
     const dt = Math.min(Math.max((now - lastTick) / 1000, 0), 0.05); lastTick = now;
     const start = performance.now();
-    controls.update();
-    vrm?.update(dt);
+    const controlsChanged = controls.update();
+    const time = visualTime();
+    if ((paused || !pose) && !viewDirty && !controlsChanged) { frameId = requestAnimationFrame(tick); return; }
+    applyPose(time); applyExpressions(time);
+    if (skeletonDirty && skeletonGroup.visible) { drawSkeleton(pose); skeletonDirty = false; }
+    vrm?.update(paused ? 0 : dt);
     renderer.render(scene, camera);
+    viewDirty = false;
     renderMsTotal += performance.now() - start; renderFrames++;
     if (now - metricStart >= 1000) {
       onRenderMetrics({ fps: renderFrames * 1000 / (now - metricStart), renderMs: renderMsTotal / renderFrames, sourceMode, measurement: 'cpu-submit-and-vrm-update' });
       metricStart = now; renderFrames = 0; renderMsTotal = 0;
+      notify();
     }
     frameId = requestAnimationFrame(tick);
   }
@@ -340,6 +362,14 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   notify(true);
   return {
     updatePose, updateExpressions, loadFile, unload, resetView, setDisplayMode, getStatus: status,
+    setPaused(value) {
+      const next = value === true;
+      if (next === paused) return;
+      if (next) pauseStartedAt = performance.now();
+      else pauseTotalMs += performance.now() - pauseStartedAt;
+      paused = next;
+      viewDirty = true;
+    },
     setEnabled(value) { enabled = value === true; if (enabled) lastDraw = -Infinity; },
     dispose() {
       if (disposed) return;

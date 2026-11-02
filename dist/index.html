@@ -2,39 +2,43 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="59点の軽量VRCトラッキング。端末内動画、表情、手、足の状態を可視化。">
-<title>VRC Compact · 軽量トラッキング</title>
+<meta name="description" content="映像とVRMを並べて確認する59点トラッキング。">
+<title>VRC Compact</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-<header><a class="brand" href="./"><span class="brand-icon">◎</span> VRC <b>Compact</b><span class="pill">59 POINTS</span></a><div class="top-status"><i id="status-dot"></i><span id="top-status">入力を選択してください</span></div><a class="github" href="https://github.com/DaisukeDaisuke/Wholebody-test/tree/compact-vrc-20261102-7fe4fac1" target="_blank" rel="noreferrer">ソース ↗</a></header>
+<header><a class="brand" href="./">VRC <b>Compact</b><span class="pill">59点</span></a><div class="top-status"><i id="status-dot"></i><span id="top-status">入力待ち</span></div><a class="github" href="https://github.com/DaisukeDaisuke/Wholebody-test/tree/compact-vrc-20261102-7fe4fac1" target="_blank" rel="noreferrer">ソース ↗</a></header>
 <main>
-<section class="intro"><div><p class="eyebrow">LOCAL MOTION STUDIO</p><h1>必要な動きを、<em>軽く。</em></h1><p>身体・手・表情・足の向き。動画もカメラも、この端末の中で処理します。</p></div><div class="intro-mark"><strong>59</strong><span>身体13 · 足6 · 手30 · 顔10</span></div></section>
 <section class="workspace">
 <aside class="controls panel">
-<div class="section-label"><span>01</span><h2>入力と推論</h2></div>
-<label class="file-button primary">動画をひらく<input id="video-file" type="file" accept="video/*" multiple></label><button id="camera-add" class="secondary">カメラを追加</button><select id="camera-select" aria-label="カメラの選択"><option value="">標準カメラ</option></select><p class="small">動画・VRMはアップロードしません。最大3入力を1組のモデルで順に処理します。</p>
-<label>見る部位<select id="mode"><option value="wholebody">全身・手・顔・足</option><option value="foot">足のアップ</option><option value="face">顔のアップ</option></select></label>
-<label>推論エンジン<select id="backend"><option value="webgpu">WebGPU</option><option value="wasm">CPU / WASM</option></select></label>
+<h2>入力・推論</h2>
+<label class="file-button primary">動画をひらく<input id="video-file" type="file" accept="video/*" multiple></label>
+<div class="camera-row"><select id="camera-select" aria-label="カメラ"><option value="">標準カメラ</option></select><button id="camera-add" class="secondary">追加</button></div>
+<label>部位<select id="mode"><option value="wholebody">全身・手・顔・足</option><option value="foot">足のアップ</option><option value="face">顔のアップ</option></select></label>
+<label>モデル<select id="model-choice"><option value="fast">軽量59点</option><option value="standard">従来59点（比較用）</option></select></label>
+<label>全身の推論<select id="backend"><option value="wasm">CPU / WASM</option><option value="webgpu">WebGPU</option></select></label>
 <label>推論頻度 <output id="fps-value">30</output> 回/秒<input id="target-fps" type="range" min="5" max="60" step="5" value="30"></label>
-<div class="toggle"><input id="face-enabled" type="checkbox" checked><label for="face-enabled">顔の拡大推論 <small>最大15回/秒</small></label></div>
-<div class="toggle"><input id="foot-enabled" type="checkbox" checked><label for="foot-enabled">足裏・甲の分類 <small>最大10回/秒</small></label></div>
-<button id="start" class="primary">モデルを読み込んで開始</button><button id="stop" class="secondary" disabled>一時停止</button><p id="model-status" class="status" aria-live="polite">学習済みモデルを初回だけ取得します。</p>
-<details><summary>人物の範囲・精度</summary><p class="small">映像をドラッグすると推論範囲を指定できます。足・顔のアップでは対象の部位を囲んでください。</p><button id="reset-roi" class="secondary">選択中の範囲を全画面へ</button><label>表示の信頼度<input id="confidence" type="range" min="0.05" max="0.8" step="0.05" value="0.25"></label><label>本人の身長（m）<input id="height" type="number" min="0.5" max="2.6" step="0.01" value="1.70"></label><div class="toggle"><input id="height-confirm" type="checkbox"><label for="height-confirm">本人の実寸を入力済み</label></div><label class="file-button secondary">カメラ校正JSON<input id="calibration-file" type="file" accept="application/json,.json"></label><p id="calibration-status" class="small">未校正：3D表示は単眼による推定です。</p></details>
-<details><summary>モデル・計測結果</summary><p id="model-detail" class="small"></p><a href="./evidence/compact59-metrics.json" target="_blank">全身モデルの評価JSON</a><br><a href="./evidence/parts-report.json" target="_blank">顔・足の評価JSON</a><br><button id="export-metrics" class="secondary">この端末の計測値を保存</button></details>
+<div class="toggle"><input id="face-enabled" type="checkbox" checked><label for="face-enabled">表情 <small>CPU・最大10回/秒</small></label></div>
+<div class="toggle"><input id="foot-enabled" type="checkbox" checked><label for="foot-enabled">足裏・甲・側面 <small>CPU・最大5回/秒</small></label></div>
+<button id="start" class="primary">開始</button><button id="stop" class="secondary" disabled>一時停止</button>
+<p id="model-status" class="status" aria-live="polite">モデル未読込</p>
+<details><summary>範囲・校正</summary><p class="small">映像上をドラッグして人物や部位を囲みます。</p><button id="reset-roi" class="secondary">範囲を全画面へ戻す</button><label>表示閾値<input id="confidence" type="range" min="0.05" max="0.8" step="0.05" value="0.25"></label><label>身長（m）<input id="height" type="number" min="0.5" max="2.6" step="0.01" value="1.70"></label><div class="toggle"><input id="height-confirm" type="checkbox"><label for="height-confirm">実寸を入力済み</label></div><label class="file-button secondary">カメラ校正JSON<input id="calibration-file" type="file" accept="application/json,.json"></label><p id="calibration-status" class="small">未校正</p></details>
+<details><summary>モデル・計測結果</summary><p id="model-detail" class="small"></p><a href="./evidence/fast59-metrics.json" target="_blank">軽量モデルの評価</a><br><a href="./evidence/parts-report.json" target="_blank">顔・足の評価</a><br><a href="./evidence/headless-video.json" target="_blank">Node推論・VRM安定性</a><br><button id="export-metrics" class="secondary">この端末の計測値を保存</button></details>
 </aside>
 <div class="stage">
-<div class="stage-toolbar"><div class="tabs"><button class="active" data-view="input">映像と検出点</button><button data-view="avatar">3D / VRM</button><button data-view="split">両方を表示</button></div><span id="privacy-badge">● 端末内処理</span></div>
-<div id="stage-content" class="view-input">
-<div id="sources"><div id="empty-state"><div class="empty-grid"></div><div class="empty-content"><div class="motion-icon">◌</div><h2>あなたの映像から、動きを読む。</h2><p>左の「動画をひらく」からローカル動画を選択。<br>人物の範囲を囲んで、推論を開始してください。</p><span>動画ファイルは外部へ送信されません</span></div></div></div>
-<div id="avatar-pane"><div id="avatar-canvas"></div><div class="avatar-tools"><label class="file-button secondary">VRMをひらく<input id="vrm-file" type="file" accept=".vrm,.glb"></label><button id="reset-view" class="secondary">視点を戻す</button><a href="https://booth.pm/ja/items/3733351" target="_blank" rel="noreferrer">ずんだもん公式モデル ↗</a></div><p id="avatar-status">検出した関節を3D表示。VRMを選択すると姿勢と表情を反映します。</p></div>
+<div class="stage-toolbar"><strong>映像 / VRM</strong><span id="tracking-state">観測待ち</span></div>
+<div id="stage-content" class="view-split">
+<div id="sources"></div>
+<div id="avatar-pane"><div class="avatar-tools"><label class="file-button secondary">VRMをひらく<input id="vrm-file" type="file" accept=".vrm,.glb"></label><button id="reset-view" class="secondary">視点を戻す</button></div><div id="avatar-canvas"></div><p id="avatar-status">VRM未選択</p></div>
 </div>
-<div class="measure-strip"><div><span>推論</span><strong id="measure-fps">—<small> fps</small></strong></div><div><span>全身モデル</span><strong id="measure-body">—<small> ms</small></strong></div><div><span>全処理 p95</span><strong id="measure-p95">—<small> ms</small></strong></div><div><span>表示中の点</span><strong id="measure-points">—<small> / 59</small></strong></div></div>
-<div id="notice" class="notice" role="status">モデルの速度は実行中の端末で計測します。3D表示の奥行きは、校正がない間は推定です。</div>
+<div class="measure-strip"><div><span>推論フレーム</span><strong id="measure-fps">—<small> fps</small></strong></div><div><span>全身モデル</span><strong id="measure-body">—<small> ms</small></strong></div><div><span>全処理 p95</span><strong id="measure-p95">—<small> ms</small></strong></div><div><span>有効な点</span><strong id="measure-points">—<small> / 59</small></strong></div></div>
+<div id="notice" class="notice" role="status"></div>
 </div>
-<aside class="readout panel"><div class="section-label"><span>02</span><h2>動きの状態</h2></div><h3>表情</h3><div class="signal"><span>左目の閉じ</span><meter id="eye-left" min="0" max="1" value="0"></meter><output id="eye-left-text">—</output></div><div class="signal"><span>右目の閉じ</span><meter id="eye-right" min="0" max="1" value="0"></meter><output id="eye-right-text">—</output></div><div class="signal"><span>口の開き</span><meter id="mouth" min="0" max="1" value="0"></meter><output id="mouth-text">—</output></div><div class="signal"><span>頬の幅変化</span><meter id="cheek" min="0" max="1" value="0"></meter><output id="cheek-text">—</output></div><p class="small">頬は輪郭幅の変化です。頬の膨らみを直接測った値ではありません。</p><button id="neutral-face" class="secondary">現在の顔を基準にする</button><div class="divider"></div><h3>足の向き</h3><div class="foot-state"><span>左足 / 足のアップ</span><strong id="left-foot-state">未観測</strong><p id="left-foot-score">対象の足領域が必要です</p></div><div class="foot-state"><span>右足</span><strong id="right-foot-state">未観測</strong><p id="right-foot-score">対象の足領域が必要です</p></div><p class="small">足裏・甲・側面は画像分類です。3Dの足首回転とは別の情報です。</p><div class="divider"></div><h3>位置と送出</h3><p id="pose-status" class="small">姿勢の観測待ち</p><details><summary>SteamVR / VMT 接続</summary><label>ローカル接続先<input id="bridge-url" value="ws://127.0.0.1:8787/v1/pose" spellcheck="false"></label><label>接続トークン<input id="bridge-token" type="password" autocomplete="off"></label><button id="bridge-connect" class="secondary">接続</button><label class="file-button secondary">ルーム校正JSON<input id="room-file" type="file" accept=".json"></label><p id="bridge-status" class="small">未接続。校正済みの腰・両足の位置と回転だけを送ります。</p></details></aside>
+<aside class="readout panel"><h2>状態</h2><h3>表情</h3><div class="signal"><span>左目の閉じ</span><meter id="eye-left" min="0" max="1" value="0"></meter><output id="eye-left-text">—</output></div><div class="signal"><span>右目の閉じ</span><meter id="eye-right" min="0" max="1" value="0"></meter><output id="eye-right-text">—</output></div><div class="signal"><span>口の開き</span><meter id="mouth" min="0" max="1" value="0"></meter><output id="mouth-text">—</output></div><div class="signal"><span>頬の幅変化</span><meter id="cheek" min="0" max="1" value="0"></meter><output id="cheek-text">—</output></div><button id="neutral-face" class="secondary">現在の顔を基準にする</button>
+<h3>足</h3><div class="foot-state"><span>左足 / 足のアップ</span><strong id="left-foot-state">未観測</strong><p id="left-foot-score"></p></div><div class="foot-state"><span>右足</span><strong id="right-foot-state">未観測</strong><p id="right-foot-score"></p></div>
+<h3>姿勢</h3><p id="pose-status" class="small">観測待ち</p>
+<details><summary>SteamVR / VMT</summary><label>接続先<input id="bridge-url" value="ws://127.0.0.1:8787/v1/pose" spellcheck="false"></label><label>接続トークン<input id="bridge-token" type="password" autocomplete="off"></label><button id="bridge-connect" class="secondary">接続</button><label class="file-button secondary">ルーム校正JSON<input id="room-file" type="file" accept=".json"></label><p id="bridge-status" class="small">未接続</p></details>
+</aside>
 </section>
-<section class="evidence panel"><div><p class="eyebrow">MEASURED, NOT ASSUMED</p><h2>小さくしたモデルを、実画像で確かめる。</h2><p>学習に使う画像と評価画像を分離。公開データでの精度と、同じCPUでの処理時間を比較しています。</p></div><div id="evidence-summary" class="evidence-stats"><p>評価結果を読み込み中…</p></div></section>
-<footer><span>VRC Compact · 実験用PoC</span><span>動画・VRM・姿勢の外部アップロード機能はありません。</span><a href="./evidence/README.md">モデルと評価の説明</a></footer>
 </main><script type="module" src="./app.mjs"></script>
 </body></html>

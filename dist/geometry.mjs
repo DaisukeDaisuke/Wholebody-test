@@ -166,7 +166,8 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const imageSize = observation?.imageSize || { width: 1, height: 1 };
   let camera = null;
   try { camera = suppliedCamera ? cameraAtImageSize(suppliedCamera, imageSize) : null; } catch { camera = null; }
-  const previous = options.priorPose;
+  const candidatePrior = options.priorPose;
+  const previous = candidatePrior?.sourceId === observation?.sourceId && Number.isFinite(candidatePrior?.timestampMs) && Number.isFinite(observation?.timestampMs) && observation.timestampMs >= candidatePrior.timestampMs && observation.timestampMs - candidatePrior.timestampMs <= 750 ? candidatePrior : null;
   const priorRoot = previous?.coordinateFrame === 'world' && previous?.metric && camera && finite3(previous.root?.position) ? worldToCamera(previous.root.position, camera) : null;
   const recentPrior = priorRoot && Number.isFinite(previous.timestampMs) && Number.isFinite(observation?.timestampMs) && observation.timestampMs >= previous.timestampMs && observation.timestampMs - previous.timestampMs <= 5000;
   const hasIntrinsics = !!camera && (camera.calibrated === true || camera.intrinsicsCalibrated === true);
@@ -183,7 +184,7 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const virtualFocal = Math.max(imageSize.width, imageSize.height);
   const c = camera || { K: [virtualFocal, virtualFocal, imageSize.width / 2, imageSize.height / 2], distortion: [0, 0, 0, 0, 0] };
   const rays = Array.from({ length: 133 }, (_, i) => {
-    if (!visible(points[i], opts.minScore)) return null;
+    if (!visible(points[i], opts.minScore) || xy(points[i])[0] < 0 || xy(points[i])[1] < 0 || xy(points[i])[0] >= imageSize.width || xy(points[i])[1] >= imageSize.height) return null;
     const p = undistortPixel(xy(points[i]), c.K, c.distortion);
     return p ? [p[0], p[1], 1] : null;
   });
@@ -196,7 +197,7 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
     return separation > 1e-3 ? [boneLength(a, b, ratio, height, opts.boneLengths) / separation] : [];
   });
   const initialDepth = clamp(median(depthGuesses) || height * 2.5, height * .45, height * 12);
-  const modelDepth = points.some(p => Number.isFinite(p?.relativeZ ?? p?.relativeZm));
+  const modelDepth = points.slice(0, 23).filter((p, id) => rays[id] && Number.isFinite(p?.relativeZ ?? p?.relativeZm)).length >= 3;
   const rootRelativeZ = median([points[11]?.relativeZ ?? points[11]?.relativeZm, points[12]?.relativeZ ?? points[12]?.relativeZm]) || 0;
   const relativeDepths = Array.from({ length: 133 }, (_, i) => {
     const z = points[i]?.relativeZ ?? points[i]?.relativeZm;
@@ -223,9 +224,13 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
     depths[i] = priorDepths[i] = clamp(prior, .1 * height, 20 * height);
   }
   const bones = ALL_BONES.filter(([a, b]) => rays[a] && rays[b]);
-  // Coordinate descent minimizes bone-length residuals along actual camera rays.
-  // It preserves image reprojection and keeps the depth branch close to time/model priors.
-  for (let pass = 0; pass < 14; pass++) {
+  // Two-dimensional landmarks do not observe the front/back depth branch. A
+  // constant-depth image plane preserves their visible motion without converting
+  // an arbitrary anatomical prior into rotating hips, hands, or feet. A genuine
+  // relative-depth model may still use the ray-constrained fit below.
+  const useDepthFit = modelDepth || opts.allowMonocularDepthPrior === true;
+  if (!useDepthFit) depths.fill(rootDepth);
+  for (let pass = 0; useDepthFit && pass < 14; pass++) {
     for (let i = 0; i < 133; i++) {
       if (!rays[i] || i === 11 || i === 12 || (i >= 23 && i <= 90)) continue;
       const regularizer = modelDepth ? .5 : .035;
@@ -247,8 +252,8 @@ export function estimateMonocularPose(observation, suppliedCamera = null, option
   const useWorld = absoluteAllowed && camera && Array.isArray(camera.Rcw) && Array.isArray(camera.tcw);
   const cameraPositions = rays.map((r, i) => r ? mul(r, depths[i]) : null);
   const transform = p => useWorld ? cameraToWorld(p, camera) : [p[0] - rootCamera[0], -(p[1] - rootCamera[1]), p[2] - rootCamera[2]];
-  const joints = cameraPositions.map((p, id) => p ? { id, position: transform(p), score: clamp(points[id].score) * (modelDepth ? .65 : .4), source: 'inferredMonocular', ageMs: 0, observable2D: true, modelRelativeZ: Number.isFinite(points[id]?.relativeZ ?? points[id]?.relativeZm), depthAmbiguous: !modelDepth } : missing(id));
-  const pose = { timestampMs: observation?.timestampMs ?? 0, sourceId: observation?.sourceId, joints, cameraPositions, metric: absoluteAllowed, coordinateFrame: useWorld ? 'world' : 'root-relative', units: absoluteAllowed ? 'm' : bodyScaleInMetres ? 'm-relative-estimate' : 'body-height', worldCalibrationId: useWorld ? (camera.worldCalibrationId || 'configured-world') : null, diagnostics: { method: modelDepth ? 'model-relative-depth-with-scale-fit' : 'ray-constrained-anthropometric-fit', intrinsicsCalibrated: hasIntrinsics, scaleConfirmed: knownScale, bodyScaleUnit: bodyScaleInMetres ? 'm' : 'body-height', modelRelativeDepthScale: bodyScaleInMetres ? 1 : 1 / 1.7, depthAnchored: explicitDepth, depthAnchorSource: explicitDepth ? 'providedCurrentMeasurement' : depthFit.priorOnly ? 'temporalPrior' : 'currentBoneFit', depthFitBoneCount: depthFit.boneCount, depthFitLoss: depthFit.fitLoss ?? null, depthAmbiguous: !modelDepth, scaleCueCount: depthGuesses.length, calibratedWorld: camera?.calibrated === true, observedJointCount: cameraPositions.filter(Boolean).length } };
+  const joints = cameraPositions.map((p, id) => p ? { id, position: transform(p), imagePlanePosition: [p[0] - rootCamera[0], -(p[1] - rootCamera[1]), 0], score: clamp(points[id].score) * (modelDepth ? .65 : .4), source: points[id]?.derived && id >= 91 ? 'inferredFinger' : 'inferredMonocular', ageMs: 0, observedAtMs: observation?.timestampMs ?? 0, observable2D: true, modelRelativeZ: modelDepth && Number.isFinite(points[id]?.relativeZ ?? points[id]?.relativeZm), depthAmbiguous: !modelDepth } : missing(id));
+  const pose = { timestampMs: observation?.timestampMs ?? 0, observationTimestampMs: observation?.timestampMs ?? 0, sourceId: observation?.sourceId, inputMode: observation?.inputMode, targetVersion: observation?.targetVersion, stability: observation?.stability, joints, cameraPositions, metric: absoluteAllowed, coordinateFrame: useWorld ? 'world' : 'root-relative', units: absoluteAllowed ? 'm' : bodyScaleInMetres ? 'm-relative-estimate' : 'body-height', worldCalibrationId: useWorld ? (camera.worldCalibrationId || 'configured-world') : null, diagnostics: { method: modelDepth ? 'model-relative-depth-with-scale-fit' : useDepthFit ? 'ray-constrained-anthropometric-fit' : 'image-plane-relative-pose', intrinsicsCalibrated: hasIntrinsics, scaleConfirmed: knownScale, bodyHeight: height, bodyScaleUnit: bodyScaleInMetres ? 'm' : 'body-height', modelRelativeDepthScale: bodyScaleInMetres ? 1 : 1 / 1.7, depthAnchored: explicitDepth, depthAnchorSource: explicitDepth ? 'providedCurrentMeasurement' : depthFit.priorOnly ? 'temporalPrior' : 'currentBoneFit', depthFitBoneCount: depthFit.boneCount, depthFitLoss: depthFit.fitLoss ?? null, depthAmbiguous: !modelDepth, monocularOrientationAmbiguous: true, scaleCueCount: depthGuesses.length, calibratedWorld: camera?.calibrated === true, observedJointCount: cameraPositions.filter(Boolean).length } };
   finishPose(pose);
   if (!absoluteAllowed) pose.root = { ...pose.root, position: null, valid: false, metric: false, distanceStatus: 'uncalibrated' };
   return pose;
@@ -293,7 +298,7 @@ export function fusePose(observations, cameras = [], options = {}) {
   const diagnostics = { ...mono.diagnostics, synchronizedSources: synced.map(o => o.sourceId), rejectedTimeSources: list.filter(o => !synced.includes(o)).map(o => o.sourceId), calibrationFrameMismatch, worldCalibrationIds, maxSkewMs: synced.length > 1 ? Math.max(...synced.map(o => o.timestampMs)) - Math.min(...synced.map(o => o.timestampMs)) : null, triangulatedJointCount: triangulatedCount, learnedHeightM: learnedHeight, maxReprojectionErrorPx: opts.maxReprojectionErrorPx };
   if (!triangulatedCount) return { ...mono, timestampMs: targetTime, diagnostics };
   if (mono.coordinateFrame === 'world') for (let i = 0; i < 133; i++) if (!joints[i].position && mono.joints[i].position) joints[i] = mono.joints[i];
-  return finishPose({ timestampMs: targetTime, joints, metric: true, coordinateFrame: 'world', units: 'm', worldCalibrationId: worldCalibrationIds[0] || 'configured-world', diagnostics });
+  return finishPose({ timestampMs: targetTime, observationTimestampMs: targetTime, sourceId: bestObservation.sourceId, inputMode: bestObservation.inputMode, targetVersion: bestObservation.targetVersion, joints, metric: true, coordinateFrame: 'world', units: 'm', worldCalibrationId: worldCalibrationIds[0] || 'configured-world', diagnostics });
 }
 
 function quaternionFromBasis(right, up, forward) {
@@ -360,6 +365,13 @@ function finishPose(pose) {
   const counts = {};
   for (const j of pose.joints) counts[j.source] = (counts[j.source] || 0) + 1;
   pose.quality = { counts, observed3D: counts.measuredMultiView || 0, estimated3D: pose.joints.filter(j => j.position && j.source !== 'measuredMultiView').length, missing: counts.missing || 0 };
+  return pose;
+}
+
+/** Rebuild derived metadata after causal gates remove individual observations. */
+export function refreshPoseMetadata(pose) {
+  finishPose(pose);
+  if (!pose.metric) pose.root = { ...pose.root, position: null, valid: false, metric: false, distanceStatus: 'uncalibrated' };
   return pose;
 }
 

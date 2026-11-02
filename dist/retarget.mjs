@@ -39,6 +39,18 @@ function slerp(a, b, t) {
   const angle = Math.acos(clamp(d, -1, 1)), sine = Math.sin(angle);
   return a.map((v, i) => (Math.sin((1 - t) * angle) * v + Math.sin(t * angle) * q[i]) / sine);
 }
+export function quaternionAngle(a, b = IDENTITY) { const cosine = clamp(Math.abs(dot(normalizeQ(a), normalizeQ(b))), 0, 1); return cosine > 1 - 1e-14 ? 0 : 2 * Math.acos(cosine); }
+function limitRotation(previous, desired, maxAngle) {
+  const angle = quaternionAngle(previous, desired);
+  return angle > maxAngle && angle > EPS ? slerp(previous, desired, maxAngle / angle) : desired;
+}
+const smoothstep = t => { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); };
+const wrapAngle = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
+const freshSource = source => ['measuredMultiView', 'estimatedMultiView', 'inferredMonocular', 'inferredFinger', 'observed3D'].includes(source);
+const observedDepth = js => js.every(j => ['measuredMultiView', 'estimatedMultiView', 'observed3D'].includes(j?.source) && j?.depthAmbiguous !== true);
+const relativeDepth = js => observedDepth(js) || js.every(j => j?.modelRelativeZ === true && j?.depthAmbiguous !== true);
+const planePosition = j => vec(j?.imagePlanePosition) ? j.imagePlanePosition : [j.position[0], j.position[1], 0];
+const segmentDirection = js => relativeDepth(js) ? sub(js[1].position, js[0].position) : sub(planePosition(js[1]), planePosition(js[0]));
 function basisQuaternion(x, y, z) {
   const m = [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]], trace = m[0] + m[4] + m[8];
   let q, s;
@@ -54,16 +66,17 @@ function frame(primary, secondary) {
   return z ? { x, y, z, rotation: basisQuaternion(x, y, z) } : null;
 }
 function torsoFrame(left, right, root, top) { return frame(sub(right, left), sub(top, root)); }
-const SOURCE_ORDER = ['measuredMultiView', 'inferredMonocular', 'estimatedMultiView', 'predicted', 'inferredKinematic', 'held', 'prior', 'inferredAnatomy', 'missing'];
+const SOURCE_ORDER = ['measuredMultiView', 'estimatedMultiView', 'observed3D', 'inferredMonocular', 'inferredFinger', 'predicted', 'inferredKinematic', 'held', 'prior', 'inferredPrior', 'inferredAnatomy', 'missing'];
 function quality(joints) {
   if (!joints.length) return { source: 'missing', score: 0, ageMs: Infinity };
-  const source = joints.map(j => j?.source || 'missing').sort((a, b) => SOURCE_ORDER.indexOf(b) - SOURCE_ORDER.indexOf(a))[0];
+  const rank = s => SOURCE_ORDER.includes(s) ? SOURCE_ORDER.indexOf(s) : SOURCE_ORDER.length;
+  const source = joints.map(j => j?.source || 'missing').sort((a, b) => rank(b) - rank(a))[0];
   return { source, score: Math.min(...joints.map(j => Number.isFinite(j?.score) ? clamp(j.score, 0, 1) : 0)), ageMs: Math.max(...joints.map(j => Number.isFinite(j?.ageMs) ? j.ageMs : 0)) };
 }
 function jointReader(pose, options) {
   return id => {
     const j = pose?.joints?.[id];
-    return j && vec(j.position) && j.source !== 'missing' && (j.score ?? 0) >= options.minScore && (j.ageMs ?? 0) <= options.maxJointAgeMs ? j : null;
+    return j && vec(j.position) && freshSource(j.source) && j.observable2D !== false && j.valid !== false && (j.score ?? 0) >= options.minScore && (j.ageMs ?? 0) <= options.maxJointAgeMs ? j : null;
   };
 }
 function rigData(rig) {
@@ -94,10 +107,13 @@ function rigData(rig) {
  * actualLocalQuaternion = outputDelta * restLocalQuaternion, not the reverse.
  */
 export function retargetPose(pose, rig, options = {}) {
-  const opts = { minScore: .08, maxJointAgeMs: 1200, smoothingMs: 35, ...options };
+  const opts = { minScore: .1, maxJointAgeMs: 180, smoothingMs: 45, holdMs: 140, neutralMs: 650, reacquireFrames: 2, maxRootSpeed: 2, ...options };
   const { bones: rest, order } = rigData(rig), read = jointReader(pose, opts);
   const inputKey = `${pose?.inputMode || ''}:${pose?.sourceId || ''}:${pose?.targetVersion ?? ''}:${pose?.coordinateFrame || ''}:${pose?.worldCalibrationId || ''}:${pose?.units || ''}`;
   const previous = opts.previous?.inputKey === inputKey && (pose?.timestampMs ?? 0) >= (opts.previous.timestampMs ?? 0) ? opts.previous : null;
+  const now = pose?.timestampMs ?? 0, measuredAt = Math.min(now, pose?.observationTimestampMs ?? now);
+  const dt = previous ? Math.max(0, now - previous.timestampMs) : 1000 / 60;
+  const observationFresh = now - measuredAt <= opts.maxJointAgeMs;
   const targets = {}, solved = {}, normalizedPose = {}, outputBones = {}, warnings = [];
   const reference = name => rest[name]?.position || null;
   const get = ids => ids.map(read), all = js => js.every(Boolean);
@@ -108,12 +124,26 @@ export function retargetPose(pose, rig, options = {}) {
     ? torsoFrame(restLeftHip, restRightHip, mid(restLeftHip, restRightHip), mid(restLeftShoulder, restRightShoulder)) : null;
   const hips = get([11, 12]), shoulders = get([5, 6]);
   let hipFrame = null, chestFrame = null, hipDelta = null, chestDelta = null;
-  if (all([...hips, ...shoulders]) && restTorso) {
+  const torsoJoints = [...hips, ...shoulders], fullTorsoDepth = all(torsoJoints) && observedDepth(torsoJoints);
+  if (all(torsoJoints) && restTorso && pose?.stability?.torsoValid !== false) {
     const hipCenter = mid(hips[0].position, hips[1].position), shoulderCenter = mid(shoulders[0].position, shoulders[1].position);
-    hipFrame = torsoFrame(hips[0].position, hips[1].position, hipCenter, shoulderCenter);
-    chestFrame = torsoFrame(shoulders[0].position, shoulders[1].position, hipCenter, shoulderCenter);
-    hipDelta = hipFrame && multiplyQuaternion(hipFrame.rotation, inverse(restTorso.rotation));
-    chestDelta = chestFrame && multiplyQuaternion(chestFrame.rotation, inverse(restTorso.rotation));
+    const torsoLength = norm(sub(shoulderCenter, hipCenter)), hipWidth = norm(sub(hips[0].position, hips[1].position)), shoulderWidth = norm(sub(shoulders[0].position, shoulders[1].position));
+    const usableTorso = torsoLength > EPS && hipWidth > torsoLength * .05 && hipWidth < torsoLength * 1.7 && shoulderWidth > torsoLength * .08 && shoulderWidth < torsoLength * 2.4;
+    if (usableTorso && fullTorsoDepth) {
+      hipFrame = torsoFrame(hips[0].position, hips[1].position, hipCenter, shoulderCenter);
+      chestFrame = torsoFrame(shoulders[0].position, shoulders[1].position, hipCenter, shoulderCenter);
+      hipDelta = hipFrame && multiplyQuaternion(hipFrame.rotation, inverse(restTorso.rotation));
+      chestDelta = chestFrame && multiplyQuaternion(chestFrame.rotation, inverse(restTorso.rotation));
+    } else if (usableTorso) {
+      // The shoulder/hip line cannot resolve monocular yaw or front/back pitch.
+      // Its visible upright-axis roll remains useful, including genuine leaning.
+      const up = sub(mid(...shoulders.map(planePosition)), mid(...hips.map(planePosition)));
+      if (up[1] > norm(up) * .15) {
+        const angle = wrapAngle(Math.atan2(-up[0], up[1]) - Math.atan2(-restTorso.y[0], restTorso.y[1]));
+        hipDelta = chestDelta = axisAngle([0, 0, 1], clamp(angle, -Math.PI / 4, Math.PI / 4));
+      }
+      warnings.push('monocularTorsoYawPitchUnobserved');
+    }
     if (hipDelta) setTarget('hips', multiplyQuaternion(hipDelta, rest.hips?.rotation || IDENTITY), [...hips, ...shoulders]);
     const spineNames = ['spine', 'chest', 'upperChest'].filter(name => rest[name]);
     if (hipDelta && chestDelta) spineNames.forEach((name, i) => setTarget(name, multiplyQuaternion(slerp(hipDelta, chestDelta, (i + 1) / spineNames.length), rest[name].rotation), [...hips, ...shoulders], { source: 'inferredTorsoDistribution' }));
@@ -121,28 +151,42 @@ export function retargetPose(pose, rig, options = {}) {
   const eyes = get([1, 2]), ears = get([3, 4]);
   const facePair = all(eyes) ? eyes : all(ears) ? ears : null;
   if (facePair && all(shoulders) && restTorso) {
-    const headFrame = frame(sub(facePair[1].position, facePair[0].position), sub(mid(facePair[0].position, facePair[1].position), mid(shoulders[0].position, shoulders[1].position)));
-    if (headFrame) {
-      const headDelta = multiplyQuaternion(headFrame.rotation, inverse(restTorso.rotation));
+    const headFrame = observedDepth([...facePair, ...shoulders]) ? frame(sub(facePair[1].position, facePair[0].position), sub(mid(facePair[0].position, facePair[1].position), mid(shoulders[0].position, shoulders[1].position))) : null;
+    let headDelta = headFrame ? multiplyQuaternion(headFrame.rotation, inverse(restTorso.rotation)) : null;
+    if (!headDelta && !observedDepth([...facePair, ...shoulders])) {
+      const line = sub(planePosition(facePair[1]), planePosition(facePair[0]));
+      if (norm(line) > EPS) {
+        let angle = wrapAngle(Math.atan2(line[1], line[0]) - Math.atan2(restTorso.x[1], restTorso.x[0]));
+        if (angle > Math.PI / 2) angle -= Math.PI;
+        if (angle < -Math.PI / 2) angle += Math.PI;
+        headDelta = axisAngle([0, 0, 1], clamp(angle, -Math.PI * .28, Math.PI * .28));
+      }
+    }
+    if (headDelta) {
       if (rest.neck) setTarget('neck', multiplyQuaternion(chestDelta ? slerp(chestDelta, headDelta, .35) : headDelta, rest.neck.rotation), [...facePair, ...shoulders], { source: 'inferredNeck' });
       if (rest.head) setTarget('head', multiplyQuaternion(headDelta, rest.head.rotation), [...facePair, ...shoulders]);
     }
   }
-  const segments = {};
+  const segments = {}, planarFeet = {};
   for (const side of ['left', 'right']) {
     const left = side === 'left', ids = left ? [5, 7, 9, 11, 13, 15] : [6, 8, 10, 12, 14, 16];
     for (const [suffix, a, b, child] of [['UpperArm', ids[0], ids[1], 'LowerArm'], ['LowerArm', ids[1], ids[2], 'Hand'], ['UpperLeg', ids[3], ids[4], 'LowerLeg'], ['LowerLeg', ids[4], ids[5], 'Foot']]) {
       const name = side + suffix, js = get([a, b]), restChild = reference(side + child);
-      if (rest[name] && restChild && all(js)) segments[name] = { js, direction: sub(js[1].position, js[0].position), restDirection: sub(restChild, reference(name)), secondary: null };
+      if (rest[name] && restChild && all(js)) {
+        const direction = segmentDirection(js), height = pose?.diagnostics?.bodyHeight || (pose?.units === 'body-height' ? 1 : 1.7);
+        const ratio = suffix === 'UpperArm' ? .186 : suffix === 'LowerArm' ? .146 : .246;
+        if (norm(direction) > height * .002 && norm(direction) < height * ratio * 2) segments[name] = { js, direction, restDirection: sub(restChild, reference(name)), secondary: null };
+      }
     }
     const base = left ? 91 : 112, palm = get([base, base + 5, base + 9, base + 17]);
     const palmRestNames = [side + 'Hand', side + 'IndexProximal', side + 'MiddleProximal', side + 'LittleProximal'];
     const palmRest = palmRestNames.map(reference);
     let palmFrame = null, restPalmFrame = null;
     if (all(palm) && palmRest.every(Boolean)) {
-      palmFrame = frame(sub(palm[2].position, palm[0].position), sub(palm[1].position, palm[3].position));
+      palmFrame = observedDepth(palm) ? frame(sub(palm[2].position, palm[0].position), sub(palm[1].position, palm[3].position)) : null;
       restPalmFrame = frame(sub(palmRest[2], palmRest[0]), sub(palmRest[1], palmRest[3]));
       if (palmFrame && restPalmFrame) setTarget(side + 'Hand', multiplyQuaternion(multiplyQuaternion(palmFrame.rotation, inverse(restPalmFrame.rotation)), rest[side + 'Hand'].rotation), palm);
+      else if (rest[side + 'Hand']) segments[side + 'Hand'] = { js: palm, direction: segmentDirection([palm[0], palm[2]]), restDirection: sub(palmRest[2], palmRest[0]), secondary: null };
     }
     // Each observed finger segment controls its matching bone; distal direction
     // uses the measured fingertip, with the avatar's rest distal axis retained.
@@ -154,13 +198,13 @@ export function retargetPose(pose, rig, options = {}) {
         const next = k < 2 ? reference(side + finger + suffixes[k + 1]) : null;
         const previousBone = k > 0 ? reference(side + finger + suffixes[k - 1]) : reference(side + 'Hand');
         const restDirection = next ? sub(next, reference(name)) : previousBone ? sub(reference(name), previousBone) : null;
-        if (restDirection && norm(restDirection) > EPS) segments[name] = { js, direction: sub(js[1].position, js[0].position), restDirection,
+        if (restDirection && norm(restDirection) > EPS) segments[name] = { js, direction: segmentDirection(js), restDirection,
           secondary: palmFrame && restPalmFrame ? { current: palmFrame.z, rest: restPalmFrame.z } : null, finger: true };
       });
     }
     const foot = pose?.feet?.[side], footJs = get(left ? [15, 17, 18, 19] : [16, 20, 21, 22]);
     const footName = side + 'Foot', toeName = side + 'Toes';
-    if (foot?.valid && vec(foot.rotationXYZW || foot.rotation, 4) && all(footJs) && rest[footName]) {
+    if (foot?.valid && vec(foot.rotationXYZW || foot.rotation, 4) && all(footJs) && observedDepth(footJs) && rest[footName]) {
       const forward = unit(sub(mid(footJs[1].position, footJs[2].position), footJs[3].position));
       const up = unit(foot.up || [0, 1, 0]);
       const restUp = restTorso?.y || [0, 1, 0];
@@ -171,19 +215,26 @@ export function retargetPose(pose, rig, options = {}) {
       // COCO supplies no toe articulation. Toes inherit the foot in their rest
       // configuration; no invented curl is presented as a measured rotation.
       if (rest[toeName]) outputBones[toeName] = { valid: false, source: 'inferredAnatomy', score: 0, articulationStatus: 'unobserved' };
+    } else if (all(footJs) && rest[footName]) {
+      const direction = sub(mid(planePosition(footJs[1]), planePosition(footJs[2])), planePosition(footJs[3]));
+      if (norm(direction) > EPS) planarFeet[side] = { angle: Math.atan2(direction[1], direction[0]), js: footJs };
     }
   }
   const footReferenceAngles = { ...(previous?.footReferenceAngles || {}) }, hints = opts.footHints || pose?.footHints || {};
   for (const side of ['left', 'right']) {
     if (targets[side + 'Foot']) continue;
-    const hint = hints[side], name = side + 'Foot';
-    if (!rest[name] || !hint || ![hint.heel, hint.bigToe, hint.littleToe].every(p => vec(p, 2)) || (hint.score ?? 0) < opts.minScore) continue;
-    const toe = mid(hint.bigToe, hint.littleToe), direction = [toe[0] - hint.heel[0], -(toe[1] - hint.heel[1])];
-    if (norm(direction) < 2) continue;
-    const angle = Math.atan2(direction[1], direction[0]);
+    const hint = hints[side], name = side + 'Foot', planar = planarFeet[side];
+    if (!rest[name]) continue;
+    let angle = planar?.angle;
+    if (!Number.isFinite(angle)) {
+      if (!hint || ![hint.heel, hint.bigToe, hint.littleToe].every(p => vec(p, 2)) || (hint.score ?? 0) < opts.minScore || (hint.ageMs || 0) > opts.maxJointAgeMs) continue;
+      const toe = mid(hint.bigToe, hint.littleToe), direction = [toe[0] - hint.heel[0], -(toe[1] - hint.heel[1])];
+      if (norm(direction) < 2) continue;
+      angle = Math.atan2(direction[1], direction[0]);
+    }
     if (!Number.isFinite(footReferenceAngles[side])) footReferenceAngles[side] = angle;
     const difference = Math.atan2(Math.sin(angle - footReferenceAngles[side]), Math.cos(angle - footReferenceAngles[side]));
-    setTarget(name, multiplyQuaternion(axisAngle([0, 0, 1], difference), rest[name].rotation), [], { source: 'estimatedPlanarFoot', inputSource: hint.source || 'observed2D', score: clamp(hint.score, 0, 1), ageMs: hint.ageMs || 0, depthAmbiguous: true, anatomicalSideConfirmed: hint.anatomicalSideConfirmed === true });
+    setTarget(name, multiplyQuaternion(axisAngle([0, 0, 1], difference), rest[name].rotation), planar?.js || [], { source: 'estimatedPlanarFoot', inputSource: hint?.source || 'observed2D', score: planar ? quality(planar.js).score : clamp(hint.score, 0, 1), ageMs: hint?.ageMs || 0, depthAmbiguous: true, anatomicalSideConfirmed: hint?.anatomicalSideConfirmed === true });
   }
   for (const name of order) {
     const bone = rest[name], parent = bone.parent ? solved[bone.parent] : IDENTITY;
@@ -201,21 +252,57 @@ export function retargetPose(pose, rig, options = {}) {
       }
       target = { rotation: normalizeQ(rotation), ...quality(segment.js), valid: true, twistStatus: segment.secondary ? 'estimatedFromPalm' : 'inheritedUnobservedTwist' };
     }
-    let worldRotation = target?.rotation || inherited;
-    // Smoothing is causal and never turns a missing bone into a fresh observation.
-    const old = previous?.bones?.[name], dt = (pose?.timestampMs ?? 0) - (previous?.timestampMs ?? 0);
-    if (target && old?.valid && vec(old.worldRotation, 4) && dt > 0 && dt < 250 && opts.smoothingMs > 0) worldRotation = slerp(old.worldRotation, worldRotation, 1 - Math.exp(-dt / opts.smoothingMs));
-    solved[name] = normalizeQ(worldRotation);
-    const relativeDesired = multiplyQuaternion(inverse(parent), solved[name]);
-    const actualLocal = multiplyQuaternion(inverse(bone.intermediateRotation), relativeDesired);
-    const delta = normalizeQ(multiplyQuaternion(actualLocal, inverse(bone.localRotation)));
+    const old = previous?.bones?.[name], oldDelta = vec(old?.rotation, 4) ? old.rotation : IDENTITY;
+    const fresh = !!target && observationFresh && target.ageMs <= opts.maxJointAgeMs;
+    const newMeasurement = fresh && (!Number.isFinite(old?.lastCandidateMs) || measuredAt > old.lastCandidateMs);
+    const wasTracking = old?.trackingState === 'tracking' && Number.isFinite(old.lastObservedMs) && now - old.lastObservedMs <= opts.maxJointAgeMs;
+    const recoveryCount = fresh ? wasTracking ? opts.reacquireFrames : (old?.recoveryCount || 0) + (newMeasurement ? 1 : 0) : 0;
+    const observed = fresh && recoveryCount >= opts.reacquireFrames;
+    const lastObservedMs = observed ? measuredAt : old?.lastObservedMs ?? null;
+    const age = Number.isFinite(lastObservedMs) ? Math.max(0, now - lastObservedMs) : Infinity;
+    let desired, trackingState, neutralWeight = 0;
+    if (observed) {
+      const relativeDesired = multiplyQuaternion(inverse(parent), target.rotation);
+      const actualLocal = multiplyQuaternion(inverse(bone.intermediateRotation), relativeDesired);
+      desired = normalizeQ(multiplyQuaternion(actualLocal, inverse(bone.localRotation)));
+      trackingState = 'tracking';
+    } else if (vec(old?.lastObservedRotation, 4) && age <= opts.holdMs) {
+      desired = old.lastObservedRotation; trackingState = 'holding';
+    } else {
+      neutralWeight = smoothstep((age - opts.holdMs) / Math.max(1, opts.neutralMs));
+      desired = vec(old?.lastObservedRotation, 4) ? slerp(old.lastObservedRotation, IDENTITY, neutralWeight) : IDENTITY;
+      trackingState = fresh && !Number.isFinite(lastObservedMs) ? 'acquiring' : neutralWeight >= 1 ? 'neutral' : 'returning';
+    }
+    // Filter in local bone coordinates. Holding an old world rotation while its
+    // parent moves creates a compensating twist; local hold preserves the limb.
+    const alpha = opts.smoothingMs > 0 && dt > 0 && dt < 250 ? 1 - Math.exp(-dt / opts.smoothingMs) : 1;
+    let delta = observed ? slerp(oldDelta, desired, alpha) : desired;
+    const speedDeg = /^(hips|spine|chest|upperChest)$/.test(name) ? 120 : /^(head|neck)$/.test(name) ? 210 : /Foot$/.test(name) ? 360 : /Thumb|Index|Middle|Ring|Little/.test(name) ? 900 : 720;
+    const maxStep = Math.min(Math.PI / 4, speedDeg * Math.PI / 180 * Math.min(Math.max(dt, 0), 120) / 1000);
+    delta = normalizeQ(limitRotation(oldDelta, delta, maxStep));
+    const actualLocal = multiplyQuaternion(delta, bone.localRotation);
+    solved[name] = normalizeQ(multiplyQuaternion(parent, multiplyQuaternion(bone.intermediateRotation, actualLocal)));
     normalizedPose[name] = { rotation: delta };
-    outputBones[name] = { ...(outputBones[name] || {}), ...(target || { valid: false, source: outputBones[name]?.source || 'missing', score: 0, ageMs: null }), rotation: delta, worldRotation: solved[name] };
+    outputBones[name] = { ...(outputBones[name] || {}), ...(target || {}), valid: observed, observed,
+      source: observed ? target.source : trackingState === 'holding' ? 'held' : trackingState === 'returning' ? 'returningToNeutral' : 'missing',
+      observationSource: observed ? target.source : old?.observationSource || null,
+      score: observed ? target.score : 0, ageMs: Number.isFinite(age) ? age : null,
+      trackingState, recoveryCount, lastCandidateMs: fresh ? measuredAt : old?.lastCandidateMs ?? null,
+      lastObservedMs, lastObservedRotation: observed ? delta.slice() : old?.lastObservedRotation || null,
+      neutralWeight, rotation: delta, worldRotation: solved[name] };
   }
-  const metric = pose?.metric === true && pose?.coordinateFrame === 'world' && pose?.units === 'm' && pose?.root?.valid === true && vec(pose.root.position);
+  const currentRootObserved = ['measuredMultiView', 'estimatedMultiView'].includes(pose?.root?.source) || pose?.diagnostics?.depthAnchorSource === 'providedCurrentMeasurement';
+  const metric = observationFresh && currentRootObserved && pose?.metric === true && pose?.coordinateFrame === 'world' && pose?.units === 'm' && pose?.root?.valid === true && vec(pose.root.position);
   const rootPosition = metric ? pose.root.position.slice() : null;
+  const oldRoot = previous?.root, rootRest = rest.hips?.position || [0, 0, 0];
+  const rootAge = metric ? Math.max(0, now - measuredAt) : Number.isFinite(oldRoot?.lastObservedMs) ? now - oldRoot.lastObservedMs : Infinity;
+  const rootNeutralWeight = metric ? 0 : smoothstep((rootAge - opts.holdMs) / Math.max(1, opts.neutralMs));
+  const desiredRoot = metric ? rootPosition : vec(oldRoot?.lastObservedPosition) ? oldRoot.lastObservedPosition.map((v, i) => v * (1 - rootNeutralWeight) + rootRest[i] * rootNeutralWeight) : rootRest;
+  let visualPosition = vec(oldRoot?.visualPosition) ? oldRoot.visualPosition.slice() : rootRest.slice();
+  const rootDifference = sub(desiredRoot, visualPosition), rootDistance = norm(rootDifference), rootStep = opts.maxRootSpeed * Math.min(Math.max(dt, 0), 120) / 1000;
+  visualPosition = rootDistance > rootStep && rootDistance > EPS ? add(visualPosition, mul(rootDifference, rootStep / rootDistance)) : desiredRoot.slice();
   if (rest.hips && normalizedPose.hips) {
-    const worldDelta = metric ? sub(rootPosition, rest.hips.position) : [0, 0, 0];
+    const worldDelta = sub(visualPosition, rest.hips.position);
     const parentRotation = multiplyQuaternion(rest.hips.rotation, inverse(rest.hips.localRotation));
     const scale = vec(rest.hips.parentScale) ? rest.hips.parentScale : [1, 1, 1];
     normalizedPose.hips.position = rotateVector(inverse(parentRotation), worldDelta).map((v, i) => v / (Math.abs(scale[i]) > EPS ? scale[i] : 1));
@@ -225,9 +312,9 @@ export function retargetPose(pose, rig, options = {}) {
   if (validNames.some(name => outputBones[name].depthAmbiguous)) warnings.push('footDirectionIsImagePlaneOnly');
   warnings.push('individualToeArticulationUnobserved');
   return { schemaVersion: 1, timestampMs: pose?.timestampMs ?? 0, inputKey, normalizedPose, bones: outputBones,
-    root: { position: rootPosition, metric, mode: metric ? 'world-estimate' : 'relative-only', distanceStatus: pose?.root?.distanceStatus || 'uncalibrated' },
+    root: { position: rootPosition, visualPosition, lastObservedPosition: metric ? visualPosition.slice() : oldRoot?.lastObservedPosition || null, lastObservedMs: metric ? measuredAt : oldRoot?.lastObservedMs ?? null, metric, mode: metric ? 'world-estimate' : 'relative-only', distanceStatus: pose?.root?.distanceStatus || 'uncalibrated' },
     trackers: poseToTrackers(pose), footReferenceAngles,
-    coverage: { availableBones: order.length, drivenBones: validNames.length, drivenBoneNames: validNames, missingBones: order.length - validNames.length }, warnings };
+    coverage: { availableBones: order.length, drivenBones: validNames.length, drivenBoneNames: validNames, heldBones: Object.values(outputBones).filter(b => b.trackingState === 'holding').length, returningBones: Object.values(outputBones).filter(b => b.trackingState === 'returning').length, missingBones: order.length - validNames.length }, warnings: [...new Set(warnings)] };
 }
 
 /** Preserve the 2D-only foot contract; never invent 3D joints or a pelvis. */
@@ -258,9 +345,10 @@ export function poseToTrackers(pose, options = {}) {
   const opts = { minScore: .15, maxJointAgeMs: 180, ...options }, read = jointReader(pose, opts);
   const hips = [read(11), read(12)], shoulders = [read(5), read(6)];
   const world = pose?.metric === true && pose?.coordinateFrame === 'world' && pose?.units === 'm' && pose?.root?.valid === true && vec(pose.root.position) && typeof pose.worldCalibrationId === 'string' && pose.worldCalibrationId.length > 0;
-  const calibrated = world && (pose.diagnostics?.calibratedWorld === true || pose.root?.distanceStatus === 'measuredMultiView');
+  const rootObserved = ['measuredMultiView', 'estimatedMultiView'].includes(pose?.root?.source) || pose?.diagnostics?.depthAnchorSource === 'providedCurrentMeasurement';
+  const calibrated = world && rootObserved && (pose.diagnostics?.calibratedWorld === true || pose.root?.distanceStatus === 'measuredMultiView');
   const targets = [];
-  const torso = [...hips, ...shoulders].every(Boolean) ? torsoFrame(hips[0].position, hips[1].position, mid(hips[0].position, hips[1].position), mid(shoulders[0].position, shoulders[1].position)) : null;
+  const torso = [...hips, ...shoulders].every(Boolean) && observedDepth([...hips, ...shoulders]) ? torsoFrame(hips[0].position, hips[1].position, mid(hips[0].position, hips[1].position), mid(shoulders[0].position, shoulders[1].position)) : null;
   const rootQuality = quality([...hips, ...shoulders]);
   targets.push({ role: 'waist', position: world ? pose.root.position.slice() : null, rotation: torso?.rotation || null, ...rootQuality,
     valid: !!(calibrated && torso && rootQuality.score >= opts.minScore && rootQuality.ageMs <= opts.maxJointAgeMs), reason: !world ? 'absoluteRootUncalibrated' : !calibrated ? 'worldCalibrationUnconfirmed' : !torso ? 'torsoMissing' : null });
@@ -268,8 +356,8 @@ export function poseToTrackers(pose, options = {}) {
     const foot = pose?.feet?.[side], ids = side === 'left' ? [15, 17, 18, 19] : [16, 20, 21, 22], js = ids.map(read), q = quality(js);
     const rotation = foot?.rotationXYZW || foot?.rotation;
     targets.push({ role: side + '-foot', position: vec(foot?.position) ? foot.position.slice() : null, rotation: vec(rotation, 4) ? normalizeQ(rotation) : null, ...q,
-      valid: !!(calibrated && foot?.valid && js.every(Boolean) && q.score >= opts.minScore && q.ageMs <= opts.maxJointAgeMs),
-      reason: !world ? 'absoluteRootUncalibrated' : !calibrated ? 'worldCalibrationUnconfirmed' : !foot?.valid || !js.every(Boolean) ? 'footMissing' : null });
+      valid: !!(calibrated && foot?.valid && js.every(Boolean) && observedDepth(js) && q.score >= opts.minScore && q.ageMs <= opts.maxJointAgeMs),
+      reason: !world ? 'absoluteRootUncalibrated' : !calibrated ? 'worldCalibrationUnconfirmed' : !foot?.valid || !js.every(Boolean) ? 'footMissing' : !observedDepth(js) ? 'footOrientationUnobserved' : null });
   }
   return targets;
 }

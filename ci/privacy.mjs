@@ -1,5 +1,5 @@
 import {readdir,readFile,stat} from 'node:fs/promises';
-const forbidden=/\.(mp4|mov|avi|webm|mkv|jpg|jpeg|png|pt|pth|npy|npz)$/i;
+const forbidden=/\.(mp4|mov|avi|webm|mkv|jpg|jpeg|png|pt|pth|npy|npz|tar)(?:\.\d+)?$/i;
 const seen=[];
 async function visit(dir){for(const item of await readdir(dir)){if(item==='node_modules')continue;const path=dir+'/'+item,s=await stat(path);if(s.isDirectory()){if(/(?:^|\/)(private|upload|cache|frames)(?:\/|$)/i.test(path))throw new Error('Private/cache directory in package: '+path);await visit(path);}else{if(forbidden.test(path))throw new Error('Media/training file in publication: '+path);seen.push(path);}}}
 await visit('dist');await visit('server');

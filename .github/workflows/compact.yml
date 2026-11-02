@@ -1,8 +1,8 @@
-name: Compact59 training and real-image evaluation
+name: Compact VRC publish and headless inference
 on:
   push:
     branches: [compact-vrc-20261102-7fe4fac1]
-    paths: ['training/**', 'parts/**', 'dist/**', 'build/**', 'server/**', 'ci/**', '.github/workflows/compact.yml']
+    paths: ['training/model.py', 'training/data.py', 'training/train.py', 'parts/**', 'dist/**', 'build/**', 'server/**', 'ci/**', '.github/workflows/compact.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,7 +28,7 @@ jobs:
         id: trained
         with:
           path: artifacts/compact59
-          key: compact59-trained-v1-${{ hashFiles('training/**') }}
+          key: compact59-trained-v1-9ed63fc278b4e0daefbaaef92ba44c2dcd89b9f5b69a47ae96a7c4c8bf722b93
       - name: Install CPU PyTorch and model runtime
         if: steps.trained.outputs.cache-hit != 'true'
         run: |
@@ -94,12 +94,15 @@ jobs:
   application:
     needs: [compact59, parts]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: actions/download-artifact@v4
         with:
           name: compact59-${{ github.sha }}
@@ -108,21 +111,36 @@ jobs:
         with:
           name: parts-${{ github.sha }}
           path: artifacts/parts
+      - uses: actions/cache/restore@v4
+        with:
+          path: artifacts/fast59
+          key: fast59-trained-v1-${{ hashFiles('training/fast_model.py', 'training/train_fast.py') }}
+          fail-on-cache-miss: true
       - name: Build pinned runtime without lifecycle scripts
         run: |
           npm ci --ignore-scripts --prefix build
           npm ci --ignore-scripts --prefix server
           node build/node_modules/esbuild/bin/esbuild build/vrm-entry.mjs --bundle --format=esm --minify --outfile=dist/vendor/vrm-runtime.mjs
+      - name: Publish model-only allowlist to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_HUB_DISABLE_PROGRESS_BARS: '1'
+        run: |
+          python -m pip install huggingface_hub==0.36.0
+          python ci/publish_hf.py
       - name: Prepare deployable models and measured results
         run: node ci/package.mjs
-      - name: Execute shipped browser models on one public image
+      - name: Run real ONNX inference and VRM updates in headless Node
         run: |
-          npm install --ignore-scripts --no-audit --no-fund --prefix .cache/browser playwright@1.56.1
-          node .cache/browser/node_modules/playwright/cli.js install --with-deps chromium
-          node ci/browser-inference.mjs
+          npm install --ignore-scripts --no-audit --no-fund --prefix .cache/headless onnxruntime-node@1.22.0
+          node ci/headless-video.mjs --output dist/evidence/headless-video.json
+      - name: Private video inference when an existing private fetch secret is configured
+        env:
+          PRIVATE_VIDEO_URL: ${{ secrets.PRIVATE_VIDEO_URL }}
+        run: node ci/private-video.mjs
       - name: Validate shipped source
         run: |
-          for file in dist/*.mjs server/*.mjs; do node --check "$file"; done
+          for file in dist/*.mjs server/*.mjs ci/*.mjs; do node --check "$file"; done
           node ci/privacy.mjs
       - uses: actions/upload-artifact@v4
         with:
