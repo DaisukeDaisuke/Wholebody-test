@@ -2,7 +2,7 @@ name: Public WebGPU causal-tracker compatibility
 on:
   push:
     branches: [main, phase3-20261102-4fc7ff60]
-    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', '.github/workflows/phase3-webgpu.yml']
+    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'evaluation/package-runtime.mjs', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', '.github/workflows/phase3-webgpu.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,13 +39,8 @@ jobs:
           path: .cache/webgpu-ci/results
           run-id: 41384892970
           github-token: ${{ github.token }}
-      - name: Download the shipped runtime from the successful core delivery
-        uses: actions/download-artifact@v4
-        with:
-          name: wholebody-phase3-site-d5c2baad21bed628306ac481f69a44ec50f9c90a
-          path: .cache/webgpu-ci/runtime
-          run-id: 41385890985
-          github-token: ${{ github.token }}
+      - name: Package the exact candidate ONNX runtime using the same code as the core delivery
+        run: node evaluation/package-runtime.mjs --onnx-only --output .cache/webgpu-ci/runtime/vendor
       - name: Parse the isolated compatibility fixture
         run: |
           node --check evaluation/webgpu-run.mjs
@@ -60,5 +55,6 @@ jobs:
           path: |
             evaluation/webgpu-results/
             evaluation/webgpu-deps/package-lock.json
+            .cache/webgpu-ci/runtime/vendor/runtime-manifest.json
           if-no-files-found: warn
           retention-days: 14

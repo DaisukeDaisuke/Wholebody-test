@@ -58,6 +58,10 @@ jobs:
           github-token: ${{ github.token }}
       - name: Exercise the shipped causal point tracker with actual ONNX Web WASM
         run: node evaluation/tapir-wasm-ci.mjs --models .cache/tapir-ci/models --fixtures .cache/tapir-ci/results/codec-fixture --optimization mixed
+      - name: Include public execution evidence in the delivered application
+        run: |
+          mkdir -p dist/evaluation
+          cp evaluation/results/phase3-vrm-integration.json evaluation/results/phase3-bridge-report.json dist/evaluation/
       - name: Prepare a local Node.js application package
         run: |
           mkdir -p release

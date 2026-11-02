@@ -69,7 +69,12 @@ self.addEventListener('message', async event => {
           stage('run-' + id); const outputs = await session.run(...args);
           const locations = Object.fromEntries(Object.entries(outputs).map(([name, tensor]) => [name, tensor.location]));
           report.locations.push({ graph: id, outputs: locations });
-          for (const [name, expected] of Object.entries(options.preferredOutputLocation || {})) requireCondition(locations[name] === expected, `${id}/${name} is ${locations[name]}, expected ${expected}.`);
+          try {
+            for (const [name, expected] of Object.entries(options.preferredOutputLocation || {})) requireCondition(locations[name] === expected, `${id}/${name} is ${locations[name]}, expected ${expected}.`);
+          } catch (error) {
+            for (const tensor of Object.values(outputs)) { try { tensor.dispose(); } catch {} }
+            throw error;
+          }
           return outputs;
         },
         release: async () => { await session.release(); released++; } };
@@ -104,6 +109,7 @@ self.addEventListener('message', async event => {
     report.checks.push({ name: 'gpu-recurrent-update-matches-official-reference', passed: true });
     report.softwareTiming = { seedInferenceMs: seed.diagnostics.inferenceMs, updateInferenceMs: result.diagnostics.inferenceMs, encoderMs: result.diagnostics.encoderMs, stepMs: result.diagnostics.stepMs,
       measuredOn: 'SwiftShader CPU implementation of WebGPU; shader compilation may be included', physicalGpuPerformance: false, hardwareFpsMeasured: false };
+    if(watchedDevice) await watchedDevice.queue.onSubmittedWorkDone();
     requireCondition(report.gpuErrors.length === 0 && outsideRequests === 0, 'WebGPU reported a device error or attempted external network access.');
     stage('dispose'); await tracker.dispose(); tracker = null;
     requireCondition(released === 3, 'Not all three WebGPU sessions were released.');

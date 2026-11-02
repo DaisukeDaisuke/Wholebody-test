@@ -19,7 +19,7 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireCondition = (condition, message) => { if (!condition) throw new Error(message); };
 const report = { schemaVersion: 1, passed: false, status: 'started', gitCommit: process.env.GITHUB_SHA, workflowRunId: process.env.GITHUB_RUN_ID,
   softwareOnly: true, physicalGpuMeasured: false, hardwareFpsMeasured: false, privateMediaUsed: false,
-  playwrightVersion: require('playwright/package.json').version, runtimeArtifactRunId: '41385890985', runtimeArtifactGitCommit: 'd5c2baad21bed628306ac481f69a44ec50f9c90a',
+  playwrightVersion: require('playwright/package.json').version, runtimeVersion: '1.31.1', runtimeSource: 'Same-commit evaluation/package-runtime.mjs; the core workflow validates this candidate separately.',
   publicModelArtifactRunId: '41384892970', publicModelArtifactGitCommit: '274407d44a7fbdcb8411f9dc78286b1f49409c6d',
   flags: ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--use-vulkan=swiftshader',
     '--disable-background-networking', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'],
@@ -30,11 +30,12 @@ let browser = null, server = null, caught = null;
 try {
   requireCondition(report.playwrightVersion === '1.56.1', 'The Playwright version differs from the declared dependency.');
   const runtimeManifest = JSON.parse(await readFile(join(runtime, 'runtime-manifest.json'), 'utf8'));
+  requireCondition(runtimeManifest.ortWebVersion === report.runtimeVersion && runtimeManifest.gitCommit === process.env.GITHUB_SHA, 'The WebGPU runtime was not packaged by this candidate commit.');
   const runtimeFiles = ['ort.webgpu.min.mjs', 'ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
   report.runtime = [];
   for (const name of runtimeFiles) {
     const record = runtimeManifest.records.find(value => value.file === name), bytes = await readFile(join(runtime, name));
-    requireCondition(record?.url === `https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/${name}` && bytes.byteLength === record.bytes && sha256(bytes) === record.sha256, 'Shipped ORT runtime hash mismatch: ' + name);
+    requireCondition(record?.url === `https://cdn.jsdelivr.net/npm/onnxruntime-web@${report.runtimeVersion}/dist/${name}` && bytes.byteLength === record.bytes && sha256(bytes) === record.sha256, 'Candidate ORT runtime hash mismatch: ' + name);
     report.runtime.push({ file: name, bytes: record.bytes, sha256: record.sha256 });
   }
   const routes = new Map([

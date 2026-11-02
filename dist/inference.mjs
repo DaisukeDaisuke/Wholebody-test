@@ -3,12 +3,12 @@ import {MODEL_SPECS,REFINEMENT_MANIFEST} from './models.mjs';
 import {detectorTransform,detectorTensor,decodePersons,boxIou} from './detector-codec.mjs';
 import {footTransform,footTensor,decodeFootCandidates,associateFeet,applyFootAssociation} from './foot-codec.mjs';
 import {FootTracker} from './foot-track.mjs';
-import {TapirTracker} from './tapir-tracker.mjs';
+import {TapirTracker,seedFootSquareRoi,TAPIR_SEED_ROI_POLICY} from './tapir-tracker.mjs';
 import {TAPIR_REPOSITORY,TAPIR_MANIFEST_URL} from './tapir-models.mjs';
 export {BODY_MODELS} from './models.mjs';
 export {BODY_EDGES,HAND_EDGES,FOOT_EDGES} from './pose-codec.mjs';
 
-const ORT_BASE='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const ORT_BASE='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
 const CACHE_NAME='wholebody-phase2-models-v1';
 let runtimePromise;
 async function loadRuntime(offline) {
@@ -179,7 +179,10 @@ export class PoseEngine {
     let result=null,manualSeedApplied=false;
     if(footSeed&&this.seedVersions.get(sourceId)!==footSeed.version){
       if(Number.isFinite(footSeed.mediaTimeMs)&&Number.isFinite(frameMediaTimeMs)&&Math.abs(footSeed.mediaTimeMs-frameMediaTimeMs)>75)throw new Error('3点を選んだフレームから動画が進んでいます。動画を停止して3点を再指定してください。');
-      result=await tracker.seed({...footSeed,timestampMs,image,roi,seedSource:'manual'});
+      // The optional crop uses only the initial three visible points. Keep it
+      // fixed for this identity; an explicit user region always takes priority.
+      const trackingRoi=roi||(learned&&footSeed.cropPolicy==='seed-square'?seedFootSquareRoi(footSeed.points,image):null);
+      result=await tracker.seed({...footSeed,timestampMs,image,roi:trackingRoi,seedSource:'manual'});
       this.seedVersions.set(sourceId,footSeed.version);this.manualFootSources.add(sourceId);manualSeedApplied=true;
     }
     if(learned){
@@ -204,9 +207,11 @@ export class PoseEngine {
       result=tracker.update({image,timestampMs,candidates,roi});
     }
     const spec=this.sessions.get('focus-foot8-one2many').spec,modelId=learned?'google/causal-bootstapir':spec.id;
+    const trackingBox=result.diagnostics?.fixedRoi||roi||null;
+    const regionPolicy=roi?'explicit-user-roi':learned&&trackingBox&&footSeed?.cropPolicy==='seed-square'?TAPIR_SEED_ROI_POLICY.id:'full-frame';
     return {schemaVersion:1,sourceId,timestampMs,timeUncertaintyMs,imageSize:{width:image.width,height:image.height},
-      bbox:roi||[0,0,image.width,image.height],...result,diagnostics:{...result.diagnostics,manualSeedApplied},inputMode:'feet',refinements:[],
-      personDetection:{enabled:false,detected:null,selection:'foot-only',selectedBox:roi||null,candidateCount:0},
+      bbox:trackingBox||[0,0,image.width,image.height],...result,diagnostics:{...result.diagnostics,manualSeedApplied,regionPolicy},inputMode:'feet',refinements:[],
+      personDetection:{enabled:false,detected:null,selection:'foot-only',selectedBox:trackingBox,candidateCount:0},
       modelId,modelHash:learned?null:spec.actualHash,modelHashes:learned?Object.fromEntries(this.tapirMaster.manifest.models.map(model=>[model.id,model.sha256])):null,
       backend:this.backend,footTrackingMethod:this.footTrackingMethod,scoreKind:learned?'uncalibratedLearnedVisibility':'uncalibratedModelAndFlowQuality',
       timings:{...this.frameTiming,detectorMs:0,bodyMs:0,handsMs:0,feetMs:performance.now()-started,neuralFrame:this.frameTiming.modelRuns>0,totalMs:performance.now()-started}};
