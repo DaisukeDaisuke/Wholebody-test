@@ -1,6 +1,7 @@
 import {tapirFrameTensor,tapirQueryTensor,decodeTapir} from './tapir-codec.mjs';
 
 export const TAPIR_TRACK_POLICY=Object.freeze({id:'causal-bootstapir-three-points-v1',queryCount:3,inputWH:[256,256],visibilityThreshold:.5,maxGapMs:2000});
+export const TAPIR_SEED_ROI_POLICY=Object.freeze({id:'seed-foot-square-v1',pairDistanceScale:2.5,minSidePixels:64});
 export const TAPIR_GPU_OUTPUT_LOCATIONS=Object.freeze({
   encoder:Object.freeze({lowres:'gpu-buffer',hires:'gpu-buffer'}),
   query:Object.freeze({query_lowres:'gpu-buffer',query_hires:'gpu-buffer'}),
@@ -22,6 +23,18 @@ function fixedCrop(image,roi){
   if(!roi)return null;if(!Array.isArray(roi)||roi.length!==4||!roi.every(Number.isFinite)||roi[2]<=0||roi[3]<=0)throw new Error('A fixed tracking region must be [x,y,width,height] in source pixels.');
   const x=Math.max(0,Math.floor(roi[0])),y=Math.max(0,Math.floor(roi[1])),right=Math.min(image.width,Math.ceil(roi[0]+roi[2])),bottom=Math.min(image.height,Math.ceil(roi[1]+roi[3]));
   if(right-x<2||bottom-y<2)throw new Error('Tracking region is outside the image.');return [x,y,right-x,bottom-y];
+}
+/** Fixed square from the three initial points only. Never reads a later frame or
+ * a reference annotation. null means a square cannot retain all seed points;
+ * the caller then uses the complete frame. An explicit user ROI takes priority.
+ */
+export function seedFootSquareRoi(points,image){
+  assertImage(image);if(!Array.isArray(points)||points.length!==3||!points.every(p=>inImage(p,image)))throw new Error('A seed-derived region requires three points inside the current image.');
+  let maximumDistance=0;for(let i=0;i<3;i++)for(let j=i+1;j<3;j++)maximumDistance=Math.max(maximumDistance,Math.hypot(points[i][0]-points[j][0],points[i][1]-points[j][1]));
+  const side=Math.min(image.width,image.height,Math.ceil(Math.max(TAPIR_SEED_ROI_POLICY.minSidePixels,maximumDistance*TAPIR_SEED_ROI_POLICY.pairDistanceScale)));
+  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),cx=(Math.min(...xs)+Math.max(...xs))*.5,cy=(Math.min(...ys)+Math.max(...ys))*.5;
+  const x=Math.max(0,Math.min(image.width-side,Math.round(cx-side*.5))),y=Math.max(0,Math.min(image.height-side,Math.round(cy-side*.5)));
+  return points.every(p=>p[0]>=x&&p[1]>=y&&p[0]<x+side&&p[1]<y+side)?[x,y,side,side]:null;
 }
 function tensorPresent(outputs,name){
   const tensor=outputs[name];
@@ -45,7 +58,7 @@ export class TapirTracker{
     if(manifest?.queryCount!==3||!dimsEqual(manifest?.inputWH,[256,256])||manifest?.stateType!=='float32'||!Array.isArray(manifest?.stateShape)||!manifest.stateShape.length||manifest.stateShape.some(n=>!Number.isInteger(n)||n<=0))throw new Error('Unsupported learned foot tracker manifest.');
     this.ort=ort;this.sessions=sessions;this.manifest=manifest;this.ownsSessions=ownsSessions;this.policy={...TAPIR_TRACK_POLICY,...policy};this.epoch=0;this.busy=false;this.deferredDisposals=[];this.reset();
   }
-  static async create({ort,modelBuffers,manifest,executionProviders=['wasm'],sessionOptions={},...options}){
+  static async create({ort,modelBuffers,manifest,executionProviders=['wasm'],sessionOptions={},graphSessionOptions={},...options}){
     const sessions={},useGpu=executionProviders.some(provider=>(typeof provider==='string'?provider:provider.name)==='webgpu');
     try{
       for(const id of ['encoder','query','step']){
@@ -56,7 +69,8 @@ export class TapirTracker{
         if(!/^[a-f0-9]{64}$/i.test(record.sha256||''))throw new Error(`A pinned SHA-256 is required: ${id}`);
         const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),x=>x.toString(16).padStart(2,'0')).join('');
         if(hash!==record.sha256.toLowerCase())throw new Error(`Learned-tracker checksum mismatch: ${id}`);
-        sessions[id]=await ort.InferenceSession.create(bytes,{...sessionOptions,executionProviders,enableGraphCapture:false,...(useGpu?{preferredOutputLocation:TAPIR_GPU_OUTPUT_LOCATIONS[id]}:{})});
+        try{sessions[id]=await ort.InferenceSession.create(bytes,{...sessionOptions,...graphSessionOptions[id],executionProviders,enableGraphCapture:false,...(useGpu?{preferredOutputLocation:TAPIR_GPU_OUTPUT_LOCATIONS[id]}:{})});}
+        catch(error){throw new Error(`Learned tracker ${id} initialization failed: ${error?.message??String(error)}`,{cause:error});}
       }
       return new TapirTracker({ort,sessions,manifest,ownsSessions:true,...options});
     }catch(error){await Promise.allSettled(Object.values(sessions).map(s=>s.release?.()));throw error;}
@@ -80,11 +94,11 @@ export class TapirTracker{
       if(!local.every(p=>inImage(p,cropped)))throw new Error('All selected points must lie inside the fixed tracking region.');
       this.originalSize=[image.width,image.height];this.side=side;this.slot=side==='right'?'right':'left';this.trackId=`learned-foot-${epoch}`;this.seedSource=seedSource;this.semanticSeedScores=seedScores;
       frameTensor=new this.ort.Tensor('float32',tapirFrameTensor(cropped),[1,1,256,256,3]);let stageStarted=performance.now();
-      encoderOutputs=await this.sessions.encoder.run({frame:frameTensor});const encoderMs=performance.now()-stageStarted;
+      encoderOutputs=await this.runGraph('encoder',{frame:frameTensor});const encoderMs=performance.now()-stageStarted;
       if(epoch!==this.epoch)return this.lastResult;
       const lowres=tensorPresent(encoderOutputs,'lowres'),hires=tensorPresent(encoderOutputs,'hires');
       queryTensor=new this.ort.Tensor('float32',tapirQueryTensor(local,cropped),[1,3,2]);stageStarted=performance.now();
-      queryOutputs=await this.sessions.query.run({lowres,hires,query_yx:queryTensor});const queryMs=performance.now()-stageStarted;
+      queryOutputs=await this.runGraph('query',{lowres,hires,query_yx:queryTensor});const queryMs=performance.now()-stageStarted;
       if(epoch!==this.epoch)return this.lastResult;
       this.queryLowres=tensorPresent(queryOutputs,'query_lowres');this.queryHires=tensorPresent(queryOutputs,'query_hires');
       this.causalState=new this.ort.Tensor('float32',new Float32Array(product(this.manifest.stateShape)),this.manifest.stateShape);
@@ -107,7 +121,7 @@ export class TapirTracker{
     this.busy=true;const epoch=this.epoch,started=performance.now();let encoderOutputs=null,frameTensor=null;
     try{
       const cropped=croppedImage(image,this.crop);frameTensor=new this.ort.Tensor('float32',tapirFrameTensor(cropped),[1,1,256,256,3]);const stageStarted=performance.now();
-      encoderOutputs=await this.sessions.encoder.run({frame:frameTensor});const encoderMs=performance.now()-stageStarted;
+      encoderOutputs=await this.runGraph('encoder',{frame:frameTensor});const encoderMs=performance.now()-stageStarted;
       if(epoch!==this.epoch)return this.lastResult;
       const output=await this.runStep({lowres:tensorPresent(encoderOutputs,'lowres'),hires:tensorPresent(encoderOutputs,'hires'),cropped,image,timestampMs,epoch});
       if(!output)return this.lastResult;this.lastTimestampMs=timestampMs;
@@ -116,7 +130,7 @@ export class TapirTracker{
     finally{dispose(frameTensor);disposeOutputs(encoderOutputs);this.busy=false;this.flushDeferred();}
   }
   async runStep({lowres,hires,cropped,image,epoch}){
-    const started=performance.now(),outputs=await this.sessions.step.run({lowres,hires,query_lowres:this.queryLowres,query_hires:this.queryHires,causal_state:this.causalState});
+    const started=performance.now(),outputs=await this.runGraph('step',{lowres,hires,query_lowres:this.queryLowres,query_hires:this.queryHires,causal_state:this.causalState});
     if(epoch!==this.epoch){disposeOutputs(outputs);return null;}
     let retainedState=false;try{
       const state=tensorPresent(outputs,'new_causal_state');if(!dimsEqual(state.dims,this.manifest.stateShape))throw new Error('Causal state shape changed during tracking.');
@@ -149,4 +163,5 @@ export class TapirTracker{
   }
   async dispose(){this.reset();if(this.ownsSessions)await Promise.allSettled(Object.values(this.sessions).map(session=>session.release?.()));}
   flushDeferred(){for(const tensor of this.deferredDisposals)dispose(tensor);this.deferredDisposals=[];}
+  async runGraph(id,feeds){try{return await this.sessions[id].run(feeds);}catch(error){throw new Error(`Learned tracker ${id} inference failed: ${error?.message??String(error)}`,{cause:error});}}
 }

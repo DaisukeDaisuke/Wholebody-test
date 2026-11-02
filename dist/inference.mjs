@@ -82,7 +82,7 @@ export class PoseEngine {
       modelBuffers[id]=await readBytes(model.url,{offline:this.offline,signal:this.abort.signal,expectedBytes:model.bytes,progress:(fraction,message)=>this.notify('bootstapir-'+id,fraction,`BootsTAPIR ${id} · ${message}`)});
     }
     this.notify('bootstapir',null,'3つの追跡セッションを初期化');
-    this.tapirMaster=await TapirTracker.create({ort:this.ort,modelBuffers,manifest,executionProviders:[this.backend],sessionOptions:{graphOptimizationLevel:'all'}});
+    this.tapirMaster=await TapirTracker.create({ort:this.ort,modelBuffers,manifest,executionProviders:[this.backend],sessionOptions:{graphOptimizationLevel:'all'},graphSessionOptions:{step:{graphOptimizationLevel:'disabled'}}});
     return this.tapirMaster;
   }
   async loadModel(id){

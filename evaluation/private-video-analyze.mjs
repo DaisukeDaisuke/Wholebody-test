@@ -9,7 +9,7 @@ import {resolve,relative,dirname,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {FootTracker,FOOT_TRACK_POLICY} from '../dist/foot-track.mjs';
-import {TapirTracker} from '../dist/tapir-tracker.mjs';
+import {TapirTracker,seedFootSquareRoi,TAPIR_SEED_ROI_POLICY} from '../dist/tapir-tracker.mjs';
 import {footTransform,footTensor,decodeFootCandidates} from '../dist/foot-codec.mjs';
 import {MODEL_SPECS} from '../dist/models.mjs';
 
@@ -31,10 +31,11 @@ if(!(fps>0)||!stream.width||!stream.height)throw new Error('Video geometry and a
 const startFrame=Math.round(Number(args.start||0)*fps),duration=Number(args.duration||Math.min(Number(stream.duration||metadata.format?.duration||5),5)),stride=Math.max(1,Number(args.stride||1));
 if(!Number.isInteger(stride)||!Number.isFinite(duration)||duration<=0)throw new Error('Invalid duration or stride.');
 const annotations=args.annotations?JSON.parse(await readFile(resolve(args.annotations),'utf8')):{seeds:[],references:[]};
+const tapirRoiMode=args['tapir-roi']||'full-frame';if(!['full-frame','seed-square'].includes(tapirRoiMode))throw new Error('TAPIR ROI must be full-frame or seed-square.');
 if(args.annotations){const path=await realpath(resolve(args.annotations));if(!inside(path,privateRoot))throw new Error('Manual references must remain inside the private analysis root.');}
 const seeds=new Map((annotations.seeds||[]).map(x=>[x.frame,x])),references=new Map((annotations.references||[]).map(x=>[x.frame,x]));
 const tracker=new FootTracker(),records=[],inferenceTimes=[],flowTimes=[],baselineScores=[],neuralTimes=[];
-let session=null,ort=null,modelHash=null,tapir=null,tapirManifest=null,tapirManifestHash=null;const spec=MODEL_SPECS['focus-foot8-one2many'];
+let session=null,ort=null,modelHash=null,tapir=null,tapirManifest=null,tapirManifestHash=null,tapirOptimization=null,tapirStepOptimization=null;const spec=MODEL_SPECS['focus-foot8-one2many'];
 if(!args.flowOnly||args['tapir-manifest']){
   if(!args['runtime-dir'])throw new Error('Local --runtime-dir is required for model inference.');
   const runtime=await realpath(resolve(args['runtime-dir']));
@@ -53,7 +54,9 @@ if(args['tapir-manifest']){
   const manifestFile=resolve(args['tapir-manifest']),raw=await readFile(manifestFile);tapirManifest=JSON.parse(raw);tapirManifestHash=createHash('sha256').update(raw).digest('hex');
   const modelDirectory=resolve(args['tapir-model-dir']||dirname(manifestFile)),modelBuffers={};
   for(const record of tapirManifest.models){if(!['encoder','query','step'].includes(record.id))continue;const file=resolve(modelDirectory,record.filename);if(!inside(file,modelDirectory))throw new Error('Unexpected graph path in model manifest.');modelBuffers[record.id]=new Uint8Array(await readFile(file));}
-  tapir=await TapirTracker.create({ort,modelBuffers,manifest:tapirManifest,executionProviders:['wasm']});
+  tapirOptimization=args['tapir-optimization']||'all';if(!['disabled','basic','extended','all'].includes(tapirOptimization))throw new Error('Unsupported TAPIR graph optimization level.');
+  tapirStepOptimization=args['tapir-step-optimization']||tapirOptimization;if(!['disabled','basic','extended','all'].includes(tapirStepOptimization))throw new Error('Unsupported TAPIR step graph optimization level.');
+  tapir=await TapirTracker.create({ort,modelBuffers,manifest:tapirManifest,executionProviders:['wasm'],sessionOptions:{graphOptimizationLevel:tapirOptimization},graphSessionOptions:{step:{graphOptimizationLevel:tapirStepOptimization}}});
 }
 
 const ffmpegArgs=['-hide_banner','-loglevel','error','-ss',String(startFrame/fps),'-i',video,'-an','-t',String(duration),'-vf',`select=not(mod(n\\,${stride}))`,'-vsync','0','-pix_fmt','rgba','-f','rawvideo','pipe:1'];
@@ -68,7 +71,7 @@ for await(const chunk of ffmpeg.stdout){
     const frameIndex=startFrame+decoded*stride,timestampMs=frameIndex/fps*1000,image={width:stream.width,height:stream.height,data};decoded++;
     const seed=seeds.get(frameIndex),reference=references.get(frameIndex);
     let neural=null;
-    if(seed){tracker.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image});lastSeed=seed;if(tapir)neural=await tapir.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image,roi:seed.roi??null});}
+    if(seed){tracker.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image});lastSeed=seed;if(tapir)neural=await tapir.seed({points:seed.points,side:seed.side||'unknown',timestampMs,image,roi:seed.roi??(tapirRoiMode==='seed-square'?seedFootSquareRoi(seed.points,image):null)});}
     let candidates,baseline=null,inferenceMs=null,maxDetectionScore=null;
     const modelNeeded=session&&(tracker.needsDetection(timestampMs)||reference||timestampMs-lastBaseline>=Number(args['baseline-every-ms']||500));
     if(modelNeeded){
@@ -127,7 +130,7 @@ const summary={schemaVersion:1,privacy:'Local only: never upload frames, annotat
 await writeFile(resolve(outputDir,'trace-private.json'),JSON.stringify({metadata,annotations,records}));
 summary.metrics.uninitializedModel.status=session?'evaluated':'not-run';
 if(tapir){
-  summary.neuralModel={id:'causal-bootstapir',manifestSha256:tapirManifestHash,graphs:tapirManifest.models.map(m=>({id:m.id,sha256:m.sha256,bytes:m.bytes})),queryCount:3,visibilityThreshold:.5,provider:'wasm-single-thread'};
+  summary.neuralModel={id:'causal-bootstapir',manifestSha256:tapirManifestHash,graphs:tapirManifest.models.map(m=>({id:m.id,sha256:m.sha256,bytes:m.bytes})),queryCount:3,visibilityThreshold:.5,provider:'wasm-single-thread',graphOptimizationLevels:{encoder:tapirOptimization,query:tapirOptimization,step:tapirStepOptimization},roiMode:tapirRoiMode,roiPolicy:tapirRoiMode==='seed-square'?TAPIR_SEED_ROI_POLICY:null};
   summary.analysis.neuralInferenceMs={frames:neuralTimes.length,mean:average(neuralTimes),median:percentile(neuralTimes,.5),p95:percentile(neuralTimes,.95)};
   summary.metrics.manualSeedAndLearnedTracking=metrics('neural');
 }

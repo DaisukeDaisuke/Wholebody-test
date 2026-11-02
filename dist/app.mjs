@@ -127,7 +127,7 @@ async function initReceiver() {
     initializing: true, preparingOffline: false, modeChanging: false, loadCanceled: false,
     sources: new Map(), observations: new Map(), cameras: [], fused: null,
     records: [], totalFrames: 0, recentTimes: [], neuralTimes: [], stageTimes: [], latencies: [], lastObservationAt: 0,
-    lastFusedTimestamp: 0, lastMissingTick: 0, latestPoseTimeDomain: null, latestPoseUpdatedAtMs: null, sceneDirty: true,
+    lastFusedTimestamp: 0, lastMissingTick: 0, lastPoseObservationAt: 0, latestPoseTimeDomain: null, latestPoseUpdatedAtMs: null, sceneDirty: true,
     selectedModel: null, backend: null, loadedModes: null, loadedFootTrackingMethod: null, loadedPersonDetection: null, loadedFootRefinement: null, offline: false, loadedOffline: null, networkAudit: null, startedAt: new Date().toISOString(),
     view: { yaw: .33, pitch: .17, zoom: 1, center: [0, 0, 0], extent: 1, initialized: false, metric: false }
   };
@@ -533,6 +533,7 @@ async function initReceiver() {
       state.fused = state.tracker.update(fused, observation.timestampMs);
     }
     state.latestPoseTimeDomain = usedObservation.timeDomain; state.latestPoseUpdatedAtMs = usedObservation.inferredAtMs??performance.now();
+    state.lastPoseObservationAt=state.latestPoseUpdatedAtMs;
     state.lastFusedTimestamp = usedObservation.timestampMs;
     state.sceneDirty = true;
     updatePoseReadout();
@@ -781,7 +782,7 @@ async function initReceiver() {
   function resetTiming() {
     state.generation++; state.tracker?.reset(); state.observations.clear();
     state.fused = null; state.sceneDirty = true; state.view.initialized = false; state.lastObservationAt = 0;
-    state.latestPoseTimeDomain = null; state.latestPoseUpdatedAtMs = null;
+    state.latestPoseTimeDomain = null; state.latestPoseUpdatedAtMs = null;state.lastPoseObservationAt=0;
     for (const source of state.sources.values()) {
       source.pending = null; source.lastObservation = null;source.footSeed=null;source.footSeedPoints=[]; state.engine?.resetSource?.(source.id);
       updateTargetState(source); drawOverlay(source);
@@ -1132,12 +1133,12 @@ async function initReceiver() {
   new ResizeObserver(() => { state.sceneDirty = true; }).observe(scene);
   let lastMetrics = 0;
   function animate(now) {
-    if (state.running && !state.processing && state.fused && state.lastObservationAt && now - state.lastObservationAt > 200 && now - state.lastMissingTick > 100) {
-      const live = Array.from(state.sources.values()).some((source) => ['camera', 'peer'].includes(source.kind));
+    if (state.running && (!state.processing||state.fused?.coordinateFrame==='image-plane') && state.fused && state.lastPoseObservationAt && now - state.lastPoseObservationAt > 200 && now - state.lastMissingTick > 100) {
+      const live = state.latestPoseTimeDomain==='capture';
       if (live) {
         const missing = { ...state.fused, joints: state.fused.joints.map((joint) => ({ id: joint.id, position: null, score: 0, source: 'missing' })),
           diagnostics: { ...state.fused.diagnostics, reason: 'noNewFrames', synchronizedSources: [], triangulatedJointCount: 0 } };
-        state.fused = state.fused.coordinateFrame==='image-plane'?{...missing,footHints:{},root:{valid:false},metric:false}:state.tracker.update(missing, state.lastFusedTimestamp + now - state.lastObservationAt);
+        state.fused = state.fused.coordinateFrame==='image-plane'?{...missing,footHints:{},root:{valid:false},metric:false}:state.tracker.update(missing, state.lastFusedTimestamp + now - state.lastPoseObservationAt);
         state.latestPoseUpdatedAtMs = now;
         state.lastMissingTick = now; state.sceneDirty = true; updatePoseReadout();publishPose();
       }

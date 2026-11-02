@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: wholebody-phase3-${{ github.ref }}
   cancel-in-progress: false
@@ -41,6 +42,22 @@ jobs:
         run: node evaluation/vrm-ci.mjs
       - name: Run the actual pinned RTMW3D-X and FOCUS models on a public reference image
         run: node evaluation/phase3-real-model.mjs
+      - name: Download the pinned public causal tracker export
+        uses: actions/download-artifact@v4
+        with:
+          name: tapir-model-package-274407d44a7fbdcb8411f9dc78286b1f49409c6d
+          path: .cache/tapir-ci/models
+          run-id: 41384892970
+          github-token: ${{ github.token }}
+      - name: Download the matching public-image recurrent reference
+        uses: actions/download-artifact@v4
+        with:
+          name: tapir-measured-results-274407d44a7fbdcb8411f9dc78286b1f49409c6d
+          path: .cache/tapir-ci/results
+          run-id: 41384892970
+          github-token: ${{ github.token }}
+      - name: Exercise the shipped causal point tracker with actual ONNX Web WASM
+        run: node evaluation/tapir-wasm-ci.mjs --models .cache/tapir-ci/models --fixtures .cache/tapir-ci/results/codec-fixture --optimization mixed
       - name: Prepare a local Node.js application package
         run: |
           mkdir -p release
