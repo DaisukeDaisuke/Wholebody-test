@@ -1,0 +1,10 @@
+.cache/
+model-package/
+evaluation/results/
+__pycache__/
+*.pyc
+node_modules/
+*.tar.gz
+*.zip
+.env
+dist/vendor/

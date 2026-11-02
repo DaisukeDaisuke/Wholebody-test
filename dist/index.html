@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="動画・カメラ2台から手指、足先、全身の位置を推定するブラウザPoC。映像は端末内で処理します。">
+  <title>Wholebody Studio · 全身トラッキング</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">W<span>•</span></span><span>Wholebody <strong>Studio</strong><small>映像から手指・足先・全身を追跡</small></span></a>
+    <div class="topbar-end"><span class="phase-pill">PHASE 02</span><a id="camera-mode-link" class="quiet-link" href="?mode=camera">スマホをカメラにする ↗</a></div>
+  </header>
+
+  <main id="receiver-app">
+    <section class="session-bar" aria-label="推論設定">
+      <div class="session-heading"><span class="eyebrow">TRACKING SESSION</span><h1>動きを、確かめる。</h1><p>元映像の細部を使い、観測できた点と補完した点を分けて表示します。</p></div>
+      <div class="model-controls">
+        <label class="compact-label">全身モデル<select id="model-select"><option value="rtmw-l">RTMW-l · 読み込み中</option></select></label>
+        <label class="compact-label">実行<select id="backend-select"><option value="webgpu">WebGPU</option><option value="wasm">WASM · 互換性用</option></select></label>
+        <label class="check-row"><input id="hand-refinement" type="checkbox" checked>手を切り出して再推論</label>
+        <div class="button-row"><button id="start-inference" class="primary">モデルを読み込み、開始</button><button id="stop-inference" disabled>停止</button></div>
+      </div>
+    </section>
+
+    <section class="status-strip" aria-live="polite"><span id="engine-status" class="status-label"><i class="status-dot idle"></i>未読込</span><span id="status-message">入力Aに動画またはカメラを選択してください。</span><progress id="load-progress" value="0" max="1" hidden></progress><span class="local-tag">映像は端末内で処理</span></section>
+
+    <div class="workspace">
+      <section class="inputs-column" aria-label="映像入力">
+        <article class="panel input-panel" data-source="a">
+          <div class="panel-heading"><h2><span class="source-letter">A</span>入力 A</h2><span id="source-a-state" class="subtle">未選択</span></div>
+          <div class="source-toolbar"><label class="file-button">動画を選ぶ<input id="source-a-file" type="file" accept="video/*" hidden></label><button id="source-a-camera">PCカメラ</button><button id="source-a-remote">スマホ接続</button><button id="source-a-close" class="icon-button" aria-label="入力Aを閉じる">×</button></div>
+          <div class="media-screen" id="source-a-screen"><video id="source-a-video" playsinline muted controls preload="metadata"></video><canvas id="source-a-overlay" aria-label="入力Aの関節表示"></canvas><div class="empty-state" id="source-a-empty"><span class="empty-icon" aria-hidden="true">◉</span><strong>動画かカメラを選択</strong><span>ファイルはアップロードされません</span></div></div>
+          <div class="source-options"><select id="source-a-device" aria-label="入力Aのカメラ"><option value="">カメラの自動選択</option></select><button id="source-a-roi">範囲を選ぶ</button><button id="source-a-reset-roi" class="text-button">全体</button></div>
+          <div class="source-meta"><span id="source-a-dimensions">— × —</span><span id="source-a-timing">フレーム待機</span><span id="source-a-quality">観測 — / 133</span></div>
+          <details id="source-a-pairing" class="pairing"><summary>スマホとの接続</summary><p>PCの招待を同じWi-Fiのスマホで開き、スマホに表示された応答をここへ貼り付けます。映像の中継サーバーは使いません。</p><div class="button-row"><button id="source-a-offer">招待を作る</button><button id="source-a-invite-copy" disabled>招待リンクをコピー</button></div><label>招待コード<textarea id="source-a-offer-code" rows="2" readonly spellcheck="false"></textarea></label><label>スマホの応答<textarea id="source-a-answer-code" rows="2" spellcheck="false" placeholder="応答コードを貼り付け"></textarea></label><button id="source-a-answer-apply">応答を適用</button><p id="source-a-peer-state" class="subtle">未接続</p></details>
+        </article>
+
+        <article class="panel input-panel" data-source="b">
+          <div class="panel-heading"><h2><span class="source-letter second">B</span>入力 B</h2><span id="source-b-state" class="subtle">2視点で遮蔽を補う</span></div>
+          <div class="source-toolbar"><label class="file-button">動画を選ぶ<input id="source-b-file" type="file" accept="video/*" hidden></label><button id="source-b-camera">PCカメラ</button><button id="source-b-remote">スマホ接続</button><button id="source-b-close" class="icon-button" aria-label="入力Bを閉じる">×</button></div>
+          <div class="media-screen" id="source-b-screen"><video id="source-b-video" playsinline muted controls preload="metadata"></video><canvas id="source-b-overlay" aria-label="入力Bの関節表示"></canvas><div class="empty-state" id="source-b-empty"><span class="empty-icon" aria-hidden="true">◉</span><strong>別方向の映像を追加</strong><span>1台のままでも推論できます</span></div></div>
+          <div class="source-options"><select id="source-b-device" aria-label="入力Bのカメラ"><option value="">カメラの自動選択</option></select><button id="source-b-roi">範囲を選ぶ</button><button id="source-b-reset-roi" class="text-button">全体</button></div>
+          <div class="source-meta"><span id="source-b-dimensions">— × —</span><span id="source-b-timing">フレーム待機</span><span id="source-b-quality">観測 — / 133</span></div>
+          <details id="source-b-pairing" class="pairing"><summary>スマホとの接続</summary><p>2台目も別の接続を作ります。各端末は撮影・送信だけを行い、PCの1つのモデルで推論します。</p><div class="button-row"><button id="source-b-offer">招待を作る</button><button id="source-b-invite-copy" disabled>招待リンクをコピー</button></div><label>招待コード<textarea id="source-b-offer-code" rows="2" readonly spellcheck="false"></textarea></label><label>スマホの応答<textarea id="source-b-answer-code" rows="2" spellcheck="false" placeholder="応答コードを貼り付け"></textarea></label><button id="source-b-answer-apply">応答を適用</button><p id="source-b-peer-state" class="subtle">未接続</p></details>
+        </article>
+
+        <div class="panel synchronization"><div class="panel-heading"><h2>映像の時刻合わせ</h2><span id="sync-state" class="subtle">1視点</span></div><div class="two-fields"><label>動画Bの時刻補正 [ms]<input id="video-offset-ms" type="number" value="0" step="1"></label><label>同期許容幅 [ms]<input id="sync-tolerance-ms" type="number" value="45" min="1" max="200" step="1"></label></div><label class="check-row"><input id="video-sync-confirmed" type="checkbox">同時撮影した2本で、対応する時刻を確認した</label><button id="align-video-now">現在の表示フレームを同時刻に合わせる</button><p class="help-text">別カメラの映像が必要です。撮影時刻が取得できないライブ映像は、3D実測に混ぜません。</p></div>
+      </section>
+
+      <section class="result-column" aria-label="推定結果">
+        <article class="panel reconstruction-panel"><div class="panel-heading"><div><span class="eyebrow">RECONSTRUCTION</span><h2>全身の空間位置</h2></div><button id="reset-3d-view" class="text-button">視点を戻す</button></div><div class="scene-wrap"><canvas id="scene-canvas" aria-label="3D関節の表示。ドラッグで回転、スクロールで拡大。"></canvas><div class="scene-caption"><span id="coordinate-state">相対ポーズ · 待機中</span><span>ドラッグで回転 / スクロールで拡大</span></div><div id="scene-empty" class="scene-empty"><span class="skeleton-symbol" aria-hidden="true">⌘</span><strong>推論した関節をここに表示</strong><span>未校正の位置は、メートルでの実測にしません。</span></div></div><div class="legend"><span><i class="swatch observed"></i>多視点の観測</span><span><i class="swatch inferred"></i>単眼・人体から推定</span><span><i class="swatch predicted"></i>遮蔽中の予測</span><span><i class="swatch missing"></i>欠測</span></div><div class="root-readout"><div><span>骨盤 X</span><strong id="root-x">—</strong></div><div><span>骨盤 Y</span><strong id="root-y">—</strong></div><div><span>骨盤 Z</span><strong id="root-z">—</strong></div><p id="root-status">絶対位置は未校正</p></div></article>
+
+        <article class="panel details-panel"><div class="panel-heading"><h2>手指と足先</h2><label class="check-row"><input id="show-face" type="checkbox">顔の点も表示</label></div><div class="detail-grid"><div><div class="detail-label"><strong>左手</strong><span id="left-hand-score">— / 21</span></div><canvas id="left-hand-canvas" width="320" height="210"></canvas></div><div><div class="detail-label"><strong>右手</strong><span id="right-hand-score">— / 21</span></div><canvas id="right-hand-canvas" width="320" height="210"></canvas></div><div><div class="detail-label"><strong>足先</strong><span id="feet-score">— / 6</span></div><canvas id="feet-canvas" width="320" height="210"></canvas></div></div><p class="help-text">手は左右21点。足は母趾・小趾・踵を観測し、甲の向きを算出します。5本の足指の補完は、観測点と別の推定データです。</p></article>
+
+        <article class="panel metrics-panel"><div class="panel-heading"><h2>いまの品質</h2><span id="frame-count" class="subtle">0 フレーム</span></div><div class="metric-grid"><div><span>処理フレーム（入力合計）</span><strong id="inference-fps">—<small> fps</small></strong></div><div><span>推論 p95</span><strong id="latency-p95">—<small> ms</small></strong></div><div><span>再投影誤差</span><strong id="reprojection-error">—<small> px</small></strong></div><div><span>観測 / 補完 / 欠測</span><strong id="joint-status-counts" class="counts">— / — / —</strong></div></div><div class="quality-row"><span>全身 <b id="body-quality">—</b></span><span>手指 <b id="hand-quality">—</b></span><span>足先 <b id="foot-quality">—</b></span><span id="memory-readout">モデル未読込</span></div></article>
+      </section>
+
+      <aside class="settings-column" aria-label="校正と記録">
+        <section class="panel calibration-panel"><div class="panel-heading"><h2>尺度と校正</h2><span id="calibration-state" class="tag">未校正</span></div><div class="two-fields"><label>身長 [m]<input id="body-height" type="number" min="0.6" max="2.4" step="0.01" value="1.70"></label><label>既知の骨盤距離 [m]<input id="root-depth" type="number" min="0.3" max="20" step="0.01" placeholder="未指定"></label></div><label class="check-row"><input id="height-confirmed" type="checkbox">身長は本人の実測値</label><p class="help-text">身長からの単眼推定と、校正済み2視点の三角測量は区別します。しゃがみで画面上の高さが変わっても、そのまま距離にはしません。</p><div class="button-row"><label class="file-button">校正JSONを読む<input id="calibration-file" type="file" accept=".json,application/json" hidden></label><button id="export-calibration">保存</button></div>
+          <details class="settings-details"><summary>仮のカメラ配置</summary><p class="help-text">実測校正がない場合の推定用です。設置位置と向きを入力します。</p><label>設定する入力<select id="manual-camera-source"><option value="a">入力 A</option><option value="b">入力 B</option></select></label><label>水平画角 [°]<input id="manual-fov" type="number" min="10" max="170" step="1" value="70"></label><span class="field-caption">カメラ位置 X / Y / Z [m]</span><div class="three-fields"><input id="manual-x" type="number" value="0" step="0.01" aria-label="カメラ位置X"><input id="manual-y" type="number" value="1.3" step="0.01" aria-label="カメラ位置Y"><input id="manual-z" type="number" value="-3" step="0.01" aria-label="カメラ位置Z"></div><span class="field-caption">向ける先 X / Y / Z [m]</span><div class="three-fields"><input id="target-x" type="number" value="0" step="0.01" aria-label="カメラ対象X"><input id="target-y" type="number" value="1" step="0.01" aria-label="カメラ対象Y"><input id="target-z" type="number" value="0" step="0.01" aria-label="カメラ対象Z"></div><button id="apply-manual-camera">推定用に適用</button></details>
+          <details class="settings-details"><summary>同じ平面の4点で校正</summary><p class="help-text">2台とも同じ長方形の左上・右上・右下・左下を選びます。板の左下を原点、右をX、上をYにします。</p><label>入力<select id="board-source"><option value="a">入力 A</option><option value="b">入力 B</option></select></label><div class="two-fields"><label>横幅 [m]<input id="board-width" type="number" value="0.6" min="0.01" step="0.01"></label><label>縦幅 [m]<input id="board-height" type="number" value="0.4" min="0.01" step="0.01"></label></div><span class="field-caption">内部パラメータ fx / fy / cx / cy [px]</span><div class="two-fields"><input id="board-fx" type="number" placeholder="fx" aria-label="fx"><input id="board-fy" type="number" placeholder="fy" aria-label="fy"><input id="board-cx" type="number" placeholder="cx" aria-label="cx"><input id="board-cy" type="number" placeholder="cy" aria-label="cy"></div><label>歪み k1, k2, p1, p2, k3<input id="board-distortion" type="text" value="0, 0, 0, 0, 0"></label><label class="check-row"><input id="intrinsics-confirmed" type="checkbox">Kと歪みはこの解像度で事前校正済み</label><div class="button-row"><button id="pick-board">4点を選ぶ</button><button id="solve-board">校正を適用</button></div><p id="board-state" class="help-text">選択すると映像を一時停止します。</p></details>
+        </section>
+
+        <section class="panel tuning-panel"><div class="panel-heading"><h2>追跡の調整</h2></div><label>観測の信頼度 <output id="score-threshold-label">0.25</output><input id="score-threshold" type="range" min="0.05" max="0.90" step="0.01" value="0.25"></label><label>短期予測の上限 [ms]<input id="prediction-ms" type="number" min="0" max="500" step="10" value="180"></label><label>姿勢保持の上限 [ms]<input id="hold-ms" type="number" min="0" max="5000" step="100" value="1200"></label><p class="help-text">遮蔽が長引くと予測の確かさを下げます。最後の位置を、現在の観測として固定し続けません。</p><details class="settings-details"><summary>PCカメラの撮影設定</summary><div class="two-fields"><label>要求する横幅<input id="capture-width" type="number" min="320" max="4096" value="1920"></label><label>要求する縦幅<input id="capture-height" type="number" min="240" max="2160" value="1080"></label></div><label>要求するfps<input id="capture-fps" type="number" min="1" max="120" value="60"></label><p class="help-text">次にPCカメラを開くときに適用します。実際の設定は機器により異なります。</p></details></section>
+
+        <section class="panel export-panel"><div class="panel-heading"><h2>計測を持ち帰る</h2></div><p>2D観測、3D推定、補完の区分、校正、処理時間をJSONで保存します。</p><button id="export-session" class="primary full-width">計測JSONを書き出す</button><p id="recording-state" class="help-text">直近1,800回分。映像そのものは含みません。</p><details class="settings-details"><summary>保存済みデータで実行</summary><p class="help-text">先にオンラインでモデルを読み込み、オフライン準備を行います。</p><div class="button-row"><button id="prepare-offline">オフライン準備</button><button id="audit-network">通信を確認</button></div><label class="check-row"><input id="closed-mode" type="checkbox">保存済みデータだけで実行（閉域）</label><p id="offline-state" class="help-text">オンライン配布モード</p><pre id="network-audit"></pre><p class="help-text">このページの読み込みとWebRTC経路を確認します。OS全体の通信監査ではありません。</p></details><details class="settings-details"><summary>接続とモデルの状態</summary><pre id="diagnostics">入力を待っています。</pre></details></section>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>Wholebody Studio · 2026</span><span>Phase 1：動画推論 / Phase 2：2視点・LAN接続</span><a href="https://github.com/DaisukeDaisuke/Wholebody-test" target="_blank" rel="noreferrer">実装と検証結果 ↗</a></footer>
+  </main>
+
+  <main id="sender-app" hidden class="sender-layout">
+    <section class="panel sender-panel"><span class="eyebrow">CAMERA NODE</span><h1>この端末をカメラに。</h1><p>映像は同じLANのPCへ直接送ります。この端末でモデル推論は行いません。</p><div class="sender-preview"><video id="sender-video" playsinline autoplay muted></video><span id="sender-state">未接続</span></div><label>使うカメラ<select id="sender-facing"><option value="environment">背面カメラ</option><option value="user">前面カメラ</option></select></label><div class="two-fields"><label>要求する横幅<input id="sender-width" type="number" min="320" max="3840" value="1280" step="1"></label><label>要求するfps<input id="sender-fps" type="number" min="1" max="120" value="60" step="1"></label></div><label>PCからの招待<textarea id="sender-offer" rows="3" spellcheck="false" placeholder="招待コード、または招待リンクを貼り付け"></textarea></label><div class="button-row"><button id="sender-start" class="primary">カメラを開始して接続</button><button id="sender-stop">停止</button></div><label>PCへ渡す応答<textarea id="sender-answer" rows="3" readonly spellcheck="false"></textarea></label><button id="sender-copy" class="full-width" disabled>応答をコピー</button><p id="sender-info" class="help-text">HTTPSで開き、カメラの利用を許可してください。端末のロック中やブラウザのバックグラウンドでは撮影が止まる場合があります。</p><pre id="sender-audit"></pre></section>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
