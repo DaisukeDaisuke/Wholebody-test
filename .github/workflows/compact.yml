@@ -1,0 +1,127 @@
+name: Compact59 training and real-image evaluation
+on:
+  push:
+    branches: [compact-vrc-20261102-7fe4fac1]
+    paths: ['training/**', 'parts/**', 'dist/**', 'build/**', 'server/**', 'ci/**', '.github/workflows/compact.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: compact-vrc-7fe4fac1-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compact59:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ci/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .cache/compact59
+          key: compact59-public-v1-${{ runner.os }}
+      - uses: actions/cache@v4
+        id: trained
+        with:
+          path: artifacts/compact59
+          key: compact59-trained-v1-${{ hashFiles('training/**') }}
+      - name: Install CPU PyTorch and model runtime
+        run: |
+          python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r ci/requirements.txt
+      - name: Train reduced head and evaluate independent real images
+        if: steps.trained.outputs.cache-hit != 'true'
+        env:
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+        run: python training/train.py --output artifacts/compact59 --cache .cache/compact59 --train-count 512 --eval-count 128 --steps 1800 --batch-size 16 --threads 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compact59-${{ github.sha }}
+          path: |
+            artifacts/compact59/*.onnx
+            artifacts/compact59/*.json
+            artifacts/compact59/*.md
+          if-no-files-found: error
+          retention-days: 7
+  parts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ci/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .cache/parts
+          key: footnet-public-v1-${{ runner.os }}
+      - uses: actions/cache@v4
+        id: trained
+        with:
+          path: artifacts/parts
+          key: parts-trained-v1-${{ hashFiles('parts/**') }}
+      - name: Install CPU PyTorch and model runtime
+        run: |
+          python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r ci/requirements.txt
+      - name: Train foot view classifier and measure face model
+        if: steps.trained.outputs.cache-hit != 'true'
+        env:
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+        run: python parts/prepare.py --mode all --output artifacts/parts --report artifacts/parts --cache .cache/parts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parts-${{ github.sha }}
+          path: |
+            artifacts/parts/*.onnx
+            artifacts/parts/*.json
+            artifacts/parts/*.md
+          if-no-files-found: error
+          retention-days: 7
+  application:
+    needs: [compact59, parts]
+    if: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: compact59-${{ github.sha }}
+          path: artifacts/compact59
+      - uses: actions/download-artifact@v4
+        with:
+          name: parts-${{ github.sha }}
+          path: artifacts/parts
+      - name: Build pinned runtime without lifecycle scripts
+        run: |
+          npm ci --ignore-scripts --prefix build
+          npm ci --ignore-scripts --prefix server
+          node build/node_modules/esbuild/bin/esbuild build/vrm-entry.mjs --bundle --format=esm --minify --outfile=dist/vendor/vrm-runtime.mjs
+      - name: Prepare deployable models and measured results
+        run: node ci/package.mjs
+      - name: Validate shipped source
+        run: |
+          for file in dist/*.mjs server/*.mjs; do node --check "$file"; done
+          node ci/privacy.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compact-vrc-site-${{ github.sha }}
+          path: |
+            dist/
+            server/
+          if-no-files-found: error
+          retention-days: 7

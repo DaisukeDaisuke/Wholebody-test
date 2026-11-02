@@ -1,0 +1,31 @@
+{
+  "architecture": {
+    "name": "CSPNeXt-t and RTMCC",
+    "source": "https://github.com/open-mmlab/mmpose",
+    "license": "Apache-2.0",
+    "references": [
+      "https://github.com/open-mmlab/mmpose/blob/main/mmpose/models/backbones/cspnext.py",
+      "https://github.com/open-mmlab/mmpose/blob/main/mmpose/models/utils/csp_layer.py",
+      "https://github.com/open-mmlab/mmpose/blob/main/mmpose/models/utils/rtmcc_block.py",
+      "https://github.com/open-mmlab/mmpose/blob/main/mmpose/models/heads/coord_cls_heads/rtmcc_head.py"
+    ],
+    "note": "Minimal inference implementation retaining the original checkpoint state-dict contract. Student removes 74 output convolution channels and GAU tokens, then trains the reduced head."
+  },
+  "teacher": {
+    "name": "DWPose-t",
+    "source": "https://github.com/IDEA-Research/DWPose",
+    "weights": "https://huggingface.co/yzd-v/DWPose/resolve/main/dw-tt_ucoco.pth",
+    "sha256": "7097f5af7f100609acffe58eb01734f02ffbfe22794fe029c2ea0a4d68d0f42d",
+    "license": "Apache-2.0"
+  },
+  "data": {
+    "name": "COCO-WholeBody v1.0 val2017",
+    "source": "https://github.com/jin-s13/COCO-WholeBody",
+    "annotation_mirror": "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json",
+    "annotation_sha256": "f8272e9c12f3a42457033ebc75da1167546edf1be5e2ffaf586d6ee97541ff6e",
+    "license": "CC BY-NC 4.0; research and noncommercial use only. Individual COCO images retain their source licenses.",
+    "evaluation": "Custom image-ID-disjoint subset, not the standard full COCO validation AP protocol.",
+    "attribution": "Sheng Jin et al., Whole-Body Human Pose Estimation in the Wild, ECCV 2020; Lumin Xu et al., ZoomNAS, TPAMI 2022."
+  },
+  "private_data": "No private video is accepted, read, copied, uploaded, or included in training artifacts by these scripts."
+}

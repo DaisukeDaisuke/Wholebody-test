@@ -1,0 +1,8 @@
+# Install the CPU build of torch first from https://download.pytorch.org/whl/cpu
+torch==2.6.0
+onnx==1.17.0
+onnxruntime==1.20.1
+numpy==1.26.4
+Pillow==11.1.0
+opencv-python-headless==4.11.0.86
+mmengine==0.10.7
