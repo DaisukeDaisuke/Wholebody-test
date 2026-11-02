@@ -51,6 +51,15 @@ export async function createPhase3UI({ onRenderMetrics = () => {}, onState = () 
   const container = byId('vrm-stage');
   if (!container || document.body.classList.contains('sender-mode')) throw new Error('VRM表示はPCの受信画面で開いてください。');
   const cleanup = [], originalCanvas = byId('scene-canvas'), wrapper = container.closest('.scene-wrap');
+  let rendererNote = byId('vrm-renderer-note');
+  if (!rendererNote) {
+    rendererNote = document.createElement('p'); rendererNote.id = 'vrm-renderer-note';
+    rendererNote.className = 'avatar-boundary avatar-renderer-note'; rendererNote.hidden = true;
+    rendererNote.setAttribute('role', 'status');
+    const boundary = byId('vrm-boundary');
+    if (boundary) boundary.before(rendererNote); else container.after(rendererNote);
+    cleanup.push(() => rendererNote.remove());
+  }
   let view = null, disposed = false, demoActive = false, demoFrame = 0, lastDemoTick = 0, demoStart = 0, lastLivePose = null;
   const listen = (id, event, handler) => {
     const node = byId(id);
@@ -80,6 +89,20 @@ export async function createPhase3UI({ onRenderMetrics = () => {}, onState = () 
     if (state.loadError) message = state.loadError;
     if (statusNode) { statusNode.textContent = message; statusNode.dataset.error = String(Boolean(state.loadError)); }
     if (badge) { badge.textContent = label; badge.dataset.kind = kind; }
+    rendererNote.hidden = state.rendererBackend !== 'canvas2d';
+    wrapper?.classList.toggle('cpu-renderer', state.rendererBackend === 'canvas2d');
+    if (!rendererNote.hidden) {
+      const stats = state.renderStats, count = number => Number(number || 0).toLocaleString('ja-JP');
+      let text = 'CPU簡易描画 · 実際のボーンと変形済みメッシュを表示します。テクスチャ・MToon・影・透過は簡略化しています。';
+      if (state.hasVRM && state.displayMode === 'avatar' && stats) {
+        text += stats.limited
+          ? ` ${count(stats.selectedFaces)} / ${count(stats.totalFaces)} 面、${count(stats.selectedVertices)} / ${count(stats.totalVertices)} 頂点を選択（上限 ${count(stats.limits.faces)} 面・${count(stats.limits.vertices)} 頂点）。`
+          : ` 全 ${count(stats.totalFaces)} 面を使用。`;
+        if (stats.unsupportedMeshes) text += ` 特殊なメッシュ ${count(stats.unsupportedMeshes)} 個は省略しています。`;
+        text += ' 灰色の骨線は基準姿勢です。';
+      }
+      rendererNote.textContent = text; rendererNote.dataset.limited = String(Boolean(stats?.limited));
+    }
     const boundary = byId('vrm-boundary');
     if (boundary) boundary.textContent = state.feetOnly
       ? `足だけ入力：足ボーンの平面内回転です。${state.anatomicalSidesConfirmed ? '左右は本人指定です。' : '自動で付けた左右は未確認です。'}3Dの向きと5本の足指の曲がりは未観測です。`
@@ -145,7 +168,7 @@ export async function createPhase3UI({ onRenderMetrics = () => {}, onState = () 
     dispose() {
       if (disposed) return;
       disposed = true; stopDemo(false); cleanup.forEach(fn => fn()); view.dispose();
-      container.hidden = true; wrapper?.classList.remove('three-ready');
+      container.hidden = true; wrapper?.classList.remove('three-ready', 'cpu-renderer');
       if (originalCanvas) originalCanvas.hidden = false;
     }
   };

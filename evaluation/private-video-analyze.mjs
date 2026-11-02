@@ -55,7 +55,7 @@ if(args['tapir-manifest']){
   const modelDirectory=resolve(args['tapir-model-dir']||dirname(manifestFile)),modelBuffers={};
   for(const record of tapirManifest.models){if(!['encoder','query','step'].includes(record.id))continue;const file=resolve(modelDirectory,record.filename);if(!inside(file,modelDirectory))throw new Error('Unexpected graph path in model manifest.');modelBuffers[record.id]=new Uint8Array(await readFile(file));}
   tapirOptimization=args['tapir-optimization']||'all';if(!['disabled','basic','extended','all'].includes(tapirOptimization))throw new Error('Unsupported TAPIR graph optimization level.');
-  tapirStepOptimization=args['tapir-step-optimization']||tapirOptimization;if(!['disabled','basic','extended','all'].includes(tapirStepOptimization))throw new Error('Unsupported TAPIR step graph optimization level.');
+  tapirStepOptimization=args['tapir-step-optimization']||(args['tapir-optimization']?tapirOptimization:'disabled');if(!['disabled','basic','extended','all'].includes(tapirStepOptimization))throw new Error('Unsupported TAPIR step graph optimization level.');
   tapir=await TapirTracker.create({ort,modelBuffers,manifest:tapirManifest,executionProviders:['wasm'],sessionOptions:{graphOptimizationLevel:tapirOptimization},graphSessionOptions:{step:{graphOptimizationLevel:tapirStepOptimization}}});
 }
 
