@@ -9,6 +9,8 @@ import shutil
 import urllib.request
 from pathlib import Path
 import onnx
+import numpy as np
+import onnxruntime as ort
 from benchmark import BODY_MODEL, HAND_MODEL, resolve_model, fetch
 
 REPOSITORY = 'RabbitDaisuke/Wholebody-Refinement-onnx'
@@ -30,8 +32,19 @@ def prepare(cache: Path, destination: Path) -> dict:
             raise ValueError(f'{model_id}: unexpected image shape {shape}')
         outputs = [{'name': value.name, 'shape': [d.dim_value if d.dim_value else d.dim_param for d in value.type.tensor_type.shape.dim]}
                    for value in graph.graph.output]
-        if len(outputs) != 2 or any(value['shape'][1] != expected_keypoints for value in outputs):
-            raise ValueError(f'{model_id}: unexpected keypoint outputs {outputs}')
+        session_options = ort.SessionOptions()
+        session_options.intra_op_num_threads = 2
+        session_options.inter_op_num_threads = 1
+        session = ort.InferenceSession(str(path), sess_options=session_options, providers=['CPUExecutionProvider'])
+        # Exported graph metadata uses symbolic keypoint dimensions. Measure the
+        # actual output shape; a constant image here is a contract check only.
+        measured_outputs = session.run(None, {session.get_inputs()[0].name: np.zeros([1,3,expected_wh[1],expected_wh[0]], dtype=np.float32)})
+        measured_shapes = [list(value.shape) for value in measured_outputs]
+        if len(measured_shapes) != 2 or any(value[1] != expected_keypoints for value in measured_shapes):
+            raise ValueError(f'{model_id}: unexpected runtime keypoint outputs {measured_shapes}')
+        for output, measured_shape in zip(outputs, measured_shapes):
+            output['runtimeShape'] = measured_shape
+        del session, measured_outputs
         shutil.copyfile(path, destination / filename)
         manifest['models'].append({'id': model_id, 'filename': filename, 'inputWH': expected_wh,
                                   'keypointCount': expected_keypoints, 'dimensions': 2, 'dtype': 'float32',

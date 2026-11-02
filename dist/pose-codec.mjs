@@ -57,6 +57,7 @@ export function decodeSimCC(outputs, transform, {keypointCount=133,zRange=2.1744
   for (let i=0;i<keypointCount;i++) {
     const px=peak(x.data,i*x.dims[2],x.dims[2]), py=peak(y.data,i*y.dims[2],y.dims[2]);
     const rawScore = Math.min(px.value,py.value);
+    if(rawScore<=0){px.index=-1;py.index=-1;}
     const point = {id:i,x:transform.left+(px.index/2)*transform.scale[0]/iw,y:transform.top+(py.index/2)*transform.scale[1]/ih,score:Number.isFinite(rawScore)?Math.max(0,Math.min(1,rawScore)):0,rawScore,observable:Number.isFinite(rawScore)&&rawScore>=scoreThreshold,source:'model2D'};
     if (z) {
       const pz=peak(z.data,i*z.dims[2],z.dims[2]);
