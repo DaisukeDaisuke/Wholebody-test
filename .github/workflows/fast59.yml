@@ -1,0 +1,59 @@
+name: Fast59 lower-compute student training
+on:
+  push:
+    branches: [compact-vrc-20261102-7fe4fac1]
+    paths: ['training/fast_model.py', 'training/train_fast.py', '.github/workflows/fast59.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fast59-training-7fe4fac1-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  fast59:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ci/requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/compact59
+          key: compact59-public-v1-${{ runner.os }}
+      - uses: actions/cache/restore@v4
+        id: baseline
+        with:
+          path: artifacts/compact59
+          key: compact59-trained-v1-9ed63fc278b4e0daefbaaef92ba44c2dcd89b9f5b69a47ae96a7c4c8bf722b93
+          fail-on-cache-miss: true
+      - uses: actions/cache@v4
+        id: trained
+        with:
+          path: artifacts/fast59
+          key: fast59-trained-v1-${{ hashFiles('training/fast_model.py', 'training/train_fast.py') }}
+      - name: Install CPU PyTorch and ONNX runtime
+        if: steps.trained.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r ci/requirements.txt
+      - name: Train candidates, select on validation, open independent test
+        if: steps.trained.outputs.cache-hit != 'true'
+        env:
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+        run: python training/train_fast.py --output artifacts/fast59 --cache .cache/compact59 --train-count 768 --val-count 128 --test-count 192 --steps 2400 --batch-size 16 --threads 4 --baseline-checkpoint artifacts/compact59/compact59.pth --exclude-split artifacts/compact59/public-split.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fast59-${{ github.sha }}
+          path: |
+            artifacts/fast59/*.onnx
+            artifacts/fast59/*.pth
+            artifacts/fast59/*.json
+            artifacts/fast59/*.md
+          if-no-files-found: error
+          retention-days: 7
