@@ -136,6 +136,8 @@ jobs:
         run: node ci/package.mjs
       - name: Run real ONNX inference and VRM updates in headless Node
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends ffmpeg
           npm install --ignore-scripts --no-audit --no-fund --prefix .cache/headless onnxruntime-node@1.22.0
           node ci/headless-video.mjs --output dist/evidence/headless-video.json
       - name: Private video inference when an existing private fetch secret is configured
