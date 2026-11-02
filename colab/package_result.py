@@ -10,6 +10,8 @@ import zipfile
 RESULT_NAME = "VRC_Compact59_Colab_Result_7fe4fac1.zip"
 FAST_FILES = ("fast59.onnx", "fast59.pth", "manifest.json", "metrics.json", "public-split.json",
               "selection-policy.json", "selection.json", "validation-candidates.json", "training-curve.json")
+INT8_FILES = ("compact59-int8.onnx", "manifest.json", "metrics.json", "public-split.json",
+              "selection-policy.json", "selection.json", "validation-candidates.json")
 
 
 def package(root, destination):
@@ -18,12 +20,13 @@ def package(root, destination):
     if status.get("handoffId") != "7fe4fac1" or status.get("privateInputsIncluded") is not False:
         raise ValueError("unexpected_return_identity")
     members = [(output / "run-status.json", "run-status.json"), (root / "bundle.json", "source-bundle.json")]
-    for filename in FAST_FILES:
-        path = output / "fast59" / filename
-        if path.is_file():
-            members.append((path, "fast59/" + filename))
-        elif status.get("status") == "completed":
-            raise ValueError("completed_experiment_is_missing_an_allowlisted_output: " + filename)
+    for directory, filenames in (("fast59", FAST_FILES), ("int8", INT8_FILES)):
+        for filename in filenames:
+            path = output / directory / filename
+            if path.is_file():
+                members.append((path, directory + "/" + filename))
+            elif status.get("status") == "completed":
+                raise ValueError("completed_experiment_is_missing_an_allowlisted_output: " + directory + "/" + filename)
     records = []
     total = 0
     for path, name in members:

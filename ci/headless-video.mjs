@@ -16,8 +16,10 @@ import { evaluateStabilitySequence } from './headless-stability.mjs';
 import { quaternionAngle, multiplyQuaternion } from '../dist/retarget.mjs';
 
 const PUBLIC_VIDEO = Object.freeze({
-  url: 'https://raw.githubusercontent.com/open-mmlab/mmpose/759b39c13fea6ba094afc1fa932f51dc1b11cbf9/demo/resources/demo.mp4',
-  revision: '759b39c13fea6ba094afc1fa932f51dc1b11cbf9', blob: '2ba10c2a68726ccb398163e4505cfd190ec4dba1', bytes: 204863,
+  url: 'https://dl.fbaipublicfiles.com/pytorchvideo/projects/archery.mp4',
+  sourceDocument: 'https://pytorchvideo.org/docs/tutorial_torchhub_inference',
+  revision: 'sha256:8d029ab048f571b136a8c0afddbbac022606022ca95307a78655dbde9735a562',
+  sha256: '8d029ab048f571b136a8c0afddbbac022606022ca95307a78655dbde9735a562', bytes: 549197,
 });
 const PUBLIC_VRM = Object.freeze({
   url: 'https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san/vrm/Seed-san.vrm',
@@ -61,7 +63,7 @@ async function fetchPublic(url, limit = 100 * 1024 * 1024) {
 }
 async function publicFixture(spec, target) {
   const bytes = await fetchPublic(spec.url, spec.bytes + 1024);
-  if (bytes.length !== spec.bytes || gitBlob(bytes) !== spec.blob) fail('publicFixtureIntegrityMismatch');
+  if (bytes.length !== spec.bytes || (spec.sha256 ? sha256(bytes) !== spec.sha256 : gitBlob(bytes) !== spec.blob)) fail('publicFixtureIntegrityMismatch');
   await writeFile(target, bytes, { mode: 0o600 });
   return target;
 }

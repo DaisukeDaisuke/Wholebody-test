@@ -65,11 +65,23 @@ jobs:
           --train-count 8 --val-count 8 --test-count 8
           --steps 2 --warmup-steps 1 --validation-interval 1
           --batch-size 2 --threads 2 --seed 20261105
+      - name: Exercise real INT8 calibration and heldout inference
+        run: >-
+          python training/quantize_stable.py
+          --output artifacts/colab-int8-smoke --cache .cache/compact59
+          --baseline-model artifacts/compact59/compact59.onnx
+          --baseline-manifest artifacts/compact59/manifest.json
+          --baseline-metrics artifacts/compact59/metrics.json
+          --shared-split artifacts/colab-smoke/public-split.json
+          --execution-environment actions --device cpu --smoke-test
+          --calibration-count 8 --threads 2
       - name: Retain execution evidence; this is not production training
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: colab-kit-export-check-${{ github.sha }}
-          path: artifacts/colab-smoke/*.json
+          path: |
+            artifacts/colab-smoke/*.json
+            artifacts/colab-int8-smoke/*.json
           if-no-files-found: warn
           retention-days: 7

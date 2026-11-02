@@ -79,20 +79,27 @@ def main():
             previous = json.loads(status_path.read_text(encoding="utf-8"))
             if previous.get("status") == "completed":
                 if previous.get("configuration") != status["configuration"] or previous.get("sourceBundleManifestSha256") != status["sourceBundleManifestSha256"]:
-                    raise RuntimeError("completed_experiment_exists_with_different_configuration")
+                    raise SystemExit("完了済みの実験と設定が異なります。既存結果を保持したまま停止します。")
                 print("完了済みの同じ実験を再利用します。testを再選択して再学習しません。", flush=True)
                 return
         write_json(status_path, status)
         env = os.environ.copy()
         env.update({"OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2", "PYTHONUNBUFFERED": "1",
-                    "HF_HUB_DISABLE_TELEMETRY": "1"})
+                    "HF_HUB_DISABLE_TELEMETRY": "1", "VRC_SOURCE_COMMIT": manifest["sourceCommit"]})
         common = ["--cache", ".cache/compact59", "--baseline-checkpoint", "baseline/compact59.pth",
                   "--exclude-split", "baseline/public-split.json", "--exclude-split", "excluded-fast-v1/public-split.json",
                   "--execution-environment", "colab", "--train-count", "768", "--val-count", "128",
                   "--test-count", "192", "--threads", "2", "--seed", "20261105"]
+        if (root / "excluded-smoke" / "public-split.json").is_file():
+            common.extend(["--exclude-split", "excluded-smoke/public-split.json"])
         commands = [("fast59", [sys.executable, "training/train_fast.py", "--output", "output/fast59", *common,
                                  "--device", "cuda", "--steps", str(args.steps), "--warmup-steps", "400",
-                                 "--batch-size", str(args.batch_size)])]
+                                 "--batch-size", str(args.batch_size)]),
+                    ("int8", [sys.executable, "training/quantize_stable.py", "--output", "output/int8",
+                               "--cache", ".cache/compact59", "--baseline-model", "baseline/compact59.onnx",
+                               "--baseline-manifest", "baseline/manifest.json", "--baseline-metrics", "baseline/metrics.json",
+                               "--shared-split", "output/fast59/public-split.json", "--execution-environment", "colab",
+                               "--device", "cpu", "--calibration-count", "128", "--threads", "2"])]
         for name, command in commands:
             stage = {"name": name, "status": "running"}
             status["stages"].append(stage)

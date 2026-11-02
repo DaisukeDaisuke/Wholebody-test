@@ -136,6 +136,13 @@ def public_values(value, token):
                 raise PublicationError("credential_capable_url_in_public_metadata")
 
 
+def fast_is_eligible(fast, report):
+    eligible = report.get("acceptance", {}).get("production_eligible")
+    if eligible is None:
+        eligible = fast.get("production_eligible", report["selection"]["validation_gates_passed"])
+    return eligible is True and fast.get("production_eligible", True) is True and not report["data"].get("smoke_test_only", False)
+
+
 def model_card(fast, standard, fast_report, standard_report, parts_report, repo_id):
     current = fast_report["fast59"]
     previous = fast_report["previous_compact59"]
@@ -155,9 +162,14 @@ def model_card(fast, standard, fast_report, standard_report, parts_report, repo_
         after = current["accuracy"][group]["labelled"]
         part_rows.append(f"| {group} | {after['points']} | {100 * before['pck_005']:.3f}% | "
                          f"{100 * after['pck_005']:.3f}% | {after['mean_error_input_px']:.3f} |")
-    recommended = "fast" if fast_report["selection"]["validation_gates_passed"] else "standard"
+    recommended = "fast" if fast_is_eligible(fast, fast_report) else "standard"
     default_model = fast if recommended == "fast" else standard
     shape = default_model["input"]["shape"]
+    training_environment = fast_report.get("training", {}).get("runtime", {}).get(
+        "execution_environment", "actions" if fast_report.get("run_url") else "not recorded")
+    cpu_environment = current["latency"].get("execution_environment", training_environment)
+    run_reference = fast_report.get("run_url") or "No Actions run URL for this training execution; see the Colab bundle receipt."
+    source_revision = fast_report.get("commit") or "not recorded"
     return f"""---
 language:
 - en
@@ -177,7 +189,7 @@ tags:
 Native 59-landmark 2D pose students, a foot-view classifier, and a pinned PFLD68
 face landmark model. The default body model is **{default_model['id']}**, with RGB
 float32 input `{shape}`. Recommended profile: **{recommended}**. A fast candidate
-that fails the validation accuracy gate is retained only as an experiment, and
+that fails validation or the fixed final-test acceptance gate remains an experiment and
 does not replace the standard model by default. Architecture and training
 changes are recorded in the manifests and measured results.
 
@@ -207,7 +219,9 @@ experiment. Checkpoint and resolution selection were fixed using validation
 before the final test was opened. Validation acceptance passed:
 **{fast_report['selection']['validation_gates_passed']}**. Selected checkpoint step:
 **{fast_report['selection']['selected_step']}**. A failed gate is not a successful
-accuracy-preservation claim.
+accuracy-preservation claim. Final production eligibility is **{fast_is_eligible(fast, fast_report)}**.
+The final test can reject deployment of the fixed candidate; it cannot choose a
+different candidate or checkpoint.
 
 | Model | Parameters | MACs | CPU median ms | Test PCK@0.05 |
 |---|---:|---:|---:|---:|
@@ -216,6 +230,8 @@ accuracy-preservation claim.
 All rows above use the same fresh test split in the Fast59 run. CPU timings are
 FP32 ONNX Runtime CPUExecutionProvider measurements, exclude decoding/rendering,
 and do not measure user-device WebGPU utilization, GPU power, or VRChat latency.
+Their execution environment is **{cpu_environment}**. Optional PyTorch CUDA event
+timings are separate fields in the evidence and are not CPU or browser timings.
 PCK uses the same canonical 192x256 crop for every resolution: 0.05 means 12.8
 canonical pixels. Ground-truth person boxes are supplied. This is neither full
 COCO AP nor end-to-end person detection accuracy.
@@ -239,7 +255,11 @@ Aggregate evidence is in `evidence/fast59-metrics.json`,
 `evidence/compact59-metrics.json`, and `evidence/parts-metrics.json`.
 Per-image face cases, boxes, observation traces and feature caches are omitted.
 
-Fast59 Actions run: {fast_report['run_url']}
+Fast59 training environment: **{training_environment}**.
+
+Training run reference: {run_reference}
+
+Training source revision: `{source_revision}`.
 
 Previous standard-model Actions run: {standard_report['run_url']}
 
@@ -360,7 +380,7 @@ def publish():
     face["filename"] = "pfld68.onnx"
     face["redistributed"] = True
     face["license"] = "Upstream checkpoint redistribution grant unverified; no MIT or blanket permissive license asserted."
-    recommended = "fast" if fast_report["selection"]["validation_gates_passed"] else "standard"
+    recommended = "fast" if fast_is_eligible(fast, fast_report) else "standard"
     manifest = {"schemaVersion": 2, "body": fast if recommended == "fast" else standard,
                 "recommendedBody": recommended, "bodies": {"fast": fast, "standard": standard},
                 "parts": parts, "hub": {"repoId": repo_id, "modelRevision": revision,

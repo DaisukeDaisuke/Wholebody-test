@@ -533,8 +533,8 @@ def main():
                  "validation_gates_passed": chosen["eligible"], "test_not_yet_opened": True,
                  "teacher_validation_accuracy": teacher_val, "previous_compact59_validation_accuracy": baseline_val,
                  "previous_compact59_validation_cpu_latency": baseline_validation_latency,
-                 "production_eligible": bool(eligible) and not args.smoke_test,
-                 "recommended_deployment": "fast" if eligible and not args.smoke_test else "standard"}
+                 "eligible_before_test": bool(eligible) and not args.smoke_test,
+                 "recommended_deployment_before_test": "fast" if eligible and not args.smoke_test else "standard"}
     write_json(args.output / "selection.json", selection)
     print(json.dumps({"selection_fixed_before_test": selection}), flush=True)
     # No candidate or checkpoint changes are permitted after this point.
@@ -579,6 +579,11 @@ def main():
     selected_pck = small_summary["accuracy"]["all"]["labelled"]["pck_005"]
     teacher_pck = teacher_summary["selected59_accuracy"]["all"]["labelled"]["pck_005"]
     previous_pck = old_summary["accuracy"]["all"]["labelled"]["pck_005"]
+    heldout_gates = quality_gates(small_summary["accuracy"], old_summary["accuracy"],
+                                 policy["allowed_drop_vs_previous_compact59"])
+    # The sealed test can veto deployment of the fixed model. It cannot select
+    # another resolution/checkpoint, and selection.json remains unchanged.
+    production_eligible = chosen["eligible"] and all(heldout_gates.values()) and not args.smoke_test
     run_url = (f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/"
                f"{os.environ['GITHUB_RUN_ID']}" if os.environ.get("GITHUB_RUN_ID") else None)
     training = {"teacher": "DWPose-t 133", "initialization": "exact previous Compact59 head and backbone weights; native lower-resolution backbone with physical stride-32 feature alignment",
@@ -593,7 +598,7 @@ def main():
                 "selected_checkpoint_step": chosen["selected_step"],
                 "baseline_checkpoint_sha256": sha256(args.baseline_checkpoint)}
     metrics = {"schema": "fast-vrc-evaluation-v3", "status": "smoke_completed" if args.smoke_test else "completed", "run_url": run_url,
-               "commit": os.environ.get("GITHUB_SHA"),
+               "commit": os.environ.get("GITHUB_SHA") or os.environ.get("VRC_SOURCE_COMMIT"),
                "hardware": {"platform": platform.platform(), "logical_cpus": os.cpu_count(),
                             "python": platform.python_version(), "torch": torch.__version__,
                             "onnxruntime": ort.__version__, "onnx": onnx.__version__, **runtime},
@@ -612,6 +617,11 @@ def main():
                "teacher133": teacher_summary, "previous_compact59": old_summary,
                "fast59": small_summary, "compact59": small_summary,
                "acceptance": {"validation_gates_passed": chosen["eligible"],
+                              "heldout_quality_gates": heldout_gates,
+                              "heldout_quality_gates_passed": all(heldout_gates.values()),
+                              "test_can_only_veto_deployment": True,
+                              "test_driven_candidate_reselection": False,
+                              "recommended_deployment": "fast" if production_eligible else "standard",
                               "pck005_difference_vs_teacher": selected_pck - teacher_pck,
                               "pck005_difference_vs_previous_compact59": selected_pck - previous_pck,
                               "pck005_within_3_percentage_points": selected_pck >= teacher_pck - .03,
@@ -622,7 +632,7 @@ def main():
                               "gpu_load_or_gpu_latency_measured": gpu_timings["fast59"] is not None,
                               "gpu_utilization_measured": False, "browser_webgpu_latency_measured": False,
                               "colab_cpu_results_require_actions_confirmation": runtime["execution_environment"] == "colab",
-                              "production_eligible": bool(eligible) and not args.smoke_test,
+                              "production_eligible": production_eligible,
                               "private_video_accuracy_measured": False, "complete_vrc_tracking_validated": False},
                "elapsed_seconds": time.perf_counter() - started}
     write_json(args.output / "metrics.json", metrics)
@@ -641,7 +651,8 @@ def main():
     manifest = {"id": config["id"] + "-distilled", "format": "onnx", "file": "fast59.onnx",
                 "sha256": sha256(model_path), "bytes": model_path.stat().st_size,
                 "decodeWH": list(DECODE_WH),
-                "production_eligible": bool(eligible) and not args.smoke_test,
+                "production_eligible": production_eligible,
+                "recommended_deployment": "fast" if production_eligible else "standard",
                 "input": {"name": "input", "shape": [1, 3, config["height"], config["width"]],
                           "dtype": "float32", "color": "RGB", "mean": MEAN.tolist(), "std": STD.tolist(),
                           "crop": {"source": "person bounding box xywh", "padding": 1.25,
@@ -653,6 +664,7 @@ def main():
                 "simcc_split_ratio": 2, "coco133_indices": SELECTED,
                 "score": baseline_manifest["score"], "keypoints": keypoint_names(), "groups": GROUPS,
                 "training": training, "evaluation": "metrics.json", "source_run": run_url,
+                "source_commit": metrics["commit"],
                 "pretrained_checkpoint": {"url": TEACHER_URL, "sha256": TEACHER_SHA256, "license": "Apache-2.0"},
                 "training_annotations": baseline_manifest["training_annotations"],
                 "limitations": baseline_manifest["limitations"] + [
