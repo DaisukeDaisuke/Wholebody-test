@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "passed": true,
   "status": "measured",
-  "gitCommit": "01952923850ecadbfd717ca3e42ab9327521d519",
-  "workflowRunId": "41388182911",
+  "gitCommit": "985542a1021add7595819689ebd0dbfde66574d3",
+  "workflowRunId": "41389867022",
   "softwareOnly": true,
   "physicalGpuMeasured": false,
   "hardwareFpsMeasured": false,
@@ -35,15 +35,19 @@
     },
     {
       "type": "log",
+      "text": "WEBGPU_WORKER_STAGE load-compressed-wasm"
+    },
+    {
+      "type": "log",
       "text": "WEBGPU_WORKER_STAGE create-encoder"
     },
     {
       "type": "error",
-      "text": "\u001b[0;93m2026-11-02 04:24:00.402463 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_12_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
+      "text": "\u001b[0;93m2026-11-02 04:42:08.595814 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_12_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
     },
     {
       "type": "error",
-      "text": "\u001b[0;93m2026-11-02 04:24:00.405383 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_11_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
+      "text": "\u001b[0;93m2026-11-02 04:42:08.598435 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_11_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
     },
     {
       "type": "log",
@@ -55,15 +59,15 @@
     },
     {
       "type": "error",
-      "text": "\u001b[0;93m2026-11-02 04:24:02.128128 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_508_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
+      "text": "\u001b[0;93m2026-11-02 04:42:10.461425 [W:onnxruntime:, graph.cc:5777 CleanUnusedInitializersAndNodeArgs] Removing initializer '/Constant_508_output_0'. It is not used by any node and should be removed from the model.\u001b[m"
     },
     {
       "type": "error",
-      "text": "\u001b[0;93m2026-11-02 04:24:03.514958 [W:onnxruntime:, session_state.cc:1598 VerifyEachNodeIsAssignedToAnEp] Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.\u001b[m"
+      "text": "\u001b[0;93m2026-11-02 04:42:11.936720 [W:onnxruntime:, session_state.cc:1598 VerifyEachNodeIsAssignedToAnEp] Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.\u001b[m"
     },
     {
       "type": "error",
-      "text": "\u001b[0;93m2026-11-02 04:24:03.515608 [W:onnxruntime:, session_state.cc:1600 VerifyEachNodeIsAssignedToAnEp] Rerunning with verbose output on a non-minimal build will show node assignments.\u001b[m"
+      "text": "\u001b[0;93m2026-11-02 04:42:11.937294 [W:onnxruntime:, session_state.cc:1600 VerifyEachNodeIsAssignedToAnEp] Rerunning with verbose output on a non-minimal build will show node assignments.\u001b[m"
     },
     {
       "type": "log",
@@ -99,7 +103,9 @@
     }
   ],
   "blockedExternalRequests": [],
-  "localRequests": 14,
+  "localRequests": 16,
+  "rawWasmRequests": 0,
+  "compressedWasmRequests": 1,
   "runtime": [
     {
       "file": "ort.webgpu.min.mjs",
@@ -112,9 +118,12 @@
       "sha256": "59cf781530e1a16df2a291d78798e3ec1152467edaec402d6f9599d85047c302"
     },
     {
-      "file": "ort-wasm-simd-threaded.asyncify.wasm",
-      "bytes": 28747738,
-      "sha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec"
+      "file": "ort-wasm-simd-threaded.asyncify.wasm.gz",
+      "bytes": 7131690,
+      "sha256": "0cf5f3068b07255642ccf5e7424293be60c4fff2ca1baa7ec9649bd8f1068090",
+      "encoding": "gzip",
+      "decodedBytes": 28747738,
+      "decodedSha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec"
     }
   ],
   "chromiumVersion": "141.0.7390.37",
@@ -140,7 +149,7 @@
         "id": "encoder",
         "bytes": 115330894,
         "sha256": "2f74d4d6d3a052e0baeabf2ec79a8668ed06af8c8bf77150f8373b7e63956519",
-        "createMs": 1492.2750000000015,
+        "createMs": 1404.109999999986,
         "preferredOutputLocation": {
           "lowres": "gpu-buffer",
           "hires": "gpu-buffer"
@@ -150,7 +159,7 @@
         "id": "query",
         "bytes": 2291,
         "sha256": "3eabf9ac98fc426cf969c814b61a5f96f062aea656b149ec709d8e33d3b7ad7f",
-        "createMs": 6.009999999994761,
+        "createMs": 13.709999999962747,
         "preferredOutputLocation": {
           "query_lowres": "gpu-buffer",
           "query_hires": "gpu-buffer"
@@ -160,7 +169,7 @@
         "id": "step",
         "bytes": 105305753,
         "sha256": "953d8b48f703e70eb9d7c3b5bb53cf0634de0438bc0df0964fb6961fd5f4cd46",
-        "createMs": 7547.720000000001,
+        "createMs": 7273.909999999974,
         "preferredOutputLocation": {
           "tracks": "cpu",
           "occlusion": "cpu",
@@ -170,6 +179,10 @@
       }
     ],
     "checks": [
+      {
+        "name": "browser-gzip-loader-restores-validated-wasm",
+        "passed": true
+      },
       {
         "name": "three-real-webgpu-sessions-and-model-hashes",
         "passed": true
@@ -271,8 +284,23 @@
         "maxComputeInvocationsPerWorkgroup": 256
       }
     },
+    "wasmTransport": {
+      "file": "ort-wasm-simd-threaded.asyncify.wasm.gz",
+      "encoding": "gzip",
+      "compressedBytes": 7131690,
+      "compressedSha256": "0cf5f3068b07255642ccf5e7424293be60c4fff2ca1baa7ec9649bd8f1068090",
+      "decodedBytes": 28747738,
+      "decodedSha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec",
+      "delivery": {
+        "transport": "gzip",
+        "compressedHashVerified": true,
+        "decodedHashVerified": true,
+        "decodedBytes": 28747738,
+        "decodedSha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec"
+      }
+    },
     "seed": {
-      "inferenceMs": 103613.285,
+      "inferenceMs": 103684.195,
       "queryFeatureLocation": "gpu-buffer",
       "causalStateLocation": "gpu-buffer"
     },
@@ -284,10 +312,10 @@
       "visibleCoordinatesCompared": 3
     },
     "softwareTiming": {
-      "seedInferenceMs": 103613.285,
-      "updateInferenceMs": 97873.305,
-      "encoderMs": 9.119999999995343,
-      "stepMs": 97864.185,
+      "seedInferenceMs": 103684.195,
+      "updateInferenceMs": 96351.04500000004,
+      "encoderMs": 13.150000000023283,
+      "stepMs": 96337.89500000002,
       "measuredOn": "SwiftShader CPU implementation of WebGPU; shader compilation may be included",
       "physicalGpuPerformance": false,
       "hardwareFpsMeasured": false
