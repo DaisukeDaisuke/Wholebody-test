@@ -118,7 +118,7 @@ export class PartModels {
       const spec = this.spec(kind);
       const bytes = await modelBytes(spec);
       const session = await this.ort.InferenceSession.create(bytes, {executionProviders: this.executionProviders,
-        graphOptimizationLevel: 'all'});
+        graphOptimizationLevel: 'all', ...(spec.freeDimensionOverrides ? {freeDimensionOverrides: spec.freeDimensionOverrides} : {})});
       this.sessions.set(kind, session);
       return session;
     })();

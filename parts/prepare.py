@@ -404,7 +404,7 @@ def prepare_face(args):
     onnx.checker.check_model(str(path))
     session = ort.InferenceSession(str(path), sess_options=options(args.threads), providers=["CPUExecutionProvider"])
     inp = session.get_inputs()[0]
-    if inp.shape != [1, 3, 112, 112]:
+    if len(inp.shape) != 4 or inp.shape[1:] != [3, 112, 112] or (isinstance(inp.shape[0], int) and inp.shape[0] != 1):
         raise ValueError(f"Unexpected PFLD input: {inp.shape}")
     annotation_path = fetch(FACE_ANNOTATION_URL, args.cache / "coco_wholebody_val_v1.0.json", 160 * 1024 * 1024)
     if digest(annotation_path) != FACE_ANNOTATION_SHA256:
@@ -432,7 +432,7 @@ def prepare_face(args):
         target = np.asarray(annotation["face_kpts"], dtype=np.float32).reshape(68, 3)
         valid = target[:, 2] > 0
         eye_distance = float(np.linalg.norm(target[36, :2] - target[45, :2]))
-        if eye_distance < 2 or not valid.any():
+        if eye_distance < 2 or not valid[36] or not valid[45] or not valid.any():
             continue
         normalized = np.linalg.norm(prediction[valid] - target[valid, :2], axis=1) / eye_distance
         errors.extend(normalized.tolist())
@@ -449,7 +449,9 @@ def prepare_face(args):
     record = {"id": "pfld-face68-upstream", "kind": "faceLandmarks", "url": FACE_URL,
               "upstreamRevision": FACE_REV, "upstreamGitBlob": FACE_GIT_BLOB, "sha256": digest(path),
               "bytes": len(content), "redistributed": False, "inputName": inp.name,
-              "inputShape": inp.shape, "inputWH": [112, 112], "outputNames": [v.name for v in session.get_outputs()],
+              "inputShape": [1, 3, 112, 112], "declaredInputShape": inp.shape, "inputWH": [112, 112],
+              "freeDimensionOverrides": {inp.shape[0]: 1} if isinstance(inp.shape[0], str) else {},
+              "outputNames": [v.name for v in session.get_outputs()],
               "keypointCount": 68, "outputLayout": "flat interleaved normalized x,y in the square ROI",
               "color": "RGB", "scale": 1 / 255, "mean": [0, 0, 0], "std": [1, 1, 1],
               "crop": "square face ROI; max(width,height)*1.1; black outside image",
