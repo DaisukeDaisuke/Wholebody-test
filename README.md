@@ -4,9 +4,11 @@ VRC向けに必要な関節と表情へ絞った軽量モデルの研究PoC。�
 
 ## 現行版の構成
 
-軽量59点モデルは、入力解像度とRTMCC内部の畳み込み・空間MLP・座標分類器を縮小した候補から選ぶ。`training/train_fast.py` は新規768画像で学習し、旧実験の640画像を除いたvalidation128画像で候補を選定してから、独立test192画像を開く。低解像度の結果も同じ192×256座標系へ戻して比較する。
+採用モデルは精度を維持した標準Compact59。最初の低解像度・縮小head実験はCPU時間を減らしたが、独立testでPCK@0.05が約9.9ポイント低下したため不採用とした。実験モデルは比較用の記録として残し、既定モデルへ自動昇格させない。
 
-モデルの学習と精度評価は `fast59.yml`、Hugging Faceへの公開とヘッドレスNode.js推論は `compact.yml` で行う。`HF_TOKEN` はActionsの公開ステップだけに渡す。ブラウザとNodeは、公開された重みの固定commit SHAを指定したHFの `/resolve/` URLから認証なしで取得し、SHA-256を検証する。Sitesには重みを同梱しない。
+次の学習はColabのCUDA GPUで行う。既存の学習済みheadを維持した小さい入力の候補と、標準59点のINT8候補を比較する。過去実験の画像IDをvalidation/testから除外し、画像キャッシュは返却ZIPへ入れない。GPUでのPyTorch推論とCPUでのONNX推論を別の測定として記録する。
+
+Hugging Faceへの公開とヘッドレスNode.js推論は `compact.yml` で行う。`HF_TOKEN` はActionsの公開ステップだけに渡す。ブラウザとNodeは、公開された重みの固定commit SHAを指定したHFの `/resolve/` URLから認証なしで取得し、SHA-256を検証する。Sitesには重みを同梱しない。`fast59.yml` の長時間CPU学習は自動起動を止めた。
 
 動画とVRMは常に横並び。単眼では胴体の画像平面上の傾きを反映し、観測できないyaw/pitch・絶対root移動を抑制する。範囲外・不自然な骨長・時間跳躍を除外し、腰や肩が見えなくても可視の前腕・下腿は残す。部位単位の短い保持と腕を下げた待機姿勢への復帰、再検出の連続確認、角速度制限を行う。観測がない点をトラッカーの新しい観測として送らない。
 
@@ -56,7 +58,7 @@ Sitesの専用URLでローカル動画を選ぶ。全身が小さい映像は人
 
 ## 再現
 
-学習・推論検証は.github/workflows/compact.ymlで実行する。torch2.6.0 CPU、torchvision0.21.0、onnx1.17.0、onnxruntime1.20.1を固定。ブラウザ配信のONNX Runtime Webは1.22.0。公開チェックポイントと元ONNXをSHA-256で確認し、元ネットワークとの数値比較、PyTorch→ONNXの実画像比較を行う。
+先行モデルはGitHub Actionsでtorch2.6.0 CPU、torchvision0.21.0、onnx1.17.0、onnxruntime1.20.1を使って学習・評価した。新しい学習用のColabキットはCUDA対応PyTorchを維持し、実際のバージョン・GPU型番を結果へ記録する。配布前の実行確認とNode推論は引き続きActionsで行う。ブラウザ配信のONNX Runtime WebとNodeは1.22.0。公開チェックポイントと元ONNXをSHA-256で確認し、PyTorch→ONNXの実画像比較を行う。
 
 配布モデルは同じActions内のheadless Nodeで実動画をデコードし、実ONNX推論、姿勢ガード、実VRMのhumanoid・spring bone更新を実行する。旧133点・旧59点・新59点は同じフレーム・同じ人物範囲で比較し、速度とモデル同士の一致度を分けて記録する。一致度は正解精度ではない。欠測・画像外の点を注入したchallengeも実動画の集計から分離する。精度評価には独立の公開画像を用い、動画・スクリーンショット・フレーム座標列を成果物へ入れない。
 

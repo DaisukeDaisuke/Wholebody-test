@@ -118,7 +118,7 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: artifacts/fast59
-          key: fast59-trained-v1-${{ hashFiles('training/fast_model.py', 'training/train_fast.py') }}
+          key: fast59-trained-v1-b41fb2dae145d7c697b4bcb9cd9967bd5b966fd2bc3bd9281de0979079cf016c
           fail-on-cache-miss: true
       - name: Build pinned runtime without lifecycle scripts
         run: |

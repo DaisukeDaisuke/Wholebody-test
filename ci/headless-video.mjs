@@ -9,9 +9,11 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { pathToFileURL } from 'node:url';
 import { COCO59, cropTransform, decodeSimCC, toCoco133 } from '../dist/compact-codec.mjs';
 import { faceMetrics68, faceRoiFrom59, footRoiFrom59 } from '../dist/parts.mjs';
 import { evaluateStabilitySequence } from './headless-stability.mjs';
+import { quaternionAngle, multiplyQuaternion } from '../dist/retarget.mjs';
 
 const PUBLIC_VIDEO = Object.freeze({
   url: 'https://raw.githubusercontent.com/open-mmlab/mmpose/759b39c13fea6ba094afc1fa932f51dc1b11cbf9/demo/resources/demo.mp4',
@@ -27,6 +29,13 @@ const REFERENCE_133 = Object.freeze({ id: 'dwpose-t-independent-133',
   input: { name: 'input', shape: [1, 3, 256, 192], mean: [123.675, 116.28, 103.53], std: [58.395, 57.12, 57.375], crop: { padding: 1.25 } },
   simcc_split_ratio: 2, count: 133,
 });
+const LEGACY_COMMIT = 'c5983daca5dd65e2ea806186a1a1775c1630f495';
+// Confirmed against the pinned GitHub tree; these match local baseline cf519e6.
+const LEGACY_MODULES = Object.freeze([
+  { role: 'geometry', name: 'geometry.mjs', blob: '3a20c5253212f4d23ed684e65c40abc456d7346c', bytes: 40233 },
+  { role: 'retarget', name: 'retarget.mjs', blob: '0645e5e1506897e9f42763555732546d2b62cdba', bytes: 22044 },
+  { role: 'calibrationDependency', name: 'calibration.mjs', blob: '75d7bed85374aeb32613c5e38cf97540ba9a650c', bytes: 12220 },
+]);
 const finite = Number.isFinite;
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const gitBlob = bytes => createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
@@ -38,7 +47,7 @@ function argumentsFor(argv) {
   const options = { output: 'artifacts/headless-video.json', manifest: 'dist/models.json', fps: 15, maxSeconds: 60, maxSize: 640, minFrames: 72, threads: 2 };
   const names = { '--video': 'video', '--vrm': 'vrm', '--output': 'output', '--manifest': 'manifest', '--fps': 'fps', '--max-seconds': 'maxSeconds', '--max-size': 'maxSize', '--min-frames': 'minFrames', '--threads': 'threads' };
   for (let i = 0; i < argv.length; i += 2) { const name = names[argv[i]]; if (!name || !argv[i + 1]) fail('invalidCliArgument'); options[name] = ['fps', 'maxSeconds', 'maxSize', 'minFrames', 'threads'].includes(name) ? Number(argv[i + 1]) : argv[i + 1]; }
-  if (!(options.fps >= 1 && options.fps <= 30 && options.maxSeconds > 0 && options.maxSeconds <= 60 && options.maxSize >= 128 && options.maxSize <= 640 && options.threads >= 1 && options.threads <= 8 && options.minFrames >= 72 && options.minFrames <= 900)) fail('invalidEvaluationLimits');
+  if (!(options.fps >= 1 && options.fps <= 30 && options.maxSeconds > 0 && options.maxSeconds <= 180 && options.maxSize >= 128 && options.maxSize <= 640 && options.threads >= 1 && options.threads <= 8 && options.minFrames >= 72 && options.minFrames <= 900)) fail('invalidEvaluationLimits');
   return options;
 }
 async function fetchPublic(url, limit = 100 * 1024 * 1024) {
@@ -196,15 +205,91 @@ function agreement(first, second, crop) {
   return distances;
 }
 
-async function derivedCropScenarios(videoPath, video, options, model, ort, rig, decodedCount) {
+function rotationStatistics(rig) {
+  const localAngles = [], worldAngles = [], localSpeeds = [], worldSpeeds = [];
+  let previous = null, count = 0, finiteTransforms = true, maxTorsoTilt = 0, maxRootDisplacement = 0, nonAdjacentGaps = 0;
+  const inverse = q => [-q[0], -q[1], -q[2], q[3]], identity = [0, 0, 0, 1];
+  return {
+    record(result, timestampMs) {
+      if (!result) return;
+      count++; const dt = previous ? (timestampMs - previous.timestampMs) / 1000 : 0;
+      if (dt > .100001) nonAdjacentGaps++;
+      for (const [name, bone] of Object.entries(result.bones || {})) {
+        finiteTransforms &&= [bone.rotation, bone.worldRotation].every(q => Array.isArray(q) && q.length === 4 && q.every(finite));
+        const old = previous?.result.bones?.[name];
+        if (old && dt > 1e-6 && dt <= .100001) {
+          const local = quaternionAngle(old.rotation, bone.rotation) * 180 / Math.PI, world = quaternionAngle(old.worldRotation, bone.worldRotation) * 180 / Math.PI;
+          localAngles.push(local); worldAngles.push(world); localSpeeds.push(local / dt); worldSpeeds.push(world / dt);
+        }
+      }
+      if (result.bones?.hips && rig.bones?.hips) {
+        const delta = multiplyQuaternion(result.bones.hips.worldRotation, inverse(rig.bones.hips.rotation || identity));
+        maxTorsoTilt = Math.max(maxTorsoTilt, 2 * Math.asin(Math.min(1, Math.hypot(delta[0], delta[1]))) * 180 / Math.PI);
+      }
+      const root = result.normalizedPose?.hips?.position, oldRoot = previous?.result.normalizedPose?.hips?.position;
+      if (Array.isArray(root) && Array.isArray(oldRoot) && dt <= .100001) maxRootDisplacement = Math.max(maxRootDisplacement, Math.hypot(...root.map((v, i) => v - oldRoot[i])));
+      previous = { result, timestampMs };
+    },
+    finish() {
+      const angular = (angles, speeds) => ({ p95FrameAngleDeg: percentile(angles, .95), maxFrameAngleDeg: maximum(angles), p95AngularSpeedDegPerSec: percentile(speeds, .95), maxAngularSpeedDegPerSec: maximum(speeds) });
+      return { renderFrames: count, finiteTransforms, nonAdjacentGapsExcludedFromFrameChanges: nonAdjacentGaps, localBones: angular(localAngles, localSpeeds), modelSpaceBones: angular(worldAngles, worldSpeeds), maxMonocularTorsoYawPitchDeg: maxTorsoTilt, maxRootFrameDisplacement: maxRootDisplacement };
+    },
+  };
+}
+
+async function loadLegacyComparison(workspace) {
+  const root = join(workspace, 'legacy-source'), provenance = [];
+  try {
+    await mkdir(root);
+    for (const module of LEGACY_MODULES) {
+      const bytes = await fetchPublic(`https://raw.githubusercontent.com/DaisukeDaisuke/Wholebody-test/${LEGACY_COMMIT}/dist/${module.name}`, 200000);
+      if (bytes.length !== module.bytes || gitBlob(bytes) !== module.blob) fail('legacySourceIntegrityMismatch');
+      await writeFile(join(root, module.name), bytes, { mode: 0o600 }); provenance.push({ role: module.role, gitBlobSha: module.blob, sha256: sha256(bytes) });
+    }
+    const geometry = await import(pathToFileURL(join(root, 'geometry.mjs')).href), retarget = await import(pathToFileURL(join(root, 'retarget.mjs')).href);
+    if (typeof geometry.estimateMonocularPose !== 'function' || typeof retarget.retargetPose !== 'function') fail('legacyModuleContractMismatch');
+    return { geometry, retarget, provenance };
+  } catch (error) { return { errorCode: error.safeCode || 'legacySourceUnavailable', provenance }; }
+}
+
+function compareLegacyObservations(observations, rig, current, legacy) {
+  const base = { baselineCommit: LEGACY_COMMIT, sourceModules: legacy.provenance,
+    protocol: 'Identical actual decoded-video inference observations and identical avatar rest rig. Pinned legacy geometry and retarget run unchanged at each inference arrival; legacy output holds between 30 Hz display samples, matching the previous app. Current guards and retarget run at 30 Hz. Both exclude initial activation and unprocessed gaps over 100 ms from adjacent-frame changes. No extra ONNX inference is performed.',
+    oldNeutral: 'avatar rest pose', newNeutral: 'rig-relative relaxed upper arms, 10 degrees outward', sourceCodeRetained: false, isPoseAccuracy: false };
+  if (legacy.errorCode) return { ...base, status: 'unavailable', errorCode: legacy.errorCode, current };
+  try {
+    if (!observations.length) fail('legacyObservationsMissing');
+    const stats = rotationStatistics(rig), period = 1000 / 30;
+    let priorPose = null, previousRetarget = null, nextRender = observations[0].timestampMs, lastTime = nextRender;
+    for (const observation of observations) {
+      while (nextRender < observation.timestampMs && nextRender <= lastTime + 2000) { stats.record(previousRetarget, nextRender); nextRender += period; }
+      if (nextRender < observation.timestampMs - period) nextRender = observation.timestampMs;
+      const pose = legacy.geometry.estimateMonocularPose(observation, null, { bodyHeightM: 1.7, scaleConfirmed: false, minScore: .25, priorPose, allowApproximateCalibration: false });
+      // Preserve the old application adapter as well as the pinned pure modules.
+      for (const j of pose.joints || []) if (observation.keypoints[j.id]?.derived && j.source !== 'missing') j.source = 'inferredFinger';
+      pose.inputMode = 'wholebody'; pose.sourceId = observation.sourceId; pose.targetVersion = 1; priorPose = pose;
+      previousRetarget = legacy.retarget.retargetPose(pose, rig, { previous: previousRetarget, footHints: pose.footHints });
+      stats.record(previousRetarget, observation.timestampMs); nextRender = Math.max(nextRender, observation.timestampMs + period); lastTime = observation.timestampMs;
+    }
+    const previous = stats.finish();
+    return { ...base, status: previous.finiteTransforms ? 'completed' : 'legacyProducedNonFiniteTransforms', previous, current,
+      change: { maxLocalFrameAngleDeg: current.localBones.maxFrameAngleDeg - previous.localBones.maxFrameAngleDeg,
+        maxModelSpaceFrameAngleDeg: current.modelSpaceBones.maxFrameAngleDeg - previous.modelSpaceBones.maxFrameAngleDeg,
+        maxModelSpaceAngularSpeedDegPerSec: current.modelSpaceBones.maxAngularSpeedDegPerSec - previous.modelSpaceBones.maxAngularSpeedDegPerSec,
+        maxMonocularTorsoYawPitchDeg: current.maxMonocularTorsoYawPitchDeg - previous.maxMonocularTorsoYawPitchDeg } };
+  } catch (error) { return { ...base, status: 'unavailable', errorCode: error.safeCode || 'legacyReplayFailed', current }; }
+}
+
+async function derivedCropScenarios(videoPath, video, options, model, ort, rig, decodedCount, legacy) {
   const selected = new Set();
   if (decodedCount <= 90) for (let i = 0; i < decodedCount; i++) selected.add(i);
   else for (const start of [0, Math.floor((decodedCount - 30) / 2), decodedCount - 30]) for (let i = start; i < start + 30; i++) selected.add(i);
   const height = Math.max(2, Math.floor(video.height * .6));
   const cases = [{ id: 'upper60Percent', top: 0 }, { id: 'lower60Percent', top: video.height - height }].map(item => ({ ...item, observations: [], timings: [], preprocessing: [], finiteOutputs: true }));
   const crop = cropTransform([0, 0, video.width, height], [model.width, model.height], model.spec.input.crop?.padding || 1.25);
+  const decodeCrop = { ...crop, inputWH: model.decodeWH };
   let index = 0;
-  // A separate decode pass keeps these extra fast-model calls out of the paired
+  // A separate decode pass keeps these extra selected-model calls out of the paired
   // CPU benchmark above. RGB windows never reach disk or an artifact.
   for await (const rgb of decodedFrames(videoPath, video, options)) {
     if (selected.has(index)) for (const item of cases) {
@@ -216,11 +301,11 @@ async function derivedCropScenarios(videoPath, video, options, model, ort, rig, 
       try {
         const start = performance.now(); outputs = await model.session.run({ [model.inputName]: tensor }); item.timings.push(performance.now() - start);
         const split = model.spec.simcc_split_ratio || 2, values = Object.values(outputs);
-        const x = values.find(t => t.dims.length === 3 && t.dims[1] === 59 && t.dims[2] === model.width * split), y = values.find(t => t.dims.length === 3 && t.dims[1] === 59 && t.dims[2] === model.height * split);
+        const x = values.find(t => t.dims.length === 3 && t.dims[1] === 59 && t.dims[2] === model.decodeWH[0] * split), y = values.find(t => t.dims.length === 3 && t.dims[1] === 59 && t.dims[2] === model.decodeWH[1] * split);
         if (!x || !y) fail('derivedCropModelOutputShapeMismatch');
         item.finiteOutputs &&= x.data.every(finite) && y.data.every(finite);
         if (!item.finiteOutputs) fail('derivedCropNonFiniteOutput');
-        const points = decodeSimCC(x.data, y.data, crop, 59, split), keypoints = toCoco133(points, model.spec.coco133_indices || COCO59);
+        const points = decodeSimCC(x.data, y.data, decodeCrop, 59, split), keypoints = toCoco133(points, model.spec.coco133_indices || COCO59);
         item.observations.push({ sourceId: 'ci-derived-' + item.id, inputMode: 'wholebody', targetVersion: 1, timestampMs: index * 1000 / options.fps, imageSize: { width: video.width, height }, keypoints });
       } finally { tensor.dispose?.(); if (outputs) Object.values(outputs).forEach(t => t.dispose?.()); }
     }
@@ -228,16 +313,17 @@ async function derivedCropScenarios(videoPath, video, options, model, ort, rig, 
   }
   if (index !== decodedCount) fail('derivedDecodeFrameCountMismatch');
   return Object.fromEntries(cases.map(item => {
-    const stability = evaluateStabilitySequence(item.observations, rig, { renderFps: 30, minScore: .25, geometryOptions: { bodyHeightM: 1.7, scaleConfirmed: false }, includeChallenges: false });
+    const currentStats = rotationStatistics(rig);
+    const stability = evaluateStabilitySequence(item.observations, rig, { renderFps: 30, minScore: .25, geometryOptions: { bodyHeightM: 1.7, scaleConfirmed: false }, includeChallenges: false, onActualRender: result => currentStats.record(result, result.timestampMs) });
     const safetyChecks = { actualCroppedRgbWasInferred: item.timings.length === selected.size && selected.size > 0, finiteOutputs: item.finiteOutputs,
       finiteRotations: stability.checks.finiteRotations === true, boundedAngularVelocity: stability.checks.boundedAngularVelocity === true,
       boundedRootVelocity: stability.checks.boundedRootVelocity === true, monocularYawPitchSuppressed: stability.checks.monocularYawPitchSuppressed === true,
       noCompleteMotionFreezeWhenAcceptedInputMoves: stability.checks.noCompleteMotionFreeze === true };
     return [item.id, { source: options.video ? 'derived image crop from the private input video' : 'derived image crop from the pinned official public video',
-      protocol: 'Keep the upper or lower 60% of actual decoded RGB pixels, then rerun fast59 ONNX. At most 90 frames in three contiguous 30-frame intervals (beginning/middle/end); short videos retain all frames. Original capture timestamps remain unchanged. Extra inference runs in a separate decoding pass after the CPU comparison.',
+      protocol: 'Keep the upper or lower 60% of actual decoded RGB pixels, then rerun the published selected body ONNX. At most 90 frames in three contiguous 30-frame intervals (beginning/middle/end); short videos retain all frames. Original capture timestamps remain unchanged; unsampled gaps are missing inputs, not evidence that the person disappeared. Extra inference runs in a separate decoding pass after the CPU comparison.',
       naturallyCapturedCroppedVideo: false, model: model.spec.id, inferenceCalls: item.timings.length, maximumSelectedFrames: 90,
       cpu: summary(item.timings), preprocessing: summary(item.preprocessing), partsIncluded: false, frameImagesRetained: false, perFrameCoordinatesRetained: false,
-      stability, safetyChecks, stable: Object.values(safetyChecks).every(Boolean), poseAccuracy: null,
+      stability, legacyComparison: compareLegacyObservations(item.observations, rig, currentStats.finish(), legacy), safetyChecks, stable: Object.values(safetyChecks).every(Boolean), poseAccuracy: null,
       interpretation: 'Safety and accepted-motion retention are evaluated. Missing accepted landmarks are reported as lost/partial; their actual visibility and anatomical correctness have no ground-truth labels.' }];
   }));
 }
@@ -260,6 +346,10 @@ async function main(options) {
     const standard = manifest.bodies?.standard, fast = manifest.bodies?.fast || manifest.body;
     if (!fast || !standard || fast.sha256 === standard.sha256) fail('distinctFastAndPreviousModelsRequired');
     const models = [{ role: 'fast59', spec: fast }, { role: 'previous59', spec: standard }, { role: 'reference133', spec: REFERENCE_133 }];
+    const selectedModel = models.slice(0, 2).find(model => model.spec.sha256 === manifest.body?.sha256);
+    if (!selectedModel) fail('publishedBodyMissingFromComparisonModels');
+    const selectedIsFast = selectedModel.role === 'fast59';
+    if ((manifest.recommendedBody === 'standard' && selectedIsFast) || (manifest.recommendedBody === 'fast' && !selectedIsFast)) fail('publishedBodyRecommendationMismatch');
     for (const model of models) {
       const bytes = await modelBytes(model.spec, options.manifest);
       const session = await ort.InferenceSession.create(bytes, { executionProviders: ['cpu'], intraOpNumThreads: options.threads, interOpNumThreads: 1, executionMode: 'sequential', graphOptimizationLevel: 'all' });
@@ -267,7 +357,10 @@ async function main(options) {
       model.inputName = session.inputNames.includes(model.spec.input.name) ? model.spec.input.name : session.inputNames[0];
       model.count = model.spec.count || 59; model.width = model.spec.input.shape[3]; model.height = model.spec.input.shape[2];
       if (![model.width, model.height].every(n => Number.isInteger(n) && n > 0 && n <= 1024)) fail('modelInputShapeInvalid');
+      model.decodeWH = model.spec.decodeWH || [model.width, model.height];
+      if (!Array.isArray(model.decodeWH) || model.decodeWH.length !== 2 || !model.decodeWH.every(n => Number.isInteger(n) && n > 0 && n <= 2048)) fail('modelDecodeShapeInvalid');
       model.crop = cropTransform([0, 0, video.width, video.height], [model.width, model.height], model.spec.input.crop?.padding || 1.25);
+      model.decodeCrop = { ...model.crop, inputWH: model.decodeWH };
     }
     const partModels = {};
     for (const [role, kind] of [['face', 'faceLandmarks'], ['foot', 'footView']]) {
@@ -308,18 +401,19 @@ async function main(options) {
         try {
           const start = performance.now(); output = await model.session.run({ [model.inputName]: tensor }); model.timings.push(performance.now() - start);
           const split = model.spec.simcc_split_ratio || 2;
-          const values = Object.values(output), x = values.find(t => t.dims.length === 3 && t.dims[1] === model.count && t.dims[2] === model.width * split), y = values.find(t => t.dims.length === 3 && t.dims[1] === model.count && t.dims[2] === model.height * split);
+          const values = Object.values(output), x = values.find(t => t.dims.length === 3 && t.dims[1] === model.count && t.dims[2] === model.decodeWH[0] * split), y = values.find(t => t.dims.length === 3 && t.dims[1] === model.count && t.dims[2] === model.decodeWH[1] * split);
           if (!x || !y) fail('actualModelOutputShapeMismatch');
           allOutputsFinite &&= x.data.every(finite) && y.data.every(finite);
           if (!allOutputsFinite) fail('nonFiniteActualModelOutput');
-          const points = decodeSimCC(x.data, y.data, model.crop, model.count, split);
+          const points = decodeSimCC(x.data, y.data, model.decodeCrop, model.count, split);
           outputsByRole[model.role] = model.count === 133 ? points.map((p, id) => ({ ...p, id, source: 'observed2D' })) : toCoco133(points, model.spec.coco133_indices || COCO59);
         } finally { tensor.dispose?.(); if (output) Object.values(output).forEach(t => t.dispose?.()); }
       }
       fastStandard.push(...agreement(outputsByRole.fast59, outputsByRole.previous59, models[0].crop));
       fastReference.push(...agreement(outputsByRole.fast59, outputsByRole.reference133, models[0].crop));
       standardReference.push(...agreement(outputsByRole.previous59, outputsByRole.reference133, models[0].crop));
-      const timestampMs = decoded * 1000 / options.fps, points59 = COCO59.map(id => outputsByRole.fast59[id]);
+      const timestampMs = decoded * 1000 / options.fps, selectedPoints = outputsByRole[selectedModel.role];
+      const points59 = (selectedModel.spec.coco133_indices || COCO59).map(id => selectedPoints[id]);
       let partsMs = 0;
       if (timestampMs + 1e-6 >= nextFaceAt) {
         const candidate = usablePartRoi(faceRoiFrom59(points59), video, 24);
@@ -337,12 +431,13 @@ async function main(options) {
       }
       const face = latestFace?.valid && timestampMs - lastFaceTime < 300 ? latestFace : null;
       expressionFrames.push(face ? { valid: true, blinkLeft: face.blinkLeft, blinkRight: face.blinkRight, mouthOpen: face.mouthOpen } : null);
-      observations.push(observationWithFace(outputsByRole.fast59, face, timestampMs, video)); partCompute.push(partsMs);
+      observations.push(observationWithFace(selectedPoints, face, timestampMs, video)); partCompute.push(partsMs);
       decoded++;
     }
     stage = 'actualVrmMotion';
-    const vrmTimes = [], vrmByVideoFrame = Array(decoded).fill(0); let vrmUpdates = 0, transformsFinite = true, checkedTransforms = 0, previousTime = null, expressionUpdates = 0;
+    const vrmTimes = [], vrmByVideoFrame = Array(decoded).fill(0), currentReplayStats = rotationStatistics(rig); let vrmUpdates = 0, transformsFinite = true, checkedTransforms = 0, previousTime = null, expressionUpdates = 0;
     const stability = evaluateStabilitySequence(observations, rig, { renderFps: 30, minScore: .25, geometryOptions: { bodyHeightM: 1.7, scaleConfirmed: false }, onActualRender: result => {
+      currentReplayStats.record(result, result.timestampMs);
       const dt = previousTime === null ? 1 / 30 : Math.min(.05, Math.max(0, (result.timestampMs - previousTime) / 1000)); previousTime = result.timestampMs;
       const index = Math.min(decoded - 1, Math.max(0, Math.floor(result.timestampMs * options.fps / 1000 + 1e-6))), face = expressionFrames[index];
       const start = performance.now(); vrm.humanoid.setNormalizedPose(result.normalizedPose);
@@ -350,14 +445,17 @@ async function main(options) {
       vrm.update(dt); vrm.scene.updateMatrixWorld(true); const elapsed = performance.now() - start; vrmTimes.push(elapsed); vrmByVideoFrame[index] += elapsed; vrmUpdates++;
       vrm.scene.traverse(node => { checkedTransforms++; transformsFinite &&= node.matrixWorld.elements.every(finite) && node.quaternion.toArray().every(finite) && node.position.toArray().every(finite); });
     } });
-    const modelResults = Object.fromEntries(models.map(m => [m.role, { id: m.spec.id, sha256: m.spec.sha256, inputShape: m.spec.input.shape, cpu: summary(m.timings), preprocessing: summary(m.preprocessing) }]));
+    const modelResults = Object.fromEntries(models.map(m => [m.role, { id: m.spec.id, sha256: m.spec.sha256, inputShape: m.spec.input.shape, decodeWH: m.decodeWH, cpu: summary(m.timings), preprocessing: summary(m.preprocessing) }]));
     const partResults = Object.fromEntries(Object.entries(partModels).map(([role, m]) => [role, { id: m.spec.id, sha256: m.spec.sha256, scheduledHz: role === 'face' ? 10 : 5, frequencyUnit: role === 'face' ? 'one face' : 'per foot', actualHz: decoded ? m.timings.length / (decoded / options.fps) : 0, validCalls: m.validCalls, skippedInvalidRois: m.skippedRois, warmupCallsExcluded: m.warmupCalls, cpu: summary(m.timings), preprocessing: summary(m.preprocessing), ...(role === 'foot' ? { perSideCalls: m.perSideCalls, predictedClassCounts: m.classCounts } : {}) }]));
-    const combinedFast = models[0].timings.map((ms, i) => ms + models[0].preprocessing[i] + partCompute[i] + vrmByVideoFrame[i]);
+    const combinedSelected = selectedModel.timings.map((ms, i) => ms + selectedModel.preprocessing[i] + partCompute[i] + vrmByVideoFrame[i]);
+    stage = 'legacyPoseReplay';
+    const legacy = await loadLegacyComparison(workspace), legacyComparison = compareLegacyObservations(observations, rig, currentReplayStats.finish(), legacy);
     stage = 'derivedImageCropInference';
-    const derivedImageScenarios = await derivedCropScenarios(videoPath, video, options, models[0], ort, rig, decoded);
+    const derivedImageScenarios = await derivedCropScenarios(videoPath, video, options, selectedModel, ort, rig, decoded, legacy);
     const comparison = values => ({ pointsCompared: values.length, meanCanonicalPixels: values.length ? values.reduce((a, b) => a + b, 0) / values.length : null, p95CanonicalPixels: percentile(values, .95), units: 'pixels in the common 192x256 source crop', isGroundTruthAccuracy: false });
     const checks = { atLeast72ActualDecodedFrames: decoded >= options.minFrames, allThreeModelsRanEveryFrame: models.every(m => m.timings.length === decoded), allOutputsFinite,
-      fastActuallyFaster: modelResults.fast59.cpu.medianMs !== null && modelResults.fast59.cpu.medianMs < modelResults.previous59.cpu.medianMs,
+      selectedMatchesPublishedBody: selectedModel.spec.sha256 === manifest.body.sha256,
+      selectedCandidateSpeedGate: !selectedIsFast || (modelResults.fast59.cpu.medianMs !== null && modelResults.fast59.cpu.medianMs < modelResults.previous59.cpu.medianMs),
       actualHumanoidLoaded: Object.keys(rig.bones).length >= 15, actualVrmUpdated: vrmUpdates >= decoded, actualSpringSystemUpdated: springUpdates >= vrmUpdates && springUpdates > 0, finiteVrmTransforms: transformsFinite, stableMotion: stability.pass,
       actualCroppedImageScenariosStable: Object.values(derivedImageScenarios).every(scenario => scenario.stable) };
     const report = { schemaVersion: 1, status: Object.values(checks).every(Boolean) ? 'passed' : 'failed', sourceCommit: process.env.GITHUB_SHA || null,
@@ -365,15 +463,17 @@ async function main(options) {
       input: { kind: options.video ? 'privateEphemeralVideo' : 'pinnedOfficialPublicVideo', publicRevision: options.video ? null : PUBLIC_VIDEO.revision,
         decodedFrames: decoded, sampledFps: options.fps, sampledSeconds: decoded / options.fps, originalMediaRetained: false, frameImagesRetained: false, perFrameCoordinatesRetained: false },
       environment: { runtime: 'onnxruntime-node', runtimeVersion: ort.env.versions?.node || '1.22.0', executionProvider: 'CPUExecutionProvider', nodeVersion: process.version, intraOpThreads: options.threads, logicalCpus: cpus().length, cpuModel: cpus()[0]?.model || null, warmupCallsExcluded: warmupCalls },
-      models: modelResults, parts: partResults, combinedFastCompute: { ...summary(combinedFast), definition: 'Sum of measured fast-body inference/preprocessing, scheduled face/feet inference/preprocessing, and real VRM update compute per sampled video frame. Stages are timed separately; decoding, raster rendering, and reference-model comparison are excluded. Not wall-clock end-to-end latency.' }, comparison: { sameActualFrames: true, sameSourceCrop: true, modelOrderRotatedPerFrame: true, personDetectionIncluded: false,
+      stabilityModel: { id: selectedModel.spec.id, sha256: selectedModel.spec.sha256, role: selectedModel.role, manifestRecommendedBody: manifest.recommendedBody || null, selectedByPublishedBodySha: true },
+      models: modelResults, parts: partResults, combinedSelectedCompute: { ...summary(combinedSelected), definition: 'Sum of measured published-body inference/preprocessing, scheduled face/feet inference/preprocessing, and real VRM update compute per sampled video frame. Stages are timed separately; decoding, raster rendering, and candidate/reference-model comparison are excluded. Not wall-clock end-to-end latency.' }, comparison: { sameActualFrames: true, sameSourceCrop: true, modelOrderRotatedPerFrame: true, personDetectionIncluded: false,
         fastVsPreviousMedianRatio: modelResults.fast59.cpu.medianMs && modelResults.previous59.cpu.medianMs ? modelResults.fast59.cpu.medianMs / modelResults.previous59.cpu.medianMs : null,
+        fastCandidateSelected: selectedIsFast, fastCandidateActuallyFaster: modelResults.fast59.cpu.medianMs !== null && modelResults.fast59.cpu.medianMs < modelResults.previous59.cpu.medianMs,
         fastVsPrevious: comparison(fastStandard), fastVsReference133: comparison(fastReference), previousVsReference133: comparison(standardReference) },
       vrm: { kind: options.vrm ? 'privateEphemeralAvatar' : 'pinnedOfficialPublicAvatar', publicRevision: options.vrm ? null : PUBLIC_VRM.revision,
         humanoidBones: Object.keys(rig.bones).length, springJointCount: springCount, springUpdateCalls: springUpdates, updateCalls: vrmUpdates, faceDrivenExpressionUpdates: expressionUpdates, updateCpu: summary(vrmTimes), transformsChecked: checkedTransforms, transformsFinite, rendererUsed: false, texturePixelsLoaded: false },
-      stability, derivedImageScenarios, accuracy: null, gpuUtilization: null, gpuPower: null,
+      stability, legacyComparison, derivedImageScenarios, accuracy: null, gpuUtilization: null, gpuPower: null,
       limitations: ['CPU timings are actual video inference; no user-GPU performance was measured.', 'Agreement with a reference model is not accuracy against annotations.', 'The wholebody path uses the full video rectangle as its person crop; no automatic person detector is included.', 'VRM humanoid and spring systems execute in Node; raster rendering and textures are excluded.'] };
     stage = 'writeAggregateReport'; await mkdir(dirname(resolve(options.output)), { recursive: true }); await writeFile(options.output, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
-    console.log(JSON.stringify({ status: report.status, decodedFrames: decoded, fastMedianMs: modelResults.fast59.cpu.medianMs, previousMedianMs: modelResults.previous59.cpu.medianMs, referenceMedianMs: modelResults.reference133.cpu.medianMs, vrmUpdates, stabilityPassed: stability.pass, mediaOutput: false }));
+    console.log(JSON.stringify({ status: report.status, decodedFrames: decoded, stabilityModelRole: selectedModel.role, fastMedianMs: modelResults.fast59.cpu.medianMs, previousMedianMs: modelResults.previous59.cpu.medianMs, referenceMedianMs: modelResults.reference133.cpu.medianMs, vrmUpdates, stabilityPassed: stability.pass, mediaOutput: false }));
     if (report.status !== 'passed') process.exitCode = 1;
   } catch (error) { error.evaluationStage = stage; throw error; }
   finally { console.warn = previousWarn; for (const session of sessions) try { await session.release(); } catch {} await rm(workspace, { recursive: true, force: true }); }

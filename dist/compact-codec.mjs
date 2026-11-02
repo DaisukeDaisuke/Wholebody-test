@@ -17,8 +17,9 @@ export function rgbaToTensor(rgba,width,height,mean=[123.675,116.28,103.53],std=
   for(let i=0;i<n;i++)for(let c=0;c<3;c++)data[c*n+i]=(rgba[i*4+c]-mean[c])/std[c];
   return data;
 }
-export function decodeSimCC(x,y,crop,count=59,split=2) {
-  const [iw,ih]=crop.inputWH, nx=iw*split,ny=ih*split;
+export function decodeSimCC(x,y,crop,count=59,split=2,decodeWH=crop.inputWH) {
+  const [iw,ih]=decodeWH, nx=iw*split,ny=ih*split;
+  if(![iw,ih,split].every(v=>Number.isFinite(v)&&v>0)||!Number.isInteger(nx)||!Number.isInteger(ny))throw new Error('モデルの座標出力サイズが不正です。');
   if(x.length!==count*nx||y.length!==count*ny)throw new Error('モデルと59点の出力契約が一致しません。');
   return Array.from({length:count},(_,k)=>{
     let ix=0,iy=0,mx=-Infinity,my=-Infinity;

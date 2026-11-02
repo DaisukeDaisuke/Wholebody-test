@@ -1,8 +1,5 @@
-name: Fast59 lower-compute student training
+name: Fast59 legacy CPU experiment (manual only; training moved to Colab)
 on:
-  push:
-    branches: [compact-vrc-20261102-7fe4fac1]
-    paths: ['training/fast_model.py', 'training/train_fast.py', '.github/workflows/fast59.yml']
   workflow_dispatch:
 permissions:
   contents: read

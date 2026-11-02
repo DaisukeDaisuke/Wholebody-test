@@ -136,7 +136,7 @@ def public_values(value, token):
                 raise PublicationError("credential_capable_url_in_public_metadata")
 
 
-def model_card(fast, standard, fast_report, standard_report, parts_report):
+def model_card(fast, standard, fast_report, standard_report, parts_report, repo_id):
     current = fast_report["fast59"]
     previous = fast_report["previous_compact59"]
     teacher = fast_report["teacher133"]
@@ -155,14 +155,16 @@ def model_card(fast, standard, fast_report, standard_report, parts_report):
         after = current["accuracy"][group]["labelled"]
         part_rows.append(f"| {group} | {after['points']} | {100 * before['pck_005']:.3f}% | "
                          f"{100 * after['pck_005']:.3f}% | {after['mean_error_input_px']:.3f} |")
-    shape = fast["input"]["shape"]
+    recommended = "fast" if fast_report["selection"]["validation_gates_passed"] else "standard"
+    default_model = fast if recommended == "fast" else standard
+    shape = default_model["input"]["shape"]
     return f"""---
 language:
 - en
 - ja
 license: other
 license_name: mixed-model-and-training-data-terms
-license_link: README.md#licenses-and-provenance
+license_link: https://huggingface.co/{repo_id}/blob/main/README.md#licenses-and-provenance
 tags:
 - onnx
 - pose-estimation
@@ -173,10 +175,11 @@ tags:
 # VRC Compact59 / Fast59
 
 Native 59-landmark 2D pose students, a foot-view classifier, and a pinned PFLD68
-face landmark model. The default body model is **{fast['id']}**, with RGB float32
-input `{shape}`. Its convolution kernel, spatial projection and SimCC output
-layers are physically reduced; it is not a resize/Gather wrapper around the
-original 133-output graph. The standard model remains available separately.
+face landmark model. The default body model is **{default_model['id']}**, with RGB
+float32 input `{shape}`. Recommended profile: **{recommended}**. A fast candidate
+that fails the validation accuracy gate is retained only as an experiment, and
+does not replace the standard model by default. Architecture and training
+changes are recorded in the manifests and measured results.
 
 ## Files and inference contract
 
@@ -189,10 +192,11 @@ original 133-output graph. The standard model remains available separately.
 
 Read `models.json` for input names, normalization, crop padding, output names,
 keypoint order, class order and checksums. Every downloadable model URL in that
-manifest includes an immutable Hub commit SHA. `body` selects the fast model;
+manifest includes an immutable Hub commit SHA. `body` selects the recommended model;
 `bodies.fast` and `bodies.standard` make the implementations interchangeable.
 The two SimCC axes use a split ratio of 2. Convert the argmax coordinates to the
-provided padded person crop using the actual input width and height.
+provided padded person crop using `decodeWH` when present, otherwise the actual
+input width and height.
 
 ## Measured public-image result
 
@@ -306,10 +310,6 @@ def publish():
     payloads["evidence/compact59-metrics.json"] = encode_json(standard_report)
     payloads["evidence/fast59-metrics.json"] = encode_json(fast_report)
     payloads["evidence/parts-metrics.json"] = encode_json(public_parts)
-    card = model_card(fast, standard, fast_report, standard_report, public_parts)
-    if token in card:
-        raise PublicationError("credential_value_in_model_card")
-    payloads["README.md"] = card.encode("utf-8")
     STAGE = "load_hub_dependency"
     from huggingface_hub import CommitOperationAdd, HfApi
 
@@ -326,9 +326,13 @@ def publish():
         # create_repo(exist_ok=True) does not alter existing visibility. Never
         # expose unrelated contents by changing an already-private repository.
         raise PublicationError("existing_target_repository_is_private")
+    card = model_card(fast, standard, fast_report, standard_report, public_parts, repo_id)
+    if token in card:
+        raise PublicationError("credential_value_in_model_card")
+    payloads["README.md"] = card.encode("utf-8")
     STAGE = "commit_allowlisted_models_and_aggregate_evidence"
     commit = api.create_commit(repo_id=repo_id, repo_type="model", revision="main",
-                               parent_commit=information.sha,
+                               parent_commit=information.sha or None,
                                operations=[CommitOperationAdd(path_in_repo=name, path_or_fileobj=data)
                                            for name, data in payloads.items()],
                                commit_message="Publish public-data VRC pose models and measured evaluation",
@@ -356,7 +360,9 @@ def publish():
     face["filename"] = "pfld68.onnx"
     face["redistributed"] = True
     face["license"] = "Upstream checkpoint redistribution grant unverified; no MIT or blanket permissive license asserted."
-    manifest = {"schemaVersion": 2, "body": fast, "bodies": {"fast": fast, "standard": standard},
+    recommended = "fast" if fast_report["selection"]["validation_gates_passed"] else "standard"
+    manifest = {"schemaVersion": 2, "body": fast if recommended == "fast" else standard,
+                "recommendedBody": recommended, "bodies": {"fast": fast, "standard": standard},
                 "parts": parts, "hub": {"repoId": repo_id, "modelRevision": revision,
                                           "publicAnonymousHashVerified": True}}
     public_values(manifest, token)
@@ -410,6 +416,13 @@ if __name__ == "__main__":
         report = {"status": "failed", "stage": STAGE, "code": code,
                   "httpStatus": status if isinstance(status, int) else None,
                   "detailsSuppressed": "Credentials and signed URLs are never logged."}
+        if isinstance(error, ValueError):
+            # Return only fixed field names, never the exception text itself.
+            message = str(error)
+            report["diagnosticTags"] = [field for field in
+                                        ("Invalid metadata in README.md", "license_link", "license_name",
+                                         "language", "tags", "parent_commit", "commit_message")
+                                        if field in message]
         print(json.dumps(report), file=sys.stderr)
         raise SystemExit(1) from None
     print(json.dumps(summary))

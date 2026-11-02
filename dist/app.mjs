@@ -36,7 +36,12 @@ async function modelBytes(url,hash){
 async function prepareModels(){
   if(loading)return;loading=true;$('start').disabled=true;
   try{
-    if(!manifest){const response=await fetch('./models.json',{cache:'no-cache'});if(!response.ok)throw new Error('学習済みモデルのマニフェストを取得できません。');manifest=await response.json();}
+    if(!manifest){
+      const response=await fetch('./models.json',{cache:'no-cache'});if(!response.ok)throw new Error('学習済みモデルのマニフェストを取得できません。');manifest=await response.json();
+      const choice=$('model-choice'),fast=choice.querySelector('option[value="fast"]');
+      if(manifest.recommendedBody==='standard'){fast.disabled=true;fast.textContent='軽量候補（精度基準未達）';choice.value='standard';}
+      else if(manifest.recommendedBody==='fast')choice.value='fast';
+    }
     const requested=$('mode').value==='wholebody'?$('backend').value:'wasm', spec=manifest.bodies?.[$('model-choice').value]||manifest.body;
     if(actualBackend!==requested||activeBody?.sha256!==spec.sha256){if(body)await body.release();body=null;timings.length=bodyTimes.length=partTimes.length=0;bodyCalls=0;lastBodyMs=null;}
     activeBody=spec;
@@ -103,7 +108,7 @@ async function runBody(source,roi){
   preprocessContext.fillStyle='#000';preprocessContext.fillRect(0,0,w,h);preprocessContext.drawImage(source.frame,crop.x,crop.y,crop.width,crop.height,0,0,w,h);
   const data=rgbaToTensor(preprocessContext.getImageData(0,0,w,h).data,w,h,spec.input.mean,spec.input.std);
   const input=new ort.Tensor('float32',data,[1,3,h,w]),start=performance.now();let output;
-  try{output=await body.run({[spec.input.name]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodeSimCC(output.simcc_x.data,output.simcc_y.data,crop,59,spec.simcc_split_ratio);}
+  try{output=await body.run({[spec.input.name]:input});lastBodyMs=performance.now()-start;limitedPush(bodyTimes,lastBodyMs);bodyCalls++;return decodeSimCC(output.simcc_x.data,output.simcc_y.data,crop,59,spec.simcc_split_ratio,spec.decodeWH||crop.inputWH);}
   finally{input.dispose?.();if(output)Object.values(output).forEach(t=>t.dispose?.());}
 }
 function faceReadout(value){

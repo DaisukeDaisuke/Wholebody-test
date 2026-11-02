@@ -15,7 +15,7 @@
 <label class="file-button primary">動画をひらく<input id="video-file" type="file" accept="video/*" multiple></label>
 <div class="camera-row"><select id="camera-select" aria-label="カメラ"><option value="">標準カメラ</option></select><button id="camera-add" class="secondary">追加</button></div>
 <label>部位<select id="mode"><option value="wholebody">全身・手・顔・足</option><option value="foot">足のアップ</option><option value="face">顔のアップ</option></select></label>
-<label>モデル<select id="model-choice"><option value="fast">軽量59点</option><option value="standard">従来59点（比較用）</option></select></label>
+<label>モデル<select id="model-choice"><option value="fast">軽量候補59点</option><option value="standard" selected>標準59点</option></select></label>
 <label>全身の推論<select id="backend"><option value="wasm">CPU / WASM</option><option value="webgpu">WebGPU</option></select></label>
 <label>推論頻度 <output id="fps-value">30</output> 回/秒<input id="target-fps" type="range" min="5" max="60" step="5" value="30"></label>
 <div class="toggle"><input id="face-enabled" type="checkbox" checked><label for="face-enabled">表情 <small>CPU・最大10回/秒</small></label></div>
