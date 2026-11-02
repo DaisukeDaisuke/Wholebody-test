@@ -17,7 +17,7 @@ $('join').onclick=safe(async()=>{
   requireStream();client?.stop();const slot=$('capture-slot').value;
   client=new SignalClient({url:$('capture-url').value,token:$('capture-token').value,room:$('capture-room').value,peer:'camera-'+slot,onStatus:status=>{$('capture-status').textContent=status;},onMessage:async message=>{
     if(message.from==='pc'&&message.payload.type==='offer'){const answer=await newPeer(slot).answer(message.payload.offer,stream);await client.send('pc',{type:'answer',answer});}
-  });await client.start();await client.send('pc',{type:'join',slot});$('capture-status').textContent='PCの応答を待っています。';
+  }});await client.start();await client.send('pc',{type:'join',slot});$('capture-status').textContent='PCの応答を待っています。';
 });
 if(['localhost','127.0.0.1'].includes(location.hostname)||/^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(location.hostname))$('capture-url').value=location.origin;
 window.addEventListener('beforeunload',stop);

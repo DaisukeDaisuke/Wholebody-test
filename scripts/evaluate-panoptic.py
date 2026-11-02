@@ -458,6 +458,11 @@ def evaluate(args):
                     skipped.append({"frame": index, "sourceId": source_id, "reason": "No valid oracle body ROI"})
                     continue
                 xy, scores, elapsed, _ = pose_inference(pose_session, image, {"bbox": box}, spec)
+                # Match decodeBody(): out-of-image observations have score zero
+                # and cannot become metric rays merely because the model peaks.
+                inside = ((xy[:, 0] >= 0) & (xy[:, 0] < image.shape[1])
+                          & (xy[:, 1] >= 0) & (xy[:, 1] < image.shape[0]))
+                scores = np.where(inside, np.clip(scores, 0, 1), 0)
                 rxy, rscores, hand_elapsed, notes = refine_hands(hand_session, image, xy, scores)
                 timings.append(elapsed)
                 hand_timings.append(hand_elapsed)
