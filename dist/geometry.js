@@ -9,9 +9,14 @@ const scale = (a, k) => a.map((x) => x * k);
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
 const norm = (a) => Math.hypot(...a);
 const unit = (a) => norm(a) > EPS ? scale(a, 1 / norm(a)) : null;
-const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const mv = (m, v) => [0, 1, 2].map((r) => m[r * 3] * v[0] + m[r * 3 + 1] * v[1] + m[r * 3 + 2] * v[2]);
 const mtv = (m, v) => [0, 1, 2].map((r) => m[r] * v[0] + m[r + 3] * v[1] + m[r + 6] * v[2]);
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const transpose = (m) => [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+const mm = (a, b) => Array.from({ length: 9 }, (_, index) => {
+  const row = Math.floor(index / 3), column = index % 3;
+  return a[row * 3] * b[column] + a[row * 3 + 1] * b[column + 3] + a[row * 3 + 2] * b[column + 6];
+});
 const invalid = (reason, extra = {}) => ({ valid: false, xyz: null, confidence: 0, source: 'missing', reason, ...extra });
 
 export const BODY_BONES = [[5, 6], [5, 7], [7, 9], [6, 8], [8, 10], [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16]];
@@ -154,7 +159,8 @@ export function triangulateJoint(observations, cameras, options = {}) {
   const unique = new Map();
   for (const candidate of observations || []) {
     const camera = cameraFor(cameras, candidate.sourceId);
-    if (!camera?.calibrated || !validateCamera(camera, true) || candidate.observable === false || candidate.visible === false) continue;
+    const approximateAllowed = options.allowApproximateCalibration && camera?.calibrationStatus === 'approximate';
+    if ((camera?.calibrated !== true && !approximateAllowed) || !validateCamera(camera, true) || candidate.observable === false || candidate.visible === false) continue;
     if (![candidate.u, candidate.v, candidate.score, candidate.timeMs].every(Number.isFinite) || candidate.score < minimumScore) continue;
     if (Number.isFinite(options.referenceTimeMs) && Math.abs(candidate.timeMs - options.referenceTimeMs) > maxTimeDeltaMs) continue;
     const ray = pixelToWorldRay(candidate.u, candidate.v, camera);
@@ -208,8 +214,11 @@ export function triangulateJoint(observations, cameras, options = {}) {
   if (largestAngle < minimumRayAngleDeg) return invalid('insufficient-ray-angle');
   const reprojectionErrorPx = Math.sqrt(squaredError / totalWeight);
   const angleQuality = Math.min(1, Math.sin(largestAngle * Math.PI / 180) / Math.sin(20 * Math.PI / 180));
+  const calibrated = best.inliers.every((observation) => observation.camera.calibrated === true);
   return {
-    valid: true, xyz, source: 'triangulated', confidence: clamp(Math.min(...best.inliers.map((o) => o.score)) * angleQuality * Math.exp(-reprojectionErrorPx / maxReprojectionErrorPx), 0, 1),
+    valid: true, xyz, source: calibrated ? 'triangulated' : 'estimatedMultiView', calibrationStatus: calibrated ? 'calibrated' : 'approximate',
+    distanceStatus: calibrated ? 'measuredMultiView' : 'estimatedMultiView',
+    confidence: clamp(Math.min(...best.inliers.map((o) => o.score)) * angleQuality * Math.exp(-reprojectionErrorPx / maxReprojectionErrorPx) * (calibrated ? 1 : 0.5), 0, 1),
     reprojectionErrorPx, rayAngleDeg: largestAngle, sources: best.inliers.map((o) => o.sourceId),
     timeMs: best.inliers.reduce((s, o) => s + o.timeMs * o.score, 0) / totalWeight,
     timeSpreadMs: Math.max(...best.inliers.map((o) => o.timeMs)) - Math.min(...best.inliers.map((o) => o.timeMs)),
@@ -298,4 +307,154 @@ export function triangulateFrame(frames, cameras, options = {}) {
     grouped.get(point.id).push({ ...point, sourceId: frame.sourceId, timeMs: frame.timeMs });
   }
   return [...grouped.entries()].map(([id, observations]) => ({ id, ...triangulateJoint(observations, cameras, options) }));
+}
+
+function solveLinear(matrix, vector) {
+  const size = vector.length;
+  const rows = matrix.map((row, index) => [...row, vector[index]]);
+  let maximum = 0, minimum = Infinity;
+  for (let column = 0; column < size; column++) {
+    let pivot = column;
+    for (let row = column + 1; row < size; row++) if (Math.abs(rows[row][column]) > Math.abs(rows[pivot][column])) pivot = row;
+    [rows[column], rows[pivot]] = [rows[pivot], rows[column]];
+    const magnitude = Math.abs(rows[column][column]);
+    maximum = Math.max(maximum, magnitude);
+    minimum = Math.min(minimum, magnitude);
+    if (magnitude < 1e-12) return null;
+    const divisor = rows[column][column];
+    for (let k = column; k <= size; k++) rows[column][k] /= divisor;
+    for (let row = 0; row < size; row++) {
+      if (row === column) continue;
+      const factor = rows[row][column];
+      for (let k = column; k <= size; k++) rows[row][k] -= factor * rows[column][k];
+    }
+  }
+  if (minimum / maximum < 1e-12) return null;
+  const solution = rows.map((row) => row[size]);
+  return solution.every(Number.isFinite) ? solution : null;
+}
+
+function normalizePlanePoints(points) {
+  const center = [0, 1].map((axis) => points.reduce((sum, point) => sum + point[axis], 0) / points.length);
+  const radius = points.reduce((sum, point) => sum + Math.hypot(point[0] - center[0], point[1] - center[1]), 0) / points.length;
+  if (radius < 1e-8) return null;
+  const s = Math.sqrt(2) / radius;
+  const normalized = points.map((point) => [(point[0] - center[0]) * s, (point[1] - center[1]) * s]);
+  const xx = normalized.reduce((sum, point) => sum + point[0] ** 2, 0);
+  const yy = normalized.reduce((sum, point) => sum + point[1] ** 2, 0);
+  const xy = normalized.reduce((sum, point) => sum + point[0] * point[1], 0);
+  if (xx * yy - xy * xy < 1e-5 * (xx + yy) ** 2) return null;
+  return { points: normalized, matrix: [s, 0, -s * center[0], 0, s, -s * center[1], 0, 0, 1], inverse: [1 / s, 0, center[0], 0, 1 / s, center[1], 0, 0, 1] };
+}
+
+function incrementalRotation(vector) {
+  const angle = norm(vector);
+  if (angle < 1e-14) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const [x, y, z] = scale(vector, 1 / angle);
+  const c = Math.cos(angle), s = Math.sin(angle), d = 1 - c;
+  return [c + x * x * d, x * y * d - z * s, x * z * d + y * s, y * x * d + z * s, c + y * y * d, y * z * d - x * s, z * x * d - y * s, z * y * d + x * s, c + z * z * d];
+}
+
+function refineCameraPose(initial, worldPoints, imagePoints, intrinsics) {
+  const predictions = (pose) => {
+    const projected = [];
+    for (const world of worldPoints) {
+      const p = add(mv(pose.rotation, world), pose.translation);
+      if (p[2] < 1e-5) return null;
+      const [x, y] = distortion(p[0] / p[2], p[1] / p[2], intrinsics.distortion);
+      projected.push(intrinsics.fx * x + (intrinsics.skew || 0) * y + intrinsics.cx, intrinsics.fy * y + intrinsics.cy);
+    }
+    return projected;
+  };
+  const target = imagePoints.flat();
+  const cost = (prediction) => prediction ? prediction.reduce((sum, value, index) => sum + (value - target[index]) ** 2, 0) : Infinity;
+  const apply = (pose, update) => ({ rotation: mm(incrementalRotation(update.slice(0, 3)), pose.rotation), translation: add(pose.translation, update.slice(3, 6)) });
+  let pose = initial, prediction = predictions(pose), damping = 1e-3;
+  if (!prediction) return null;
+  for (let iteration = 0; iteration < 24; iteration++) {
+    const jacobian = Array.from({ length: target.length }, () => Array(6).fill(0));
+    for (let parameter = 0; parameter < 6; parameter++) {
+      const h = parameter < 3 ? 1e-6 : 1e-5;
+      const delta = Array(6).fill(0); delta[parameter] = h;
+      const next = predictions(apply(pose, delta));
+      if (!next) return pose;
+      for (let row = 0; row < target.length; row++) jacobian[row][parameter] = (next[row] - prediction[row]) / h;
+    }
+    const matrix = Array.from({ length: 6 }, () => Array(6).fill(0)), vector = Array(6).fill(0);
+    for (let row = 0; row < target.length; row++) for (let a = 0; a < 6; a++) {
+      vector[a] -= jacobian[row][a] * (prediction[row] - target[row]);
+      for (let b = 0; b < 6; b++) matrix[a][b] += jacobian[row][a] * jacobian[row][b];
+    }
+    for (let i = 0; i < 6; i++) matrix[i][i] += damping * Math.max(matrix[i][i], 1);
+    const update = solveLinear(matrix, vector);
+    if (!update) break;
+    const trial = apply(pose, update), trialPrediction = predictions(trial);
+    if (cost(trialPrediction) < cost(prediction)) {
+      pose = trial; prediction = trialPrediction; damping *= 0.3;
+      if (norm(update) < 1e-8) break;
+    } else {
+      damping *= 10;
+      if (damping > 1e8) break;
+    }
+  }
+  return pose;
+}
+
+// Points lie on the known floor y=0. x and z are measured in metres.
+export function calibratePlanarCamera({ imagePoints, worldPoints, intrinsics, id = 'camera', maximumReprojectionErrorPx = 8 }) {
+  const failure = (reason) => ({ valid: false, camera: null, reason, calibrationStatus: 'invalid' });
+  if (!Array.isArray(imagePoints) || !Array.isArray(worldPoints) || imagePoints.length !== worldPoints.length || imagePoints.length < 4 || imagePoints.length > 100) return failure('at-least-four-correspondences-required');
+  if (!validateCamera(intrinsics)) return failure('invalid-intrinsics');
+  if (worldPoints.some((p) => !finite3(p) || Math.abs(p[1]) > 1e-6) || imagePoints.some((p) => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) return failure('invalid-floor-correspondences');
+  const undistorted = imagePoints.map(([u, v]) => undistortPixel(u, v, intrinsics));
+  if (undistorted.some((p) => !p)) return failure('undistortion-failed');
+  const world = normalizePlanePoints(worldPoints.map((p) => [p[0], p[2]]));
+  const image = normalizePlanePoints(undistorted);
+  if (!world || !image) return failure('degenerate-planar-points');
+  const rows = [], targets = [];
+  for (let i = 0; i < image.points.length; i++) {
+    const [x, z] = world.points[i], [u, v] = image.points[i];
+    rows.push([x, z, 1, 0, 0, 0, -u * x, -u * z], [0, 0, 0, x, z, 1, -v * x, -v * z]);
+    targets.push(u, v);
+  }
+  const normal = Array.from({ length: 8 }, () => Array(8).fill(0)), rhs = Array(8).fill(0);
+  for (let row = 0; row < rows.length; row++) for (let a = 0; a < 8; a++) {
+    rhs[a] += rows[row][a] * targets[row];
+    for (let b = 0; b < 8; b++) normal[a][b] += rows[row][a] * rows[row][b];
+  }
+  const parameters = solveLinear(normal, rhs);
+  if (!parameters) return failure('degenerate-homography');
+  const h = mm(mm(image.inverse, [...parameters, 1]), world.matrix);
+  let columnX = [h[0], h[3], h[6]], columnZ = [h[1], h[4], h[7]], translation = [h[2], h[5], h[8]];
+  const multiplier = 2 / (norm(columnX) + norm(columnZ));
+  if (!Number.isFinite(multiplier)) return failure('invalid-homography-scale');
+  const meanX = worldPoints.reduce((sum, point) => sum + point[0], 0) / worldPoints.length;
+  const meanZ = worldPoints.reduce((sum, point) => sum + point[2], 0) / worldPoints.length;
+  const sign = columnX[2] * meanX + columnZ[2] * meanZ + translation[2] >= 0 ? 1 : -1;
+  columnX = scale(columnX, sign); columnZ = scale(columnZ, sign); translation = scale(translation, sign * multiplier);
+  const rX = unit(columnX);
+  if (!rX) return failure('degenerate-homography-axis');
+  const rZ = unit(sub(columnZ, scale(rX, dot(columnZ, rX))));
+  if (!rZ) return failure('degenerate-homography-axis');
+  const rY = unit(cross(rZ, rX));
+  const cameraFromWorld = { rotation: [rX[0], rY[0], rZ[0], rX[1], rY[1], rZ[1], rX[2], rY[2], rZ[2]], translation };
+  const refined = refineCameraPose(cameraFromWorld, worldPoints, imagePoints, intrinsics);
+  if (!refined) return failure('floor-behind-camera');
+  const rotation = transpose(refined.rotation), center = scale(mv(rotation, refined.translation), -1);
+  if (center[1] <= 0.001) return failure('camera-not-above-floor');
+  const calibrated = intrinsics.intrinsicsCalibrated === true || intrinsics.calibrated === true;
+  const camera = {
+    ...intrinsics, id, worldFromCamera: { rotation, translation: center },
+    calibrated, intrinsicsCalibrated: calibrated, calibrationStatus: calibrated ? 'calibrated' : 'approximate',
+    calibrationMethod: 'known-floor-plane',
+  };
+  if (!validateCamera(camera, true)) return failure('invalid-recovered-camera');
+  const errors = worldPoints.map((point, index) => {
+    const projection = projectPoint(point, camera);
+    return projection ? Math.hypot(projection.u - imagePoints[index][0], projection.v - imagePoints[index][1]) : Infinity;
+  });
+  const reprojectionErrorPx = Math.sqrt(errors.reduce((sum, error) => sum + error * error, 0) / errors.length);
+  if (!Number.isFinite(reprojectionErrorPx) || reprojectionErrorPx > maximumReprojectionErrorPx || Math.max(...errors) > maximumReprojectionErrorPx * 2) return failure('floor-reprojection-error');
+  camera.reprojectionErrorPx = reprojectionErrorPx;
+  return { valid: true, camera, reprojectionErrorPx, maximumPointErrorPx: Math.max(...errors), calibrationStatus: camera.calibrationStatus, pointCount: worldPoints.length };
 }

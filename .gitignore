@@ -1,4 +1,6 @@
 .cache/
+.evaluation-cache/
+.panoptic-cache/
 node_modules/
 artifacts/
 *.zip

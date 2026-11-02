@@ -70,15 +70,15 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def download(url, path, expected=None):
+def download(url, path, expected=None, attempts=3, timeout=120):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and (not expected or sha256(path) == expected):
         return path
-    for attempt in range(3):
+    for attempt in range(attempts):
         temporary = path.with_suffix(path.suffix + ".partial")
         try:
             request = urllib.request.Request(url, headers={"User-Agent": "Wholebody-test-evaluation/1.0"})
-            with urllib.request.urlopen(request, timeout=120) as response, temporary.open("wb") as output:
+            with urllib.request.urlopen(request, timeout=timeout) as response, temporary.open("wb") as output:
                 while chunk := response.read(1024 * 1024):
                     output.write(chunk)
             if expected and sha256(temporary) != expected:
@@ -87,7 +87,7 @@ def download(url, path, expected=None):
             return path
         except (urllib.error.URLError, TimeoutError, ValueError):
             temporary.unlink(missing_ok=True)
-            if attempt == 2:
+            if attempt == attempts - 1:
                 raise
             time.sleep(2 * (attempt + 1))
 
@@ -122,9 +122,12 @@ def load_dataset(kind, people):
     images = {im["id"]: im for im in data["images"]}
     annotations = [a for a in data["annotations"]
                    if not a.get("iscrowd") and a.get("num_keypoints", 0) > 0
-                   and (kind != "official-example" or a["image_id"] in IMAGE_IDS)]
+                   and (a["image_id"] in IMAGE_IDS if kind == "official-example" else a["image_id"] not in IMAGE_IDS)]
     # Stable selection independent of prediction quality and model identity.
-    annotations.sort(key=lambda a: (a["image_id"], a["id"]))
+    if kind == "official-example":
+        annotations.sort(key=lambda a: (a["image_id"], a["id"]))
+    else:
+        annotations.sort(key=lambda a: hashlib.sha256(f"wholebody-phase2-holdout-v1:{a['id']}".encode()).hexdigest())
     annotations = annotations[:people]
     if not annotations:
         raise RuntimeError("No annotated people selected")
@@ -132,16 +135,25 @@ def load_dataset(kind, people):
     for image_id in sorted({a["image_id"] for a in annotations}):
         info = images[image_id]
         if image_id in IMAGE_IDS:
-            image_url = f"https://raw.githubusercontent.com/open-mmlab/mmpose/{MMPOSE_COMMIT}/tests/data/coco/{info['file_name']}"
+            image_urls = [f"https://raw.githubusercontent.com/open-mmlab/mmpose/{MMPOSE_COMMIT}/tests/data/coco/{info['file_name']}"]
         else:
-            image_url = f"http://images.cocodataset.org/val2017/{info['file_name']}"
-        path = download(image_url, CACHE / "images" / info["file_name"])
+            image_urls = [f"https://s3.amazonaws.com/images.cocodataset.org/val2017/{info['file_name']}",
+                          f"https://images.cocodataset.org/val2017/{info['file_name']}"]
+        for source_index, image_url in enumerate(image_urls):
+            try:
+                path = download(image_url, CACHE / "images" / info["file_name"], attempts=1, timeout=20)
+                break
+            except (urllib.error.URLError, TimeoutError):
+                if source_index == len(image_urls) - 1:
+                    raise
         image = cv2.imread(str(path), cv2.IMREAD_COLOR)
         if image is None or image.shape[:2] != (info["height"], info["width"]):
             raise ValueError(f"Image dimensions do not match annotation: {image_id}")
         selected_images[image_id] = (image, {**info, "retrieved_url": image_url, "sha256": sha256(path)})
+        print(json.dumps({"downloaded_image": image_id, "images_ready": len(selected_images)}), flush=True)
     return annotations, selected_images, {"url": url, "sha256": sha256(CACHE / (kind + ".json")),
-                                         "selection": "image_id,id ascending; fixed four example images when official-example",
+                                         "selection": "image_id,id ascending for four example images; SHA256(annotation id) order with all four example images excluded for val-subset",
+                                         "used_for_training": False, "used_for_threshold_tuning": False,
                                          "person_ids": [a["id"] for a in annotations], "licenses": data["licenses"]}
 
 
@@ -204,7 +216,7 @@ def refine_hands(sess, image, xy, scores):
         px, py = palm @ ex, palm @ ey
         span_x, span_y = float(np.ptp(px)), float(np.ptp(py))
         side = 3 * max(span_x, span_y)
-        if side < 12 or side > max(image.shape[:2]) * 1.5:
+        if side < 12 or side > np.hypot(*image.shape[:2]) * .8:
             notes.append({"start": start, "accepted": False, "reason": "invalid-crop-size"})
             continue
         center = ex * ((px.min() + px.max()) / 2) + ey * ((py.min() + py.max()) / 2 - .4 * span_y)
@@ -221,16 +233,19 @@ def refine_hands(sess, image, xy, scores):
         pixels = result.get("Identity", out[0]).reshape(21, 3)
         presence = float(result.get("Identity_1", out[1]).reshape(-1)[0])
         predicted = center + np.outer((pixels[:, 0] - 112) * side / 224, ex) + np.outer((pixels[:, 1] - 112) * side / 224, ey)
-        wrist_error = float(np.linalg.norm(predicted[0] - xy[body_wrist]))
+        wrist_anchor = xy[body_wrist] if trusted[body_wrist] else xy[start]
+        wrist_error = float(np.linalg.norm(predicted[0] - wrist_anchor))
         all_inside = bool(((predicted[:, 0] >= 0) & (predicted[:, 0] < image.shape[1])
                            & (predicted[:, 1] >= 0) & (predicted[:, 1] < image.shape[0])).all())
-        accepted = bool(np.isfinite(predicted).all() and all_inside and presence >= .65 and wrist_error <= max(18, .3 * side))
+        near_crop = bool((np.abs(predicted - center) <= side).all())
+        accepted = bool(np.isfinite(predicted).all() and all_inside and near_crop and presence >= .65
+                        and wrist_error <= max(18, .3 * side))
         notes.append({"start": start, "accepted": accepted, "presence": presence,
                       "wrist_disagreement_px": wrist_error, "crop_side_px": side})
         if accepted:
             refined[start:start + 21] = predicted
             # Presence is one hand-level score, not per-finger visibility.
-            refined_scores[start:start + 21] = np.minimum(scores[start:start + 21], presence)
+            refined_scores[start:start + 21] = np.minimum(np.clip(scores[start:start + 21], 0, 1), presence)
     return refined, refined_scores, milliseconds, notes
 
 
@@ -355,7 +370,8 @@ def main():
         pose = session(download(spec["url"], CACHE / (model_id + ".onnx"), spec["sha256"]))
         if pose.get_inputs()[0].shape != [1, 3, spec["input"][1], spec["input"][0]]:
             raise ValueError(f"Unexpected pose input: {contract(pose)}")
-        collected = {key: [] for key in ["original", "hand_refined", "masked_affected", "masked_refined_affected"]}
+        collected = {key: [] for key in ["original", "hand_refined", "original_mask_target",
+                                        "refined_mask_target", "masked_affected", "masked_refined_affected"]}
         frames, timings, hand_timings, model_observations = [], [], [], []
         accepted, attempted = 0, 0
         for ordinal, annotation in enumerate(annotations):
@@ -386,6 +402,8 @@ def main():
                 draw_evidence(image, annotation, xy, refined, args.out / "overlays" / f"{model_id}-{annotation['id']}.png")
             masked, affected, mask_box = mask_frame(image, annotation)
             if masked is not None:
+                collected["original_mask_target"].extend(metric_records(annotation, xy, score, affected))
+                collected["refined_mask_target"].extend(metric_records(annotation, refined, refined_scores, affected))
                 mxy, mscore, _, _ = pose_inference(pose, masked, annotation, spec)
                 mrxy, mrscore, _, mask_notes = refine_hands(hand, masked, mxy, mscore)
                 collected["masked_affected"].extend(metric_records(annotation, mxy, mscore, affected))

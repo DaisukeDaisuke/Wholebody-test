@@ -8,7 +8,7 @@ const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
 const norm = (v) => Math.hypot(...v);
 const unit = (v) => norm(v) > 1e-9 ? scale(v, 1 / norm(v)) : null;
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const currentSources = new Set(['triangulated', 'monocular', 'planarPrior', 'model3d']);
+const currentSources = new Set(['triangulated', 'estimatedMultiView', 'monocular', 'planarPrior', 'model3d']);
 const missing = (id) => ({ id, xyz: null, valid: false, confidence: 0, source: 'missing', observed: false, ageMs: null });
 const usable = (joint) => joint?.valid !== false && finite3(joint?.xyz) && Number.isFinite(joint.confidence) && joint.confidence > 0;
 const parents = { 0: 5, 1: 0, 2: 0, 3: 1, 4: 2, 5: 11, 6: 12, 7: 5, 8: 6, 9: 7, 10: 8, 12: 11, 13: 11, 14: 12, 15: 13, 16: 14, 17: 15, 18: 15, 19: 15, 20: 16, 21: 16, 22: 16, 91: 9, 112: 10 };
@@ -176,7 +176,7 @@ export class OcclusionTracker {
       source: leftHip.source === 'triangulated' && rightHip.source === 'triangulated' ? 'triangulated' : leftHip.source === rightHip.source ? leftHip.source : 'mixed',
       valid: true,
     } : { xyz: null, confidence: 0, source: 'missing', valid: false };
-    const stats = { triangulated: 0, monocular: 0, planarPrior: 0, model3d: 0, predicted: 0, kinematicPrior: 0, missing: 0 };
+    const stats = { triangulated: 0, estimatedMultiView: 0, monocular: 0, planarPrior: 0, model3d: 0, predicted: 0, kinematicPrior: 0, missing: 0 };
     for (const joint of output) stats[joint.source] = (stats[joint.source] || 0) + 1;
     const result = { timeMs, joints: output, root, feet: deriveFootFrames(output), stats };
     this.lastTimeMs = timeMs;

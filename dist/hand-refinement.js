@@ -5,7 +5,7 @@
  */
 export const HAND_MODEL = Object.freeze({
   id: 'opencv/mediapipe-hand-fp32',
-  url: 'https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx',
+  url: 'https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx',
   sha256: 'db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c',
   bytes: 4099621,
   license: 'Apache-2.0',
@@ -44,7 +44,7 @@ export function estimateHandRoi(points, side, imageWidth, imageHeight, options =
     && point.u >= 0 && point.v >= 0 && point.u < imageWidth && point.v < imageHeight;
   const hand = Array.from({ length: 21 }, (_, index) => points[group.offset + index]);
   const bodyWrist = points[group.wrist];
-  const wrist = valid(hand[0]) ? hand[0] : valid(bodyWrist) ? bodyWrist : null;
+  const wrist = valid(hand[0]) ? hand[0] : options.allowBodyWristFallback === true && valid(bodyWrist) ? bodyWrist : null;
   const palm = PALM_IDS.map((index) => hand[index]).filter(valid);
   const middle = valid(hand[9]) ? hand[9] : null;
   let center;
@@ -259,8 +259,11 @@ export async function createHandRefiner(options) {
           }
           abortIfRequested(frameSignal);
           const group = HANDS[side];
-          const anchor = finitePoint(points[group.wrist]) && pointScore(points[group.wrist]) >= (options.minPointScore ?? 0.15)
-            ? points[group.wrist] : points[group.offset];
+          const bodyWrist = points[group.wrist];
+          const minimumPointScore = frameOptions.minPointScore ?? options.minPointScore ?? 0.15;
+          const bodyWristTrusted = finitePoint(bodyWrist) && pointScore(bodyWrist) >= minimumPointScore
+            && bodyWrist.u >= 0 && bodyWrist.v >= 0 && bodyWrist.u < imageWidth && bodyWrist.v < imageHeight;
+          const anchor = bodyWristTrusted ? bodyWrist : points[group.offset];
           const wristError = finitePoint(anchor) ? Math.hypot(result.landmarks[0].u - anchor.u, result.landmarks[0].v - anchor.v) : 0;
           const presenceThreshold = frameOptions.minPresence ?? options.minPresence ?? 0.65;
           let reason = null;

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10141c"><meta name="description" content="映像から全身と手を推定し、2視点の3Dと遮蔽中の補完を確認するトラッキングPoC。映像は端末内で処理します。">
+  <title>全身トラッキング · フェーズ2</title><link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><a class="brand" href="./"><span class="brand-mark">◌</span> 全身トラッキング <small>PHASE 02</small></a><div class="top-status"><span class="dot" id="status-dot"></span><span id="status">入力待ち</span><a href="./capture.html" class="subtle">スマホをカメラに</a></div></header>
+<main>
+  <section class="intro"><div><p class="eyebrow">VIDEO → BODY · HANDS · FEET</p><h1>見える動きから、<br class="mobile-only">見えない動きへ。</h1><p>全身と手を別々に捉え、2つの視点で立体に。遮蔽中の推定は色と有効期限で区別します。</p></div><div class="privacy-note"><span>映像は端末内で処理</span><small>モデルの取得後はキャッシュを利用できます。</small></div></section>
+  <nav class="tabs" aria-label="画面"><button class="tab active" data-tab="tracking">トラッキング</button><button class="tab" data-tab="calibration">2視点の校正</button><button class="tab" data-tab="connection">カメラ接続</button><button class="tab" data-tab="evidence">精度と記録</button></nav>
+  <div id="alert" class="alert" role="alert" hidden></div>
+  <section data-panel="tracking">
+    <div class="workspace">
+      <aside class="control-panel panel">
+        <div class="section-label"><span class="step">01</span><h2>推論の設定</h2></div>
+        <label>全身モデル<select id="model"></select></label>
+        <label>実行先<select id="backend"><option value="webgpu">WebGPU · PCのGPU</option><option value="wasm">WASM · CPU診断</option></select></label>
+        <label class="check"><input id="hands" type="checkbox" checked><span>手を拡大して再推論<small>手指の元画像を専用モデルへ</small></span></label>
+        <label class="check"><input id="detector" type="checkbox" checked><span>人物を自動検出<small>枠をドラッグして手動指定も可能</small></span></label>
+        <label class="check"><input id="offline" type="checkbox"><span>取得済みデータだけで動作<small>未保存のモデルは取得しません</small></span></label>
+        <button id="load" class="primary full">モデルを読み込む</button><progress id="progress" value="0" max="1" hidden></progress><p id="load-detail" class="muted small">初回はモデルの取得に時間がかかります。</p>
+        <div class="divider"></div><div class="section-label"><span class="step">02</span><h2>動画・カメラを選ぶ</h2></div>
+        <label>入力A<input id="file-a" type="file" accept="video/*,image/*"></label><div class="row"><button id="camera-a">PCカメラ A</button><button id="clear-a" class="quiet">解除</button></div>
+        <label>入力B<input id="file-b" type="file" accept="video/*,image/*"></label><div class="row"><button id="camera-b">PCカメラ B</button><button id="clear-b" class="quiet">解除</button></div>
+        <button id="sample" class="full quiet">実評価の画像を読み込む</button>
+        <div class="divider"></div><label>採用する最低信頼度 <output id="confidence-value">0.30</output><input id="confidence" type="range" min="0.05" max="0.8" step="0.05" value="0.3"></label>
+        <div class="run-controls"><button id="run" class="primary" disabled>推論を開始</button><button id="stop" disabled>停止</button><button id="single" disabled title="現在の映像を1組だけ推論">1フレーム</button></div>
+        <p class="muted small">1人を対象にします。別の人物を捉えた場合は、映像上で対象の枠を描き直してください。</p>
+      </aside>
+      <div class="visual-panel">
+        <div class="input-grid">
+          <article class="panel source-panel"><div class="panel-heading"><h2><span class="view-id">A</span> 入力映像</h2><span id="source-a-info" class="badge">未選択</span></div><div class="canvas-wrap"><canvas id="view-a" width="640" height="480"></canvas><div id="empty-a" class="empty"><span class="empty-icon">＋</span><b>動画または写真を選択</b><p>元の解像度から人物と手を切り出します。</p></div></div><div class="source-footer"><input id="seek-a" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="入力Aの再生位置"><button id="roi-a" class="quiet">自動の枠へ戻す</button></div><video id="video-a" muted playsinline preload="auto" hidden></video></article>
+          <article class="panel source-panel"><div class="panel-heading"><h2><span class="view-id">B</span> 2つ目の視点</h2><span id="source-b-info" class="badge">任意</span></div><div class="canvas-wrap"><canvas id="view-b" width="640" height="480"></canvas><div id="empty-b" class="empty"><span class="empty-icon">◇</span><b>別の方向からの映像</b><p>校正した共通関節から奥行きを求めます。</p></div></div><div class="source-footer"><input id="seek-b" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="入力Bの再生位置"><button id="roi-b" class="quiet">自動の枠へ戻す</button></div><video id="video-b" muted playsinline preload="auto" hidden></video></article>
+        </div>
+        <article class="panel spatial-panel"><div class="panel-heading"><div><h2>3Dの推定</h2><p id="depth-status" class="muted small">2視点を校正するか、相対3Dモデルを選択してください。</p></div><span id="calibration-badge" class="badge">未校正</span></div><canvas id="world" width="1000" height="420" aria-label="3D骨格。ドラッグで視点回転"></canvas><div class="legend"><span class="cyan">● 2視点</span><span class="purple">● 単眼推定</span><span class="amber">● 遮蔽中の補完</span><span class="gray">欠測は非表示</span><small>ドラッグで回転 · ホイールで拡大</small></div></article>
+        <div class="metrics"><div class="metric"><span>全身推論</span><strong id="metric-pose">—<small> ms</small></strong></div><div class="metric"><span>手の拡大推論</span><strong id="metric-hand">—<small> ms</small></strong></div><div class="metric"><span>処理した画像</span><strong id="metric-fps">—<small> 枚/秒</small></strong></div><div class="metric"><span>遮蔽補完 / 欠測</span><strong id="metric-missing">—</strong></div></div>
+      </div>
+    </div>
+  </section>
+  <section data-panel="calibration" hidden>
+    <div class="panel wide-panel"><h2>同じ床の四角形で、2つの視点を合わせる</h2><p>床に長方形の4点を用意し、両方の映像で同じ順番にクリックします。A・Bの入力を先に選び、床が見えるフレームで停止してください。</p>
+      <div class="form-grid"><label>長方形の幅 X（m）<input id="floor-width" type="number" value="1" min="0.1" step="0.01"></label><label>長方形の奥行 Z（m）<input id="floor-depth" type="number" value="1" min="0.1" step="0.01"></label><label>本人の身長（cm）<input id="height" type="number" value="170" min="80" max="230"></label><label>動画Bの時間差（秒）<input id="time-offset" type="number" value="0" step="0.001"></label></div>
+      <p class="callout">クリック順：原点 (0,0) → 幅方向 (X,0) → 対角 (X,Z) → 奥行方向 (0,Z)。同じ4点を両視点で選びます。</p>
+      <div class="calibration-grid" id="calibration-controls"></div>
+      <label class="check"><input id="files-synchronized" type="checkbox"><span>2本の録画が同じ時計・時間差に対応していることを確認した</span></label>
+      <label class="check"><input id="allow-approximate" type="checkbox"><span>画角からの暫定校正で推定3Dを表示する<small>実測済みの校正と区別して表示します。</small></span></label>
+      <div class="row"><button id="export-calibration">校正JSONを保存</button><label class="file-button">校正JSONを読み込む<input id="import-calibration" type="file" accept="application/json,.json"></label></div><pre id="calibration-result" class="code-note">校正値はまだありません。</pre>
+      <details><summary>単眼の距離推定</summary><p>RTMW3D-Lの相対奥行きと、身長から推定した骨長を使います。画角・体格の誤差を含む推定です。2Dモデルだけの場合、単眼の絶対距離や指の奥行きは表示しません。</p><label>入力Aの横画角（度）<input id="mono-fov" type="number" value="70" min="20" max="150"></label></details>
+    </div>
+  </section>
+  <section data-panel="connection" hidden><div class="panel wide-panel"><h2>スマホ2台をLANカメラにする</h2><p>スマホでは撮影と映像送信だけを行います。PC側で2本の映像を推論します。外部STUN・TURNは使いません。</p><div class="connection-grid"><div><h3>ローカルの接続サーバー</h3><p>同梱のNode.jsサーバーを起動すると、接続情報を交換できます。モバイルからのアクセスには、端末が信頼するHTTPS証明書が必要です。</p><label>サーバーURL<input id="signal-url" type="url" placeholder="https://192.168.1.10:8443"></label><label>サーバーの接続トークン<input id="signal-token" type="password" autocomplete="off"></label><label>ルーム名<input id="room" value="wholebody" maxlength="48"></label><button id="connect-signal" class="primary">受信を待つ</button><p id="signal-state" class="muted">未接続</p></div><div><h3>スマホの撮影ページ</h3><p><a id="capture-link" href="./capture.html" target="_blank" rel="noopener">撮影ページを開く ↗</a></p><p>同じサーバーURL・トークン・ルーム名を指定し、カメラAまたはBで接続します。</p><h3>サーバーなしの接続</h3><p>下の接続情報をスマホへ渡し、スマホが生成した応答をPCへ貼り付けます。</p><div class="row"><button id="offer-a">Aの接続情報を作る</button><button id="offer-b">Bの接続情報を作る</button></div><label>接続情報／応答<textarea id="signal-text" rows="5" spellcheck="false"></textarea></label><div class="row"><button id="copy-signal">コピー</button><button id="apply-answer">応答を適用</button></div></div></div><p class="callout">映像が届いても、撮影時刻や校正が確定していない入力は「推定」として扱います。実際の接続先と時刻品質は記録に含めます。</p></div></section>
+  <section data-panel="evidence" hidden><div class="panel wide-panel"><h2>実画像による精度評価</h2><p>GitHub Actionsで公開画像を実際に推論した結果です。人体・手・足を分け、同じ画像の全身モデルだけの場合と手を再推論した場合を比較します。</p><div id="evaluation-report" class="report">結果を取得中…</div><p><a href="https://github.com/DaisukeDaisuke/Wholebody-test/actions" target="_blank" rel="noopener">GitHub Actionsの実行履歴 ↗</a></p><div class="divider"></div><h2>このPoCが出す情報</h2><div class="coverage"><div><h3>全身・手</h3><p>体幹と四肢、両手42点。2視点または相対3Dモデルを使って奥行きを求めます。</p></div><div><h3>足の甲・足先</h3><p>足首・踵・母趾先・小趾先から足の向きと甲の代理位置を求めます。5本の足指の独立した曲げは出力しません。</p></div><div><h3>遮蔽中</h3><p>直前の姿勢、速度、骨長で短時間補完します。一度も推定できない部位や長時間の完全遮蔽は欠測として残します。</p></div></div><div class="divider"></div><h2>現在の推論を保存</h2><p>元映像を含めず、座標・時刻・校正・モデル・信頼度・処理時間をJSONへ保存します。</p><div class="row"><button id="export-records" class="primary">推論記録を保存</button><button id="export-network">通信・接続記録を保存</button><button id="clear-records" class="quiet">記録を消去</button></div><p id="record-count" class="muted">0フレーム</p><pre id="event-log" class="code-note"></pre></div></section>
+</main>
+<footer><span>全身トラッキング · フェーズ2</span><a href="https://github.com/DaisukeDaisuke/Wholebody-test/tree/phase2/732e048e" target="_blank" rel="noopener">ソースコード</a><span>SteamVR送出は対象外</span></footer>
+<script type="module" src="./app.js"></script>
+</body></html>
