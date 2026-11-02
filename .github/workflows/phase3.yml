@@ -9,7 +9,7 @@ permissions:
   actions: read
 concurrency:
   group: wholebody-phase3-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   real-inference-and-delivery:
     runs-on: ubuntu-latest

@@ -60,7 +60,7 @@ try {
     return { inputNames: session.inputNames, outputNames: session.outputNames,
       run: async (...args) => { stage(`run-${id}`); return session.run(...args); },
       release: async () => { await session.release(); releasedSessions++; } };
-  } };
+  } } };
   tracker = await TapirTracker.create({ ort: tracedOrt, modelBuffers, manifest, executionProviders: ['wasm'], sessionOptions: { logSeverityLevel: 2 },
     graphSessionOptions: Object.fromEntries(Object.entries(graphOptimizationLevels).map(([id, graphOptimizationLevel]) => [id, { graphOptimizationLevel }])) });
   report.checks.push({ name: 'manifest-hashes-and-three-real-sessions', passed: true, stages: createIndex });
