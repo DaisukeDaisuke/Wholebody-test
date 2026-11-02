@@ -264,7 +264,7 @@ function compareLegacyObservations(observations, rig, current, legacy) {
     const stats = rotationStatistics(rig), period = 1000 / 30;
     let priorPose = null, previousRetarget = null, nextRender = observations[0].timestampMs, lastTime = nextRender;
     for (const observation of observations) {
-      while (nextRender < observation.timestampMs && nextRender <= lastTime + 2000) { stats.record(previousRetarget, nextRender); nextRender += period; }
+      while (nextRender < observation.timestampMs - 1e-6 && nextRender <= lastTime + 2000) { stats.record(previousRetarget, nextRender); nextRender += period; }
       if (nextRender < observation.timestampMs - period) nextRender = observation.timestampMs;
       const pose = legacy.geometry.estimateMonocularPose(observation, null, { bodyHeightM: 1.7, scaleConfirmed: false, minScore: .25, priorPose, allowApproximateCalibration: false });
       // Preserve the old application adapter as well as the pinned pure modules.

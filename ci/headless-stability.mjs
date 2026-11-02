@@ -154,7 +154,9 @@ export function evaluateStabilitySequence(input, rig, options = {}) {
   for (const observation of observations) {
     if (observation.timestampMs < lastTime) throw new Error('Actual observations must retain increasing capture timestamps.');
     // Limit unbounded timestamp gaps without treating redraws as measurements.
-    while (nextRender < observation.timestampMs && nextRender <= lastTime + 2000) { render(nextRender); nextRender += renderPeriod; }
+    // Fractional frame periods can land a few ulps before the measurement.
+    // That instant is rendered below; do not count/update the VRM twice there.
+    while (nextRender < observation.timestampMs - 1e-6 && nextRender <= lastTime + 2000) { render(nextRender); nextRender += renderPeriod; }
     if (nextRender < observation.timestampMs - renderPeriod) nextRender = observation.timestampMs;
     const { filtered } = process.observe(observation); results.observation(filtered);
     const usable = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].filter(id => filtered.keypoints[id]?.observable !== false && filtered.keypoints[id]?.score > 0).length;
