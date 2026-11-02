@@ -360,6 +360,9 @@ def main():
               "dataset": {**data_source, "kind": args.dataset, "people": len(annotations),
                           "images": [info for _, info in images.values()]},
               "scope": "2D pose with ground-truth person boxes; no 3D, detector, temporal or browser/GPU accuracy claim",
+              "evidence_distribution": {"overlay_image_license_id": 4,
+                                        "overlay_image_license": "COCO license 4: Creative Commons Attribution 2.0",
+                                        "selection": "First six selected people whose image has license id 4; independent of prediction error."},
               "hand_model": {**HAND_MODEL, "contract": contract(hand)}, "models": {},
               "limitations": ["Small fixed set is not a full benchmark.",
                               "Hand and foot visibility values are reliability labels, not binary occlusion ground truth.",
@@ -373,12 +376,18 @@ def main():
     for model_id in model_ids:
         spec = MODELS[model_id]
         pose = session(download(spec["url"], CACHE / (model_id + ".onnx"), spec["sha256"]))
-        if pose.get_inputs()[0].shape != [1, 3, spec["input"][1], spec["input"][0]]:
+        input_shape = pose.get_inputs()[0].shape
+        # Some pinned exports declare a symbolic batch. The actual input stays
+        # batch 1, and every inference output is checked at its concrete size.
+        batch_one_allowed = len(input_shape) == 4 and (input_shape[0] == 1
+                                                     or isinstance(input_shape[0], str)
+                                                     or input_shape[0] is None)
+        if not batch_one_allowed or input_shape[1:] != [3, spec["input"][1], spec["input"][0]]:
             raise ValueError(f"Unexpected pose input: {contract(pose)}")
         collected = {key: [] for key in ["original", "hand_refined", "original_mask_target",
                                         "refined_mask_target", "masked_affected", "masked_refined_affected"]}
         frames, timings, hand_timings, model_observations = [], [], [], []
-        accepted, attempted = 0, 0
+        accepted, attempted, overlays_written = 0, 0, 0
         for ordinal, annotation in enumerate(annotations):
             image, _ = images[annotation["image_id"]]
             xy, score, milliseconds, roi = pose_inference(pose, image, annotation, spec)
@@ -403,8 +412,9 @@ def main():
                                        "groundTruth": [{"id": i, "u": float(p[0]), "v": float(p[1]), "valid": bool(gt_valid[i])}
                                                        for i, p in enumerate(gt)],
                                        "handRefinement": notes})
-            if ordinal < 6:
+            if overlays_written < 6 and images[annotation["image_id"]][1].get("license") == 4:
                 draw_evidence(image, annotation, xy, refined, args.out / "overlays" / f"{model_id}-{annotation['id']}.png")
+                overlays_written += 1
             masked, affected, mask_box = mask_frame(image, annotation)
             if masked is not None:
                 collected["original_mask_target"].extend(metric_records(annotation, xy, score, affected))
@@ -439,7 +449,7 @@ def main():
                     hp = row.get("pck_hand_020")
                     lines.append(f"| {model_id} | {condition} | {group} | {row['joints']} | {row['mean_error_px']:.2f} | {row['pck_person_005']:.1%} | {f'{hp:.1%}' if hp is not None else '—'} |")
     lines += ["", "masked_affectedは灰色矩形で隠した領域の元の正解点だけを集計。手専用モデルは人物モデルの予測掌点からROIを作り、正解の手位置は入力しません。",
-              "", "原画像の権利は個々のCOCO/Flickr撮影者に帰属し、注釈はCOCO-WholeBodyの研究・非商用条件に従います。評価画像・注釈はアプリ本体へ同梱しません。",
+              "", "原画像の権利は個々のCOCO/Flickr撮影者に帰属します。公開用overlayはCC BY画像だけに限定し、原画像URLとライセンスをreport.jsonへ記録します。注釈はCOCO-WholeBodyの研究・非商用条件に従い、アプリのUnlicenseの対象ではありません。",
               "", f"注釈: {data_source['url']}", f"実行コミット: {os.environ.get('GITHUB_SHA', 'unknown')}"]
     (args.out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(report["models"], indent=2), flush=True)

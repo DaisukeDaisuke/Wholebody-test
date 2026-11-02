@@ -252,13 +252,23 @@ $('connect-signal').onclick=guarded(async()=>{
 $('export-records').onclick=()=>saveJSON('wholebody-observations.json',{schemaVersion:1,sessionId:'732e048e-dba4-468e-bdd2-6026afc8218d',model:engine.provenance,cameras:sources.map(s=>s.calibration).filter(Boolean),heightCm:number('height'),scoreMeaning:'model confidence; not a visibility probability',records:state.records});
 $('export-network').onclick=()=>saveJSON('wholebody-connections.json',{externalFetches:NETWORK_LOG,connections:CONNECTION_LOG,note:'Application-level requests and selected WebRTC candidates. Not an OS packet capture or sandbox certification.'});
 $('clear-records').onclick=()=>{state.records=[];$('record-count').textContent='0フレーム';};
+function evidenceTable(container,columns,rows){
+  const table=document.createElement('table'),head=document.createElement('tr');
+  for(const name of columns){const th=document.createElement('th');th.textContent=name;head.append(th);}table.append(head);
+  for(const values of rows){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value??'—';tr.append(td);}table.append(tr);}container.append(table);
+}
+function evidenceLink(container,url,label){const link=document.createElement('a');link.href=url;link.textContent=label;link.target='_blank';link.rel='noopener';container.append(link);}
 async function loadEvidence(){
   try{const response=await fetch('./evidence/latest.json',{cache:'no-cache'});if(!response.ok)throw Error();const report=await response.json();const container=$('evaluation-report');container.replaceChildren();
     const text=document.createElement('p');text.textContent=report.description||'正解座標付き画像での実測。2Dの検出誤差と3Dの幾何検証は別々に評価します。';container.append(text);
-    if(Array.isArray(report.rows)){const table=document.createElement('table');const head=document.createElement('tr');for(const name of['構成','体の平均誤差','足の平均誤差','手の平均誤差','手PCK20']){const th=document.createElement('th');th.textContent=name;head.append(th);}table.append(head);
-      for(const row of report.rows){const tr=document.createElement('tr');for(const v of[row.name,row.bodyPx,row.footPx,row.handPx,row.handPck20]){const td=document.createElement('td');td.textContent=v;tr.append(td);}table.append(tr);}container.append(table);}
+    if(Array.isArray(report.rows))evidenceTable(container,['構成','体の平均誤差','足の平均誤差','手の平均誤差','手PCK20'],report.rows.map(row=>[row.name,row.bodyPx,row.footPx,row.handPx,row.handPck20]));
     const note=document.createElement('p');note.textContent=report.limitations||'';container.append(note);
-    if(report.runUrl){const link=document.createElement('a');link.href=report.runUrl;link.textContent='この結果のActions実行 ↗';link.target='_blank';link.rel='noopener';container.append(link);}
+    if(report.runUrl)evidenceLink(container,report.runUrl,'この画像評価のActions実行 ↗');
+    for(const experiment of report.experiments||[]){const heading=document.createElement('h3');heading.textContent=experiment.title;container.append(heading);
+      const description=document.createElement('p');description.textContent=experiment.description;container.append(description);
+      if(experiment.columns&&experiment.rows)evidenceTable(container,experiment.columns,experiment.rows);
+      const limitations=document.createElement('p');limitations.textContent=experiment.limitations||'';container.append(limitations);
+      if(experiment.runUrl)evidenceLink(container,experiment.runUrl,'この実験のActions実行 ↗');}
   }catch{$('evaluation-report').textContent='評価結果を準備しています。Actionsの実行履歴から最新の記録を確認できます。';}
 }
 loadEvidence();world.clear('3Dの座標は推論後に表示されます');

@@ -39,6 +39,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install inference-only dependencies
+        id: dependencies
         run: python -m pip install --disable-pip-version-check numpy==2.2.6 onnxruntime==1.23.2 opencv-python-headless==4.12.0.88
       - name: Check application JavaScript syntax
         run: |
@@ -54,6 +55,7 @@ jobs:
           PEOPLE: ${{ inputs.people || '64' }}
         run: python scripts/evaluate.py --models "$MODEL_IDS" --dataset "$DATASET" --people "$PEOPLE" --out artifacts
       - name: Verify person detection on one real annotated image
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: python scripts/evaluate-detector.py --out artifacts/detector.json
       - name: Verify geometry contract
         run: node scripts/verify-geometry.mjs

@@ -1,0 +1,71 @@
+name: Hand multiview and recorded motion evidence
+on:
+  push:
+    paths:
+      - 'scripts/evaluate-hanco.py'
+      - 'scripts/fetch_freemocap.py'
+      - 'scripts/verify-geometry.mjs'
+      - 'dist/geometry.js'
+      - 'dist/tracking.js'
+      - '.github/workflows/sequences.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sequence-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  hanco:
+    name: Evaluate real multiview hand images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch and inspect bounded public hand sample
+        run: python scripts/evaluate-hanco.py --probe --out artifacts/hanco
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install hand inference dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 onnxruntime==1.23.2 opencv-python-headless==4.12.0.88
+      - name: Compare two and eight views on 40 hand frames
+        run: python scripts/evaluate-hanco.py --frames 40 --start 0 --out artifacts/hanco
+      - name: Save hand sample provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanco-evaluation-${{ github.sha }}
+          path: artifacts/hanco/*.json
+          if-no-files-found: warn
+          retention-days: 7
+  freemocap:
+    name: Evaluate causal completion on recorded human motion
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install published-data readers
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 pandas==2.2.3 pyarrow==19.0.1 pyyaml==6.0.2
+      - name: Fetch aligned RTMPose and independent Qualisys reference
+        run: python scripts/fetch_freemocap.py --subjects 1 --frames-per-condition 300 --out-dir .evaluation-cache/freemocap --report artifacts/freemocap-fetch.json
+      - name: Compare product tracker with held-out recorded coordinates
+        run: node scripts/verify-geometry.mjs --sequence-input-report artifacts/freemocap-fetch.json --sequence-out-dir artifacts/freemocap
+      - name: Save aggregate motion errors and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freemocap-evaluation-${{ github.sha }}
+          path: |
+            artifacts/freemocap-fetch.json
+            artifacts/freemocap/*.json
+          if-no-files-found: warn
+          retention-days: 7

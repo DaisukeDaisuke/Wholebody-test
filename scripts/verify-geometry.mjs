@@ -2,7 +2,7 @@
 // Synthetic correspondences verify implementation, never real-camera accuracy.
 import assert from 'node:assert/strict';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
-import {dirname} from 'node:path';
+import {basename, dirname, join} from 'node:path';
 import {projectPoint, triangulateJoint, estimateRootDepth, calibratePlanarCamera, BODY_BONES} from '../dist/geometry.js';
 import {OcclusionTracker} from '../dist/tracking.js';
 
@@ -114,30 +114,62 @@ console.log(JSON.stringify(report, null, 2));
 // only aggregate errors, coverage and provenance are written into the artifact.
 const cli = process.argv.slice(2);
 const option = name => {const at = cli.indexOf(name); return at < 0 ? null : cli[at + 1];};
-const panopticInput = option('--panoptic-input');
-if (panopticInput) {
-  const data = JSON.parse(await readFile(panopticInput, 'utf8'));
+async function evaluateSequence(inputPath, outputPath) {
+  const data = JSON.parse(await readFile(inputPath, 'utf8'));
   assert.equal(data.schemaVersion, 1);
-  assert.ok(data.cameras && Array.isArray(data.conditions) && data.conditions.length > 0);
-  const outputPath = option('--panoptic-out') || 'artifacts/panoptic/geometry.json';
+  assert.ok(Array.isArray(data.conditions) && data.conditions.length > 0);
+  assert.ok(!data.coordinateUnit || ['m', 'metre', 'meter'].includes(data.coordinateUnit),
+    'Evaluation coordinates must have a documented fixed conversion to metres');
+  const direct3d = data.inputMode === '3d-points';
+  const dataset = data.dataset || 'CMU Panoptic';
+  const metricGroups = data.metricGroups || {
+    body: Array.from({length: 17}, (_, i) => i), hands: Array.from({length: 42}, (_, i) => i + 91),
+  };
+  const memberships = new Map();
+  for (const [name, ids] of Object.entries(metricGroups)) {
+    assert.ok(name && Array.isArray(ids) && ids.length > 0);
+    for (const id of new Set(ids)) {
+      assert.ok(Number.isInteger(id) && id >= 0 && id < 133);
+      memberships.set(id, [...(memberships.get(id) || []), name]);
+    }
+  }
+  const dropIds = new Set(data.dropJointIds || Array.from({length: 42}, (_, i) => i + 91));
+  assert.ok(dropIds.size > 0 && [...dropIds].every(id => Number.isInteger(id) && id >= 0 && id < 133));
+  const dropScenarioName = data.dropScenarioName || 'both_hands_observation_drop';
+  const cameraIds = new Set(Object.keys(data.cameras || {}));
+  for (const condition of data.conditions) for (const frame of condition.frames || []) {
+    for (const id of Object.keys(frame.cameras || {})) cameraIds.add(id);
+  }
+  if (!direct3d) assert.ok(cameraIds.size >= 2, 'Multiview evaluation needs calibrated cameras');
   const measured = {
-    schemaVersion: 1, kind: 'real-multiview-pose-evaluation', sequence: data.sequence, fps: data.fps,
+    schemaVersion: 1,
+    kind: direct3d ? 'real-motion-occlusion-completion-evaluation' : 'real-multiview-pose-evaluation',
+    dataset, referenceKind: data.referenceKind || 'provided-3d-annotation',
+    sequence: data.sequence, fps: data.fps, coordinateUnit: 'm', errorUnit: 'mm',
     sourceCommit: process.env.GITHUB_SHA || null,
-    methods: {triangulation: 'dist/geometry.js triangulateJoint', tracking: 'dist/tracking.js OcclusionTracker'},
-    cameraIds: Object.keys(data.cameras),
-    scope: 'Real images and calibrated CMU Panoptic 3D ground truth. GT boxes isolate pose estimation from detection.',
+    methods: {triangulation: direct3d ? null : 'dist/geometry.js triangulateJoint',
+      input: direct3d ? 'Published aligned 3D series; no image inference is run by this evaluator.' : 'Real-image model observations.',
+      tracking: 'dist/tracking.js OcclusionTracker',
+      holdLast: 'Causal last accepted input coordinate; expires at the product free-prediction age for each joint group.'},
+    cameraIds: [...cameraIds], metricGroups, provenance: data.provenance || null,
+    scope: data.scope || (direct3d
+      ? `${dataset} recorded 3D observations compared with its supplied reference. Only the product causal tracker is exercised.`
+      : `${dataset} real-image observations and supplied calibrated 3D reference. Reference kind is reported separately.`),
     limitations: [
-      'Ground-truth coordinates are consumed privately for scoring and are not included in this report.',
-      'Both-hands-drop removes observations after image inference; it is not an image-occlusion benchmark.',
+      'Reference coordinates are consumed for scoring and are not included in this report.',
+      'Artificial observation-drop removes observations after inference or reconstruction; it is not an image-occlusion benchmark.',
       'MPJPE is conditional on an available estimate. Coverage and PCK use all valid GT joints.',
-      'The body set contains 17 COCO joints. Individual toe joints and instep surface are not labeled here.',
       'This sequence does not establish performance on user cameras or every type of occlusion.',
+      ...(direct3d ? [
+        'The upstream recorded series may use whole-sequence alignment, interpolation and filtering; this is not camera-to-output causal latency or accuracy.',
+        'Input confidence is an availability indicator supplied by the adapter, not a calibrated visibility probability.',
+      ] : []),
+      ...(data.limitations || []),
     ],
     conditions: [],
   };
 
   const finite3 = v => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
-  const jointGroup = id => id >= 91 && id <= 132 ? 'hands' : id >= 0 && id <= 16 ? 'body' : null;
   const quantile = (values, p) => {
     if (!values.length) return null;
     const sorted = [...values].sort((a, b) => a - b);
@@ -145,22 +177,23 @@ if (panopticInput) {
     return sorted[lo] * (hi - at || 1) + (hi === lo ? 0 : sorted[hi] * (at - lo));
   };
   const newGroup = () => ({groundTruthJoints: 0, availableJoints: 0, errorsMm: [], sources: {}});
-  const newMetrics = () => ({body: newGroup(), hands: newGroup()});
+  const newMetrics = () => Object.fromEntries(Object.keys(metricGroups).map(name => [name, newGroup()]));
   const addFrame = (metrics, gt, predictions) => {
     const byId = new Map(predictions.map(j => [j.id, j]));
     for (const point of gt) {
-      const groupName = jointGroup(point.id);
-      if (!groupName || point.valid === false || !finite3(point.xyz)) continue;
-      const group = metrics[groupName];
-      group.groundTruthJoints++;
-      const predicted = byId.get(point.id);
-      if (!predicted || predicted.valid === false || !finite3(predicted.xyz)) {
-        group.sources.missing = (group.sources.missing || 0) + 1;
-        continue;
+      if (point.valid === false || !finite3(point.xyz)) continue;
+      for (const groupName of memberships.get(point.id) || []) {
+        const group = metrics[groupName];
+        group.groundTruthJoints++;
+        const predicted = byId.get(point.id);
+        if (!predicted || predicted.valid === false || !finite3(predicted.xyz)) {
+          group.sources.missing = (group.sources.missing || 0) + 1;
+          continue;
+        }
+        group.availableJoints++;
+        group.errorsMm.push(Math.hypot(...predicted.xyz.map((v, axis) => v - point.xyz[axis])) * 1000);
+        group.sources[predicted.source || 'unknown'] = (group.sources[predicted.source || 'unknown'] || 0) + 1;
       }
-      group.availableJoints++;
-      group.errorsMm.push(Math.hypot(...predicted.xyz.map((v, axis) => v - point.xyz[axis])) * 1000);
-      group.sources[predicted.source || 'unknown'] = (group.sources[predicted.source || 'unknown'] || 0) + 1;
     }
   };
   const finish = metrics => Object.fromEntries(Object.entries(metrics).map(([name, m]) => [name, {
@@ -180,44 +213,86 @@ if (panopticInput) {
     for (let i = 1; i < condition.frames.length; i++) {
       assert.ok(condition.frames[i].timeMs > condition.frames[i - 1].timeMs, 'Frame times must be strictly increasing');
     }
-    const dropCount = Math.min(8, Math.max(1, Math.floor(condition.frames.length / 4)));
-    const dropStart = Math.floor((condition.frames.length - dropCount) / 2);
+    const dropCount = condition.dropFrameCount ?? data.dropFrameCount ?? Math.min(8, Math.max(1, Math.floor(condition.frames.length / 4)));
+    const dropStart = condition.dropStartIndex ?? data.dropStartIndex ?? Math.floor((condition.frames.length - dropCount) / 2);
+    assert.ok(Number.isInteger(dropCount) && dropCount >= 1 && dropCount < condition.frames.length);
+    assert.ok(Number.isInteger(dropStart) && dropStart >= 1 && dropStart + dropCount <= condition.frames.length,
+      'The declared drop interval needs prior history and must lie within the sequence');
     const result = {name: condition.name, frameCount: condition.frames.length,
       firstFrame: condition.frames[0].index, lastFrame: condition.frames.at(-1).index,
       artificialDrop: {firstFrame: condition.frames[dropStart].index,
         lastFrame: condition.frames[dropStart + dropCount - 1].index, frameCount: dropCount,
-        removedJointIds: '91..132 in both cameras, after image inference'}, scenarios: {}};
+        removedJointIds: [...dropIds], selection: data.dropSelection || 'Fixed central interval, independent of prediction error.',
+        inputStage: direct3d ? 'recorded 3D observations' : 'all camera observations after image inference'}, scenarios: {}};
     for (const drop of [false, true]) {
       const tracker = new OcclusionTracker();
       const rawAll = newMetrics(), trackedAll = newMetrics(), rawGap = newMetrics(), trackedGap = newMetrics();
+      const holdAll = newMetrics(), holdGap = newMetrics(), lastSeen = new Map();
+      result.holdLastPolicy = {
+        maximumBodyAgeMs: tracker.options.maximumBodyPredictionMs,
+        maximumHandAgeMs: tracker.options.maximumHandPredictionMs,
+        maximumFootAgeMs: tracker.options.maximumFootPredictionMs,
+        minimumInputConfidence: tracker.options.minimumConfidence,
+        coordinates: 'Last raw accepted observation, without velocity, smoothing, or reference coordinates.',
+      };
       const frameMetrics = [];
       for (let i = 0; i < condition.frames.length; i++) {
         const frame = condition.frames[i];
         const inGap = i >= dropStart && i < dropStart + dropCount;
-        const current = drop && inGap ? frame.observations.filter(o => jointGroup(o.id) !== 'hands') : frame.observations;
-        const grouped = new Map();
-        for (const observation of current) {
-          if (!grouped.has(observation.id)) grouped.set(observation.id, []);
-          grouped.get(observation.id).push(observation);
+        let reconstructed;
+        if (direct3d) {
+          assert.ok(Array.isArray(frame.inputJoints));
+          const current = drop && inGap ? frame.inputJoints.filter(o => !dropIds.has(o.id)) : frame.inputJoints;
+          reconstructed = current.filter(j => j.valid !== false && finite3(j.xyz)).map(j => ({
+            id: j.id, xyz: j.xyz, confidence: Number.isFinite(j.confidence) ? j.confidence : 1,
+            source: 'model3d', valid: true,
+          }));
+        } else {
+          assert.ok(Array.isArray(frame.observations));
+          const current = drop && inGap ? frame.observations.filter(o => !dropIds.has(o.id)) : frame.observations;
+          const grouped = new Map();
+          for (const observation of current) {
+            if (!grouped.has(observation.id)) grouped.set(observation.id, []);
+            grouped.get(observation.id).push(observation);
+          }
+          reconstructed = [...grouped].map(([id, observations]) => ({
+            id, ...triangulateJoint(observations, frame.cameras || data.cameras, {referenceTimeMs: frame.timeMs}),
+          }));
         }
-        const reconstructed = [...grouped].map(([id, observations]) => ({
-          id, ...triangulateJoint(observations, data.cameras, {referenceTimeMs: frame.timeMs}),
-        }));
         const tracked = tracker.update({timeMs: frame.timeMs, joints: reconstructed}).joints;
+        for (const joint of reconstructed) {
+          if (joint.valid === false || !finite3(joint.xyz) || !Number.isFinite(joint.confidence)
+              || joint.confidence < tracker.options.minimumConfidence) continue;
+          lastSeen.set(joint.id, {xyz: [...joint.xyz], confidence: joint.confidence,
+            timeMs: frame.timeMs, source: joint.source});
+        }
+        const held = [];
+        for (const [id, previous] of lastSeen) {
+          const ageMs = frame.timeMs - previous.timeMs;
+          const maximumAgeMs = id >= 91 ? tracker.options.maximumHandPredictionMs
+            : id >= 17 && id <= 22 ? tracker.options.maximumFootPredictionMs : tracker.options.maximumBodyPredictionMs;
+          if (ageMs > maximumAgeMs) continue;
+          held.push({id, xyz: previous.xyz, confidence: previous.confidence, valid: true,
+            source: ageMs === 0 ? previous.source : 'holdLast', ageMs});
+        }
         addFrame(rawAll, frame.groundTruth, reconstructed);
         addFrame(trackedAll, frame.groundTruth, tracked);
+        addFrame(holdAll, frame.groundTruth, held);
         if (inGap) {
           addFrame(rawGap, frame.groundTruth, reconstructed);
           addFrame(trackedGap, frame.groundTruth, tracked);
+          addFrame(holdGap, frame.groundTruth, held);
         }
-        const perFrame = newMetrics();
+        const perFrame = newMetrics(), perFrameHold = newMetrics();
         addFrame(perFrame, frame.groundTruth, tracked);
-        frameMetrics.push({index: frame.index, timeMs: frame.timeMs, artificialHandsDropped: drop && inGap,
-          tracking: finish(perFrame)});
+        addFrame(perFrameHold, frame.groundTruth, held);
+        frameMetrics.push({index: frame.index, timeMs: frame.timeMs, artificialObservationsDropped: drop && inGap,
+          tracking: finish(perFrame), holdLast: finish(perFrameHold)});
       }
-      result.scenarios[drop ? 'both_hands_observation_drop' : 'unmodified_observations'] = {
-        triangulated: finish(rawAll), causalTracker: finish(trackedAll),
-        middleIntervalTriangulated: finish(rawGap), middleIntervalTracker: finish(trackedGap), frameMetrics,
+      result.scenarios[drop ? dropScenarioName : 'unmodified_observations'] = {
+        [direct3d ? 'recorded3d' : 'triangulated']: finish(rawAll), causalTracker: finish(trackedAll), holdLast: finish(holdAll),
+        [direct3d ? 'middleIntervalRecorded3d' : 'middleIntervalTriangulated']: finish(rawGap),
+        middleIntervalTracker: finish(trackedGap), middleIntervalHoldLast: finish(holdGap), frameMetrics,
       };
     }
     measured.conditions.push(result);
@@ -229,4 +304,20 @@ if (panopticInput) {
       scenarios: Object.fromEntries(Object.entries(scenarios).map(([name, {frameMetrics, ...metrics}]) => [name, metrics])),
     })),
   }, null, 2));
+}
+
+const sequenceInput = option('--sequence-input') || option('--panoptic-input');
+const sequenceInputReport = option('--sequence-input-report');
+assert.ok(!(sequenceInput && sequenceInputReport), 'Choose one sequence input or an input report');
+if (sequenceInput) {
+  const outputPath = option('--sequence-out') || option('--panoptic-out') || 'artifacts/panoptic/geometry.json';
+  await evaluateSequence(sequenceInput, outputPath);
+}
+if (sequenceInputReport) {
+  const manifest = JSON.parse(await readFile(sequenceInputReport, 'utf8'));
+  assert.ok(manifest.ok && Array.isArray(manifest.input_files) && manifest.input_files.length > 0);
+  const outputDir = option('--sequence-out-dir') || 'artifacts/freemocap';
+  for (const inputPath of manifest.input_files) {
+    await evaluateSequence(inputPath, join(outputDir, `${basename(inputPath, '.json')}-metrics.json`));
+  }
 }
