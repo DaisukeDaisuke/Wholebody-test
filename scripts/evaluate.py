@@ -44,6 +44,11 @@ MODELS = {
         "sha256": "8b6fb439dd02b02b0f71edaac647c8818e2335083ba1b3abc103f852a7c7c8d8",
         "input": [192, 256],
     },
+    "rtmw-l-384": {
+        "url": "https://huggingface.co/RabbitDaisuke/Wholebody-Refinement-onnx/resolve/0a5519d19e52477307916e99ef22024ac0faa241/rtmw-l-384x288-fp32.onnx",
+        "sha256": "bd033156e5104c4f5d2edfe0453e02661e30a2f3da453ec93c8764d561b83054",
+        "input": [288, 384],
+    },
     "rtmw3d-x": {
         "url": f"{HF_RTMW}/onnx/rtmw3d-x-fp32.onnx",
         "sha256": "de7bc9dba71b4c4e2be91ec768db58d73afa78863cc834f6625e3a0b540f4c23",

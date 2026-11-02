@@ -11,7 +11,7 @@ const $=id=>document.getElementById(id);
 const number=(id,fallback=0)=>{const v=Number($(id).value);return Number.isFinite(v)?v:fallback;};
 const engine=new PoseEngine(),tracker=new OcclusionTracker(),world=new PoseView($('world'));
 const sources=['a','b'].map(id=>({id,video:$('video-'+id),canvas:$('view-'+id),snapshot:document.createElement('canvas'),kind:null,media:null,ready:false,version:0,serial:0,result:null,box:null,manualBox:null,calibration:null,corners:[],lastMeta:null}));
-const state={running:false,processing:false,loading:false,needsReload:false,records:[],logs:[],timings:[],runBegan:0,processed:0,peer:{},signal:null,coordinateFrame:'world',fusion:null};
+const state={running:false,processing:false,loading:false,needsReload:false,records:[],logs:[],timings:[],runBegan:0,processed:0,peer:{},signal:null,coordinateFrame:'world',coordinateId:'world',fusion:null,lastFreshWall:0,lastFusionTime:0,lastDecayWall:0};
 for(const s of sources){s.video.hidden=false;s.video.className='source-video';s.video.setAttribute('aria-hidden','true');}
 for(const m of BODY_MODELS){const option=document.createElement('option');option.value=m.id;option.textContent=m.name;$('model').append(option);}
 $('model').value='rtmw-l';
@@ -54,7 +54,7 @@ async function releaseSource(s){
 }
 function snapshotSource(s){
   const w=s.media?.videoWidth||s.media?.naturalWidth||s.media?.width,h=s.media?.videoHeight||s.media?.naturalHeight||s.media?.height;
-  if(!w||!h)return false;s.width=w;s.height=h;
+  if(!w||!h)return false;if(s.width&&s.height&&(s.width!==w||s.height!==h)){s.corners=[];s.calibration=null;resetHistory();log(`入力${s.id}: 映像寸法が変わったため校正を無効化しました`);}s.width=w;s.height=h;
   if(s.snapshot.width!==w||s.snapshot.height!==h){s.snapshot.width=w;s.snapshot.height=h;}
   s.snapshot.getContext('2d').drawImage(s.media,0,0,w,h);return true;
 }
@@ -108,7 +108,8 @@ function stamp(s){
   if(s.kind==='video'){const t=s.lastMeta?.mediaTime??s.video.currentTime;return{timeMs:(t-(s.id==='b'?number('time-offset'):0))*1000,timeBasis:'media',synchronized:$('files-synchronized').checked,mediaTime:t};}
   if(s.kind==='image')return{timeMs:performance.now(),timeBasis:'static-image',synchronized:false};
   const capture=s.lastMeta?.captureTime;
-  if(Number.isFinite(capture)&&performance.now()-capture<5000)return{timeMs:capture,timeBasis:'webrtc-capture-estimate',synchronized:true,clockUncertaintyMs:state.peer[s.id]?.clock?.uncertaintyMs??null};
+  const age=performance.now()-capture,clock=state.peer[s.id]?.clock;
+  if(Number.isFinite(capture)&&age>=-2&&age<1500)return{timeMs:capture,timeBasis:'webrtc-capture-estimate',synchronized:false,captureAgeMs:age,clockUncertaintyMs:clock?.uncertaintyMs??null,clockAgeMs:clock?performance.now()-clock.measuredAt:null};
   return{timeMs:s.lastMeta?.expectedDisplayTime??performance.now(),timeBasis:'presentation',synchronized:false};
 }
 function adaptedCamera(s){
@@ -121,17 +122,19 @@ function approximateCamera(s){const fov=clamp(number('mono-fov',70),20,150)*Math
 function fuse(batch){
   const frames=batch.filter(b=>b.result?.points?.length).map(b=>({sourceId:b.s.id,timeMs:b.stamp.timeMs,keypoints:b.result.points}));
   const cameras=Object.fromEntries(batch.map(b=>[b.s.id,adaptedCamera(b.s)]).filter(([,c])=>c));
-  const compatibleClocks=batch.length===2&&batch.every(b=>b.stamp.synchronized)&&((batch.every(b=>b.stamp.timeBasis==='media'))||(batch.every(b=>b.stamp.timeBasis==='webrtc-capture-estimate')));
+  const compatibleClocks=batch.length===2&&batch.every(b=>b.stamp.synchronized)&&batch.every(b=>b.stamp.timeBasis==='media');
+  const captureEstimates=batch.length===2&&batch.every(b=>b.stamp.timeBasis==='webrtc-capture-estimate');
   const allowApproximate=$('allow-approximate').checked;
   let triangulated=[],mono=null,frame=state.coordinateFrame,message='2視点の校正が必要です';
   if(frames.length===2&&Object.keys(cameras).length===2){
-    if(compatibleClocks||allowApproximate){
-      const inputs=compatibleClocks?cameras:Object.fromEntries(Object.entries(cameras).map(([id,c])=>[id,{...c,calibrated:false,calibrationStatus:'approximate'}]));
+    if(compatibleClocks||captureEstimates||allowApproximate){
+      const inputs=compatibleClocks||captureEstimates?cameras:Object.fromEntries(Object.entries(cameras).map(([id,c])=>[id,{...c,calibrated:false,calibrationStatus:'approximate'}]));
       triangulated=triangulateFrame(frames,inputs,{minimumScore:number('confidence'),maxTimeDeltaMs:25,allowApproximateCalibration:allowApproximate});
-      message=compatibleClocks?'共通関節を2視点から復元':'表示時刻による暫定3D · 撮影同期は未確認';
+      if(!compatibleClocks)triangulated=triangulated.map(j=>j.valid?{...j,source:'estimatedMultiView',distanceStatus:'estimatedMultiView',confidence:j.confidence*.7,observed:false,timingEstimated:true}:j);
+      message=compatibleClocks?'共通関節を2視点から復元':captureEstimates?'WebRTCの推定撮影時刻による2視点3D':'表示時刻による暫定3D · 撮影同期は未確認';
     }else message='撮影時刻の対応が未確認です。録画の時間差または接続の時刻品質を確認してください。';
   }
-  const primary=batch[0]?.fresh&&batch[0].result?.points?.some(p=>Number.isFinite(p.relativeZm))?batch[0]:null;
+  const primary=batch.find((b,index)=>b.fresh&&(index===0||adaptedCamera(b.s)?.worldFromCamera)&&b.result?.points?.some(p=>Number.isFinite(p.relativeZm)));
   if(primary){const camera=adaptedCamera(primary.s)||approximateCamera(primary.s);
     mono=estimateRootDepth(primary.result.points,camera,anthropometricBoneLengths(number('height',170)/100),{minimumScore:number('confidence'),boneLengthSource:'anthropometricPrior'});
     if(mono.valid&&(!triangulated.some(j=>j.valid)||mono.coordinateFrame==='world')){frame=mono.coordinateFrame;
@@ -143,7 +146,8 @@ function fuse(batch){
   if(primaryValid.length)frame='world';
   const sameDomain=batch.every(b=>b.stamp.timeBasis==='media')||batch.every(b=>b.stamp.timeBasis!=='media');
   const timeMs=sameDomain?Math.max(...batch.map(b=>b.stamp.timeMs)):batch[0].stamp.timeMs;
-  if(joints.length&&frame!==state.coordinateFrame)tracker.reset();
+  const coordinateId=frame==='camera'?`camera:${primary?.s.id||state.coordinateId.split(':')[1]||'a'}`:'world';
+  if(joints.length&&coordinateId!==state.coordinateId)tracker.reset();state.coordinateId=coordinateId;
   const fused=tracker.update({timeMs,joints});state.coordinateFrame=frame;state.fusion=fused;
   $('depth-status').textContent=message;$('calibration-badge').textContent=primaryValid.length?`${primaryValid.length}点を復元`:mono?.valid?'単眼推定':'3D未確定';
   world.render(fused,Object.values(cameras),{coordinateFrame:frame,statusText:message});
@@ -155,8 +159,8 @@ async function inferBatch(force=false){
   state.processing=true;setRunControls();
   try{
     // Freeze both views before running the shared GPU session. Body and hand crops use this exact image.
-    const batch=active.map(s=>{const frameKey=s.kind==='image'?'image':(s.lastMeta?.presentedFrames??s.video.currentTime);const fresh=force||!s.result||frameKey!==s.lastFrameKey;
-      if(fresh&&!snapshotSource(s))return null;return{s,fresh,frameKey,stamp:fresh?stamp(s):s.lastStamp,result:fresh?null:s.result};}).filter(Boolean);
+    const batch=active.map(s=>{const key=frameKey(s);const fresh=force||!s.result||key!==s.lastFrameKey;
+      if(fresh&&!snapshotSource(s))return null;return{s,fresh,frameKey:key,stamp:fresh?stamp(s):s.lastStamp,result:fresh?null:s.result};}).filter(Boolean);
     if(!batch.length)return;
     for(const b of batch){const s=b.s;if(!b.fresh)continue;
       b.result=await engine.infer(s.snapshot,{box:s.manualBox||s.box,automatic:$('detector').checked&&!s.manualBox,redetect:!s.box||(s.inferenceCount||0)%12===0,hands:$('hands').checked});
@@ -165,7 +169,7 @@ async function inferBatch(force=false){
       if(s.kind==='video')$('seek-'+s.id).value=s.video.currentTime;
       state.processed++;
     }
-    const fused=fuse(batch);const freshBatch=batch.filter(b=>b.fresh);const total=key=>freshBatch.reduce((sum,b)=>sum+(b.result[key]||0),0)/Math.max(1,freshBatch.length);
+    const fused=fuse(batch);state.lastFreshWall=performance.now();state.lastFusionTime=fused.timeMs;const freshBatch=batch.filter(b=>b.fresh);const total=key=>freshBatch.reduce((sum,b)=>sum+(b.result[key]||0),0)/Math.max(1,freshBatch.length);
     $('metric-pose').innerHTML=total('poseMs').toFixed(1)+'<small> ms</small>';$('metric-hand').innerHTML=total('handMs').toFixed(1)+'<small> ms</small>';
     state.timings.push({at:performance.now(),count:freshBatch.length});state.timings=state.timings.filter(x=>performance.now()-x.at<3000);
     const elapsed=Math.min(3000,performance.now()-state.runBegan);const fps=state.timings.reduce((n,t)=>n+t.count,0)/(Math.max(1,elapsed)/1000);$('metric-fps').innerHTML=fps.toFixed(1)+'<small> 枚/秒</small>';
@@ -176,15 +180,21 @@ async function inferBatch(force=false){
 }
 async function loop(){
   if(!state.running)return;
-  const changed=sources.some(s=>s.ready&&(s.kind==='image'?!s.result:(s.lastMeta?.presentedFrames??s.video.currentTime)!==s.lastFrameKey));
-  if(!changed){requestAnimationFrame(loop);return;}
+  const changed=sources.some(s=>s.ready&&(s.kind==='image'?!s.result:frameKey(s)!==s.lastFrameKey));
+  if(!changed){decayLiveStall();requestAnimationFrame(loop);return;}
   try{await inferBatch();}catch(error){stop();fail(error);return;}
   if(sources.filter(s=>s.ready).every(s=>s.kind==='image')){stop();return;}
   if(state.running)requestAnimationFrame(loop);
 }
+function frameKey(s){if(s.kind==='image')return'image';if(Number.isFinite(s.lastMeta?.presentedFrames))return s.lastMeta.presentedFrames;const decoded=s.video.getVideoPlaybackQuality?.().totalVideoFrames;return Number.isFinite(decoded)&&decoded>0?decoded:'unknown-frame';}
+function decayLiveStall(){
+  const now=performance.now();if(!state.fusion||!sources.some(s=>s.ready&&['camera','remote'].includes(s.kind))||now-state.lastFreshWall<120||now-state.lastDecayWall<50)return;
+  state.lastDecayWall=now;state.fusion=tracker.update({timeMs:state.lastFusionTime+now-state.lastFreshWall,joints:[]});world.render(state.fusion,sources.map(s=>s.calibration).filter(Boolean),{coordinateFrame:state.coordinateFrame});
+  $('metric-missing').textContent=`${state.fusion.stats.predicted+state.fusion.stats.kinematicPrior} / ${state.fusion.stats.missing}`;$('depth-status').textContent='映像の新しいフレームが届かないため、短時間予測から欠測へ移行しています。';
+}
 $('run').onclick=guarded(async()=>{clearError();if(!engine.session)throw Error('モデルを読み込んでください');for(const s of sources)if(s.ready&&s.kind==='video'){if(s.video.ended)s.video.currentTime=0;await s.video.play();}state.running=true;state.runBegan=performance.now();state.processed=0;state.timings=[];setRunControls();loop();});
 $('stop').onclick=stop;
-for(const id of['model','backend','hands','detector'])$(id).onchange=()=>{if(engine.session){stop();state.needsReload=true;$('load-detail').textContent='設定を変更しました。モデルを読み込み直してください。';setRunControls();}};
+for(const id of['model','backend','hands','detector'])$(id).onchange=()=>{if(id==='model')$('hands').checked=$('model').value==='rtmpose-s';if(engine.session){stop();state.needsReload=true;$('load-detail').textContent='設定を変更しました。モデルを読み込み直してください。';setRunControls();}};
 $('single').onclick=guarded(async()=>{clearError();await waitIdle();state.runBegan=performance.now();state.timings=[];await inferBatch(true);});
 $('sample').onclick=guarded(async()=>{const url='https://raw.githubusercontent.com/open-mmlab/mmpose/759b39c13fea6ba094afc1fa932f51dc1b11cbf9/tests/data/coco/000000000785.jpg';const{bytes}=await cachedFetch(url,{cacheName:'wholebody-sample-v1'});await fileSource(sources[0],new File([bytes],'COCO-000000000785.jpg',{type:'image/jpeg'}));});
 
@@ -193,7 +203,7 @@ for(const s of sources){
   const card=document.createElement('div');card.className='calibration-view';
   card.innerHTML=`<h3>入力${s.id.toUpperCase()}</h3><canvas id="cal-view-${s.id}" width="640" height="480"></canvas><p id="corner-count-${s.id}" class="small muted">四隅を0 / 4点選択</p><button id="mark-${s.id}">4点を選び直す</button><div class="form-grid"><label>fx（pixel）<input id="fx-${s.id}" type="number" min="1" placeholder="未入力なら画角から仮定"></label><label>fy（pixel）<input id="fy-${s.id}" type="number" min="1"></label><label>cx（pixel）<input id="cx-${s.id}" type="number" placeholder="画像中心"></label><label>cy（pixel）<input id="cy-${s.id}" type="number" placeholder="画像中心"></label></div><label>横画角の仮定（度）<input id="fov-${s.id}" type="number" value="70" min="20" max="150"></label><label class="check"><input id="intrinsics-${s.id}" type="checkbox"><span>fx・fyは実測した内部校正値</span></label><button id="solve-${s.id}" class="primary">この視点を校正</button>`;
   $('calibration-controls').append(card);
-  $('cal-view-'+s.id).onclick=event=>{if(!s.ready)return;if(s.corners.length===4)return;s.corners.push(canvasPoint(event,event.currentTarget,s.width,s.height));drawCalibration(s);};
+  $('cal-view-'+s.id).onclick=event=>{if(!s.ready)return;if(s.corners.length===4)return;s.corners.push(canvasPoint(event,event.currentTarget,event.currentTarget.width,event.currentTarget.height));drawCalibration(s);};
   $('mark-'+s.id).onclick=()=>{s.corners=[];s.calibration=null;drawCalibration(s);resetHistory();};
   $('solve-'+s.id).onclick=guarded(()=>{
     if(s.corners.length!==4)throw Error('両視点で同じ順に床の四隅を選択してください');
@@ -226,7 +236,7 @@ for(const id of['height','time-offset','files-synchronized','allow-approximate',
 
 async function makePeer(slot){
   state.peer[slot]?.close();const s=sources.find(x=>x.id===slot);
-  const peer=new CameraPeer({slot,onStream:stream=>streamSource(s,stream,'remote').catch(fail),onStatus:message=>{$('signal-state').textContent=`カメラ${slot.toUpperCase()}: ${message}`;if(['failed','disconnected','closed'].includes(message)){s.ready=false;resetHistory();setRunControls();}},onClock:clock=>{s.clock=clock;}});
+  const peer=new CameraPeer({slot,onStream:stream=>{if(state.peer[slot]===peer)streamSource(s,stream,'remote').catch(fail);},onStatus:message=>{if(state.peer[slot]!==peer)return;$('signal-state').textContent=`カメラ${slot.toUpperCase()}: ${message}`;if(['failed','disconnected','closed'].includes(message)){s.ready=false;resetHistory();setRunControls();}},onClock:clock=>{if(state.peer[slot]===peer)s.clock=clock;}});
   state.peer[slot]=peer;return peer;
 }
 for(const slot of['a','b'])$('offer-'+slot).onclick=guarded(async()=>{const peer=await makePeer(slot);$('signal-text').value=JSON.stringify(await peer.offer());});

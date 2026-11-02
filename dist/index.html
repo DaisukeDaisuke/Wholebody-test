@@ -17,7 +17,7 @@
         <div class="section-label"><span class="step">01</span><h2>推論の設定</h2></div>
         <label>全身モデル<select id="model"></select></label>
         <label>実行先<select id="backend"><option value="webgpu">WebGPU · PCのGPU</option><option value="wasm">WASM · CPU診断</option></select></label>
-        <label class="check"><input id="hands" type="checkbox" checked><span>手を拡大して再推論<small>手指の元画像を専用モデルへ</small></span></label>
+        <label class="check"><input id="hands" type="checkbox"><span>手を拡大して再推論<small>RTMPose-Sで改善。RTMW-Lは既定OFF。</small></span></label>
         <label class="check"><input id="detector" type="checkbox" checked><span>人物を自動検出<small>枠をドラッグして手動指定も可能</small></span></label>
         <label class="check"><input id="offline" type="checkbox"><span>取得済みデータだけで動作<small>未保存のモデルは取得しません</small></span></label>
         <button id="load" class="primary full">モデルを読み込む</button><progress id="progress" value="0" max="1" hidden></progress><p id="load-detail" class="muted small">初回はモデルの取得に時間がかかります。</p>

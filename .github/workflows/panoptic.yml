@@ -1,0 +1,40 @@
+name: Panoptic multiview evaluation (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: panoptic-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  panoptic:
+    name: Evaluate synchronized multiview video
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect calibration and bounded data prefixes
+        run: python scripts/evaluate-panoptic.py --probe --out artifacts/panoptic
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install inference dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 onnxruntime==1.23.2 opencv-python-headless==4.12.0.88
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+      - name: Evaluate 40 consecutive frames with product geometry
+        run: python scripts/evaluate-panoptic.py --models rtmw-l --frames 40 --out artifacts/panoptic
+      - name: Save multiview metrics and predicted observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panoptic-evaluation-${{ github.sha }}
+          path: artifacts/panoptic/*.json
+          if-no-files-found: warn
+          retention-days: 7

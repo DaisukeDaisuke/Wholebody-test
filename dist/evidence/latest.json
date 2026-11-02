@@ -1,12 +1,36 @@
 {
-  "description": "初期評価: COCO-WholeBody公式の正解付き4画像・12人。人物の正解BBoxを入力した2D推論で、人物検出器の性能は含みません。",
-  "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41374788866",
-  "commit": "935b396ad3684e12edc4f9ceca059215a755a871",
+  "description": "追加評価: 初期4画像を除外したCOCO-WholeBody 64画像・64人。人物の正解BBoxを入力した2D推論で、人物検出器の性能は含みません。",
+  "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41376400694",
+  "commit": "9f5cb1ca7aea0bf91e82ed8860112b807c03c317",
   "rows": [
-    {"name":"RTMPose-S","bodyPx":"6.46 px","footPx":"8.71 px","handPx":"6.54 px","handPck20":"32.86%"},
-    {"name":"RTMPose-S + 手","bodyPx":"6.46 px","footPx":"8.71 px","handPx":"6.12 px","handPck20":"40.48%"},
-    {"name":"RTMW-L","bodyPx":"4.38 px","footPx":"5.18 px","handPx":"4.08 px","handPck20":"64.29%"},
-    {"name":"RTMW-L + 手","bodyPx":"4.38 px","footPx":"5.18 px","handPx":"3.95 px","handPck20":"66.19%"}
+    {
+      "name": "RTMPose-S",
+      "bodyPx": "13.64 px",
+      "footPx": "19.40 px",
+      "handPx": "22.32 px",
+      "handPck20": "52.70%"
+    },
+    {
+      "name": "RTMPose-S + 手",
+      "bodyPx": "13.64 px",
+      "footPx": "19.40 px",
+      "handPx": "20.86 px",
+      "handPck20": "60.53%"
+    },
+    {
+      "name": "RTMW-L（既定）",
+      "bodyPx": "9.36 px",
+      "footPx": "8.32 px",
+      "handPx": "13.21 px",
+      "handPck20": "74.92%"
+    },
+    {
+      "name": "RTMW-L + 手",
+      "bodyPx": "9.36 px",
+      "footPx": "8.32 px",
+      "handPx": "13.54 px",
+      "handPck20": "72.49%"
+    }
   ],
-  "limitations": "身体181点・足38点・手210点。HandPCK20は手BBox長辺の20%を許容する指標です。手を灰色で隠した実験ではRTMW-Lでも12.74%に低下し、手の拡大推論では改善しませんでした。未知の隠れ指形状を正確に復元できたという結果ではありません。CPUでの実画像評価であり、ブラウザWebGPUの速度・数値一致や実機2台の精度は未検証です。現在は初期画像を除いた64人の追加評価を準備しています。"
+  "limitations": "身体655点・足111点・手945点。HandPCK20は手BBox長辺の20%以内という指標です。手の拡大推論はRTMPose-Sで改善し、RTMW-Lでは悪化したため既定OFFです。CPUでの実画像評価であり、ブラウザWebGPUの速度・数値一致や実機2台の精度を示しません。同runの画像評価・構文・幾何検証jobは成功、Panoptic動画jobは配布元に接続できず失敗しています。未知の隠れ指形状の正確な復元は未達です。"
 }
