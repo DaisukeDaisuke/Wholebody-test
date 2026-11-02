@@ -141,6 +141,10 @@ jobs:
           sudo apt-get install --yes --no-install-recommends ffmpeg
           npm install --ignore-scripts --no-audit --no-fund --prefix .cache/headless onnxruntime-node@1.22.0
           node ci/headless-pose3d.mjs --output dist/evidence/headless-pose3d.json
+      - name: Compare labelled public body landmarks with lost points counted as errors
+        run: |
+          python ci/prepare-labelled-images.py
+          node ci/evaluate-pose3d-images.mjs
       - name: Private video inference when an existing private fetch secret is configured
         env:
           PRIVATE_VIDEO_URL: ${{ secrets.PRIVATE_VIDEO_URL }}
@@ -157,6 +161,7 @@ jobs:
           path: |
             dist/evidence/headless-video.json
             dist/evidence/headless-pose3d.json
+            dist/evidence/labelled-body13.json
             artifacts/hf/publication.json
             artifacts/private-video-status.json
           if-no-files-found: warn

@@ -159,6 +159,13 @@ function usableRoi(candidate,source,minSize){
   const visible=Math.max(0,Math.min(iw,x+w)-Math.max(0,x))*Math.max(0,Math.min(ih,y+h)-Math.max(0,y));
   return visible/(w*h)>=.95?candidate:null;
 }
+function learnedFootRoi(source,side){
+  const ids=side==='left'?[15,19,17]:[16,22,20],points=ids.map(id=>source.rawKeypoints?.[id]);
+  if(!points.every(p=>p?.observable!==false&&p?.score>=.3&&finite(p.x)&&finite(p.y)))return null;
+  const xs=points.map(p=>p.x),ys=points.map(p=>p.y),w=Math.max(...xs)-Math.min(...xs),h=Math.max(...ys)-Math.min(...ys),size=Math.max(w,h)*1.6;
+  if(size<16)return null;
+  return {roi:[(Math.min(...xs)+Math.max(...xs)-size)/2,(Math.min(...ys)+Math.max(...ys)-size)/2,size,size],confidence:Math.min(...points.map(p=>p.score))};
+}
 async function processFrame(source,token){
   const start=performance.now(),mode=$('mode').value,roi=source.roi||[0,0,source.video.videoWidth,source.video.videoHeight],stamp=source.stream?start:source.video.currentTime*1000;
   let didInference=false;
@@ -183,7 +190,7 @@ async function processFrame(source,token){
   }
   if((mode==='foot'||mode==='wholebody'&&$('foot-enabled').checked)&&start-source.lastFoot>=200){
     for(const side of (mode==='foot'?['left']:['left','right'])){
-      const candidate=usableRoi(mode==='foot'?{roi,confidence:1}:footRoiFrom59(source.points,side),source,16);
+      const candidate=usableRoi(mode==='foot'?{roi,confidence:1}:source.decoded3D?learnedFootRoi(source,side):footRoiFrom59(source.points,side),source,16);
       if(candidate){source.feet[side]={...await parts.runFoot(source.frame,candidate.roi,{roiConfidence:candidate.confidence}),roi:candidate.roi};didInference=true;limitedPush(partTimes,source.feet[side].inferenceMs);}else delete source.feet[side];
     }
     source.lastFoot=performance.now();
