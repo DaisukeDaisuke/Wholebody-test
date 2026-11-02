@@ -1,0 +1,8 @@
+{
+  "name": "wholebody-public-webgpu-compatibility",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "engines": { "node": ">=22" },
+  "dependencies": { "playwright": "1.56.1" }
+}

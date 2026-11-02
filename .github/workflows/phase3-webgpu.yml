@@ -1,0 +1,64 @@
+name: Public WebGPU causal-tracker compatibility
+on:
+  push:
+    branches: [main, phase3-20261102-4fc7ff60]
+    paths: ['evaluation/webgpu-*', 'evaluation/webgpu-deps/**', 'dist/tapir-tracker.mjs', 'dist/tapir-codec.mjs', '.github/workflows/phase3-webgpu.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: wholebody-webgpu-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  software-adapter-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the exact isolated browser dependency without package scripts
+        run: npm install --prefix evaluation/webgpu-deps --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium only inside this disposable Actions runner
+        run: node evaluation/webgpu-deps/node_modules/playwright/cli.js install --with-deps --no-shell chromium
+      - name: Download the pinned normalized causal tracker graphs
+        uses: actions/download-artifact@v4
+        with:
+          name: tapir-model-package-274407d44a7fbdcb8411f9dc78286b1f49409c6d
+          path: .cache/webgpu-ci/models
+          run-id: 41384892970
+          github-token: ${{ github.token }}
+      - name: Download only the matching public-image numerical reference
+        uses: actions/download-artifact@v4
+        with:
+          name: tapir-measured-results-274407d44a7fbdcb8411f9dc78286b1f49409c6d
+          path: .cache/webgpu-ci/results
+          run-id: 41384892970
+          github-token: ${{ github.token }}
+      - name: Download the shipped runtime from the successful core delivery
+        uses: actions/download-artifact@v4
+        with:
+          name: wholebody-phase3-site-d5c2baad21bed628306ac481f69a44ec50f9c90a
+          path: .cache/webgpu-ci/runtime
+          run-id: 41385890985
+          github-token: ${{ github.token }}
+      - name: Parse the isolated compatibility fixture
+        run: |
+          node --check evaluation/webgpu-run.mjs
+          node --check evaluation/webgpu-worker.mjs
+          node --check evaluation/webgpu-entry.mjs
+      - name: Run one real recurrent WebGPU update on SwiftShader in a dedicated Worker
+        run: node evaluation/webgpu-run.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-webgpu-${{ github.sha }}
+          path: |
+            evaluation/webgpu-results/
+            evaluation/webgpu-deps/package-lock.json
+          if-no-files-found: warn
+          retention-days: 14
