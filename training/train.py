@@ -23,6 +23,7 @@ from torch.nn import functional as F
 from data import (ANNOTATION_SHA256, ANNOTATION_URL, MEAN, STD, TEACHER_SHA256,
                   TEACHER_URL, crop, fetch, prepare, sha256)
 from model import GROUPS, SELECTED, load_teacher, make_student, multiply_accumulates
+from reference import compare_reference, fetch_reference
 
 
 def write_json(path, content):
@@ -240,6 +241,8 @@ def main():
     parser.add_argument("--seed", type=int, default=20261102)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--kd-weight", type=float, default=.85)
+    parser.add_argument("--reference-onnx-url")
+    parser.add_argument("--reference-onnx-sha256")
     args = parser.parse_args()
     if args.train_count < 256 or args.eval_count < 64:
         raise ValueError("This experiment requires at least 256 train and 64 independent evaluation images")
@@ -257,6 +260,17 @@ def main():
     student = make_student(teacher)
     initial = copy.deepcopy(student.head)
     train, evaluation = prepare(args.cache, args.train_count, args.eval_count, args.seed)
+    reconstruction = {"passed": False, "status": "reference_not_requested"}
+    if args.reference_onnx_url:
+        reference_path = fetch_reference(args.reference_onnx_url, args.cache,
+                                          args.reference_onnx_sha256)
+        reference_images = [crop(record)[0][None] for record in evaluation[:8]]
+        reconstruction = compare_reference(teacher, reference_path, reference_images, args.threads)
+        reconstruction["source_url"] = args.reference_onnx_url
+        write_json(args.output / "reference-parity.json", reconstruction)
+        print(json.dumps({"reference_parity": reconstruction}), flush=True)
+        if not reconstruction["passed"]:
+            raise RuntimeError("Reconstructed teacher differs from independently exported ONNX; stop before distillation")
     write_json(args.output / "public-split.json", {
         "protocol": "custom image-disjoint split of COCO val2017; not official full-val AP",
         "seed": args.seed,
@@ -308,6 +322,7 @@ def main():
                      "distillation_weight": args.kd_weight,
                      "frozen_pretrained_backbone": True, "trainable_module": "59-token RTMCC head",
                      "teacher": "DWPose-t 133, not RTMW3D-X"},
+        "reconstruction_reference": reconstruction,
         "teacher133": {"selected59_accuracy": teacher_accuracy,
                        "parameters": sum(p.numel() for p in teacher.parameters()),
                        "multiply_accumulates": multiply_accumulates(teacher),

@@ -38,7 +38,7 @@ jobs:
         env:
           OMP_NUM_THREADS: '4'
           MKL_NUM_THREADS: '4'
-        run: python training/train.py --output artifacts/compact59 --cache .cache/compact59 --train-count 512 --eval-count 128 --steps 1800 --batch-size 16 --threads 4
+        run: python training/train.py --output artifacts/compact59 --cache .cache/compact59 --train-count 512 --eval-count 128 --steps 1800 --batch-size 16 --threads 4 --reference-onnx-url https://huggingface.co/RabbitDaisuke/RTMPose-Wholebody-onnx/resolve/9d7f318c43452baf33f1b39d39c1f8c03512aeb5/rtmpose-t-256x192-fp32.onnx --reference-onnx-sha256 fcaae4a08ea7610b4bcc5d0b9e8a7e80fd6f2d998be41438a1b2737056a7623f
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -90,7 +90,6 @@ jobs:
           retention-days: 7
   application:
     needs: [compact59, parts]
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

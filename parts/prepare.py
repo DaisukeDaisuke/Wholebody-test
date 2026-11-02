@@ -43,6 +43,8 @@ FACE_URL = f"https://raw.githubusercontent.com/cunjian/pytorch_face_landmark/{FA
 FACE_GIT_BLOB = "8f9822861a3d18f60672db1410cf7ff5a28012a9"
 DATA_REV = "759b39c13fea6ba094afc1fa932f51dc1b11cbf9"
 DATA_ROOT = f"https://raw.githubusercontent.com/open-mmlab/mmpose/{DATA_REV}/tests/data/coco"
+FACE_ANNOTATION_URL = "https://huggingface.co/datasets/msdkhairi/coco2017/resolve/main/coco_wholebody_val_v1.0.json"
+FACE_ANNOTATION_SHA256 = "f8272e9c12f3a42457033ebc75da1167546edf1be5e2ffaf586d6ee97541ff6e"
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 SEED = 17513
@@ -404,16 +406,20 @@ def prepare_face(args):
     inp = session.get_inputs()[0]
     if inp.shape != [1, 3, 112, 112]:
         raise ValueError(f"Unexpected PFLD input: {inp.shape}")
-    annotation_path = fetch(DATA_ROOT + "/test_coco_wholebody.json", args.cache / "test_coco_wholebody.json", 3 * 1024 * 1024)
+    annotation_path = fetch(FACE_ANNOTATION_URL, args.cache / "coco_wholebody_val_v1.0.json", 160 * 1024 * 1024)
+    if digest(annotation_path) != FACE_ANNOTATION_SHA256:
+        raise ValueError("COCO-WholeBody face evaluation annotations changed.")
     data = json.loads(annotation_path.read_text(encoding="utf-8"))
     images = {item["id"]: item for item in data["images"]}
-    annotations = [a for a in data["annotations"] if a.get("face_valid") and min(a.get("face_box", [0, 0, 0, 0])[2:]) >= 24]
+    annotations = [a for a in data["annotations"] if a.get("face_valid") and min(a.get("face_box", [0, 0, 0, 0])[2:]) >= 64
+                   and sum(v > 0 for v in a.get("face_kpts", [])[2::3]) >= 55]
     annotations.sort(key=lambda a: (a["image_id"], a["id"]))
     rows, times, errors = [], [], []
     ratio_errors = defaultdict(list)
     for annotation in annotations[:args.face_examples]:
         info = images[annotation["image_id"]]
-        source = fetch(DATA_ROOT + "/" + info["file_name"], args.cache / "face-images" / info["file_name"], 8 * 1024 * 1024)
+        source = fetch(f"https://images.cocodataset.org/val2017/{info['id']:012d}.jpg",
+                       args.cache / "face-images" / info["file_name"], 8 * 1024 * 1024)
         image = Image.open(source).convert("RGB")
         crop, bounds = square_crop(image, annotation["face_box"], padding=1.1)
         tensor = rgb_tensor(crop, 112, normalize=False)[None]
@@ -451,8 +457,9 @@ def prepare_face(args):
               "cheekSemantics": "2D cheek-width ratio, not learned cheek-puff recognition",
               "license": "Upstream checkpoint redistribution grant unresolved; fetch from its author's pinned URL only.",
               "source": "https://github.com/cunjian/pytorch_face_landmark"}
-    report = {"model": record, "dataset": {"name": "MMPose COCO-WholeBody diagnostic fixtures", "revision": DATA_REV,
-              "annotationSHA256": digest(annotation_path), "faceSelection": "face_valid and face_box minimum side >=24; sorted image/id",
+    report = {"model": record, "dataset": {"name": "COCO-WholeBody v1.0 validation faces", "source": FACE_ANNOTATION_URL,
+              "annotationSHA256": digest(annotation_path), "annotationLicense": "CC-BY-NC-4.0; images retain their individual source licenses",
+              "faceSelection": "face_valid; face_box minimum side >=64; >=55 labeled points; sorted image/id, first requested count",
               "roiSource": "ground-truth face box; face detection is not evaluated", "images": len({r["imageId"] for r in rows}),
               "faces": len(rows), "landmarks": len(errors)}, "interocularNME": float(np.mean(errors)),
               "featureRatioMAE": {name: {"samples": len(vals), "mae": float(np.mean(vals))} for name, vals in ratio_errors.items()},
@@ -460,7 +467,7 @@ def prepare_face(args):
               "meanMs": float(np.mean(times[1:] or times)), "p95Ms": float(np.percentile(times[1:] or times, 95)),
               "samples": len(times), "warmupExcluded": len(times) > 1},
               "limits": ["No binary blink, cheek-puff, or mouth-state labels: geometric-ratio error is measured instead.",
-                         "This small diagnostic subset is not the model author's 300W benchmark.",
+                         "This fixed 64-face diagnostic subset is not the model author's 300W benchmark or a representative COCO AP result.",
                          "The source model is a pretrained dependency, not a newly trained face model.",
                          "The upstream ONNX example uses RGB; its separate PyTorch batch example uses BGR.",
                          "No face confidence head; unreliable or unobserved faces must not be treated as measured expressions."]}
@@ -477,7 +484,7 @@ def main():
     parser.add_argument("--cache", type=Path, default=Path(".cache/parts"))
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--epochs", type=int, default=180)
-    parser.add_argument("--face-examples", type=int, default=32)
+    parser.add_argument("--face-examples", type=int, default=64)
     args = parser.parse_args()
     if min(args.threads, args.epochs, args.face_examples) < 1:
         parser.error("threads, epochs, and face-examples must be positive")

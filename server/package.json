@@ -1,0 +1,10 @@
+{
+  "name": "wholebody-local-vmt-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Loopback-only authenticated WebSocket to VMT OSC/UDP bridge",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node bridge.mjs", "ci": "node bridge-ci.mjs" },
+  "dependencies": { "ws": "8.22.1" }
+}
