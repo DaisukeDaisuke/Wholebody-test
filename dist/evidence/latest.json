@@ -1,7 +1,8 @@
 {
-  "description": "追加評価: 初期4画像を除外したCOCO-WholeBody 64画像・64人。人物の正解BBoxを入力した2D推論で、人物検出器の性能は含みません。",
-  "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41376400694",
-  "commit": "9f5cb1ca7aea0bf91e82ed8860112b807c03c317",
+  "description": "同じCOCO-WholeBody 64画像・64人で比較。初期4画像を除外し、人物ID・画像SHA・注釈SHAの一致を確認しています。人物の正解BBoxからの2D推論で、人物検出器込みの精度ではありません。",
+  "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383899",
+  "baselineRunUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41376400694",
+  "commit": "e9bc84483c88884c7b88ed9589eb069a6070a903",
   "rows": [
     {
       "name": "RTMPose-S",
@@ -18,19 +19,113 @@
       "handPck20": "60.53%"
     },
     {
-      "name": "RTMW-L（既定）",
+      "name": "RTMW-L 256",
       "bodyPx": "9.36 px",
       "footPx": "8.32 px",
       "handPx": "13.21 px",
       "handPck20": "74.92%"
     },
     {
-      "name": "RTMW-L + 手",
+      "name": "RTMW-L 256 + 手",
       "bodyPx": "9.36 px",
       "footPx": "8.32 px",
       "handPx": "13.54 px",
       "handPck20": "72.49%"
+    },
+    {
+      "name": "RTMW-L 384（既定）",
+      "bodyPx": "7.90 px",
+      "footPx": "8.59 px",
+      "handPx": "13.43 px",
+      "handPck20": "77.78%"
+    },
+    {
+      "name": "RTMW-L 384（既定） + 手",
+      "bodyPx": "7.90 px",
+      "footPx": "8.59 px",
+      "handPx": "14.84 px",
+      "handPck20": "73.65%"
     }
   ],
-  "limitations": "身体655点・足111点・手945点。HandPCK20は手BBox長辺の20%以内という指標です。手の拡大推論はRTMPose-Sで改善し、RTMW-Lでは悪化したため既定OFFです。CPUでの実画像評価であり、ブラウザWebGPUの速度・数値一致や実機2台の精度を示しません。同runの画像評価・構文・幾何検証jobは成功、Panoptic動画jobは配布元に接続できず失敗しています。未知の隠れ指形状の正確な復元は未達です。"
+  "limitations": "身体655点・足111点・手945点。手PCK20は手BBox長辺の20%以内。384版は手の中央値2.87pxとPCKが改善、平均誤差と足の誤差は256版が小さく、処理時間も異なります。手拡大はRTMPose-Sで改善、RTMW両版で悪化したためRTMWはOFF。この64人は構成選択に使用済みです。CPU実行の評価であり、WebGPUや実機2台の性能を保証しません。",
+  "experiments": [
+    {
+      "title": "画像上で手を隠した場合",
+      "description": "灰色の矩形で隠した同じ633手関節。元画像と隠した画像を同じ点・同じ指標で採点します。時間補完や別カメラの回復を含まない画像推論だけの比較です。",
+      "columns": [
+        "モデル",
+        "元画像の手PCK20",
+        "隠した後の手PCK20",
+        "隠した後でもscore≥0.25"
+      ],
+      "rows": [
+        [
+          "RTMPose-S",
+          "56.87%",
+          "7.90%",
+          "67.14%"
+        ],
+        [
+          "RTMW-L 256",
+          "74.72%",
+          "17.22%",
+          "92.26%"
+        ],
+        [
+          "RTMW-L 384",
+          "79.78%",
+          "18.64%",
+          "100.00%"
+        ]
+      ],
+      "limitations": "全身モデルの高いscoreは可視性を意味しません。384版は隠した点の全てでscore≥0.25を返しても、手PCK20は18.64%です。",
+      "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383899"
+    },
+    {
+      "title": "人物検出の入力処理",
+      "description": "公開画像1枚で、配布ONNXが期待するBGR正規化を実推論で確認しました。",
+      "columns": [
+        "入力",
+        "選ばれた人物BBoxのIoU"
+      ],
+      "rows": [
+        [
+          "実装した正規化BGR",
+          "0.9685"
+        ],
+        [
+          "正規化しないBGR（比較）",
+          "0.4378"
+        ]
+      ],
+      "limitations": "IoUは1枚の入力確認です。人物検出の全体的な精度、複数人の追跡性能を表す値ではありません。",
+      "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383899"
+    },
+    {
+      "title": "実運動での短時間補完",
+      "description": "FreeMoCapのRTMPose座標系列を入力し、独立撮影されたQualisys参照と比較。1人・5つの歩行速度で両肘と両手首を8フレーム（266.7ms）削除し、計160点を採点しました。",
+      "columns": [
+        "欠測区間の方法",
+        "腕の平均誤差",
+        "50mm以内",
+        "有効点の割合"
+      ],
+      "rows": [
+        [
+          "直前の位置を保持",
+          "57.98 mm",
+          "47.50%",
+          "100%"
+        ],
+        [
+          "製品の時間補完",
+          "33.35 mm",
+          "81.25%",
+          "100%"
+        ]
+      ],
+      "limitations": "身体座標の補完だけの評価です。配布系列は同期・整列・補間・フィルタ処理済みで、映像からのオンライン処理全体ではありません。1.5m/sの手首平均と2.5m/sの欠測終端では保持より悪化しました。指・足先の参照点は含みません。",
+      "runUrl": "https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41378383880"
+    }
+  ]
 }

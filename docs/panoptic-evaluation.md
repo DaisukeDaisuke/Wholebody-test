@@ -2,6 +2,12 @@
 
 対象はCMU Panoptic Studioの`171204_pose1_sample`。取得と推論はGitHub Actionsで実行する。最初に到達性・配布容量・注釈形式を小さなHTTP Rangeリクエストで確認し、動画本体を丸ごと取得する前に結果を記録する。
 
+## 実行状況：配布元へ到達できず、精度評価は未実行
+
+[Actions run 41376282352](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41376282352)と[run 41376400694](https://github.com/DaisukeDaisuke/Wholebody-test/actions/runs/41376400694)ではprobe段階で失敗した。CMUのHTTPSは証明書の鍵強度エラーまたは接続リセット、HTTPはタイムアウト、SNUのHTTPは502、HTTPSは接続リセットとなった。注釈と同期動画を取得できていないため、このスクリプトから実測したPanopticの精度値はない。証明書検証を緩和して取得する処理は追加していない。
+
+以下は再実行可能な評価の設計であり、実測成功の報告ではない。配布元への接続が回復した場合に明示起動する別workflowへ分離し、現在の実画像手部評価には[HanCo Tester](model-research.md)を使う。
+
 ## 根拠とデータ契約
 
 [公式toolbox](https://github.com/CMU-Perceptual-Computing-Lab/panoptic-toolbox)は同期HD動画、キャリブレーション、19点の全身3Dと左右各21点の手3Dを案内している。CMUの配布元が応答しない場合のSNU公式ミラーも同リポジトリで案内されている。
