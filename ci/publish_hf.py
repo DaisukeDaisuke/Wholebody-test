@@ -318,7 +318,7 @@ def publish():
     owner = api.whoami()["name"]
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", owner):
         raise PublicationError("unexpected_hub_owner")
-    repo_id = owner + "/VRC-Compact59"
+    repo_id = owner + "/VRC-Compact59-7fe4fac1"
     STAGE = "create_public_repository"
     api.create_repo(repo_id=repo_id, repo_type="model", private=False, exist_ok=True)
     information = api.repo_info(repo_id=repo_id, repo_type="model")

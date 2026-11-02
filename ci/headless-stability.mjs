@@ -106,32 +106,41 @@ function faultChallenge(seed, rig, options) {
       keypoints: seed.keypoints.map(p => p ? { ...p } : p), sourceId: seed.sourceId || 'public-challenge' };
     if (kind === 'missing') observation.keypoints = observation.keypoints.map((p, id) => ({ ...p, id, score: 0, observable: false }));
     if (kind === 'spike') observation.keypoints = observation.keypoints.map((p, id) => ({ ...p, id, x: 1e7, y: -1e7, score: 1, observable: true }));
+    if (kind === 'partial') for (const id of [5, 6, 11, 12]) observation.keypoints[id] = { ...observation.keypoints[id], score: 0, observable: false };
     const update = process.observe(observation); result.observation(update.filtered);
     output = process.render(time); result.render(output); time += period;
     return { ...update, output };
   };
   for (let i = 0; i < 14; i++) at();
   const warm = output, warmDriven = warm.coverage.drivenBones;
-  const hadMotion = Math.max(0, ...Object.values(warm.bones).map(b => quaternionAngle(b.rotation) * RAD));
-  const spike = at('spike'), spikeJump = Math.max(0, ...Object.entries(spike.output.bones).map(([name, b]) => quaternionAngle(warm.bones[name]?.rotation || IDENTITY, b.rotation) * RAD));
-  // Restore the actual inferred keypoints, then remove observations completely.
+  const hadMotion = Math.max(0, ...Object.values(warm.bones).map(b => quaternionAngle(b.rotation, b.neutralRotation || IDENTITY) * RAD));
+  const spike = at('spike'), spikeJump = Math.max(0, ...Object.entries(spike.output.bones).filter(([name]) => warm.bones[name]?.observed).map(([name, b]) => quaternionAngle(warm.bones[name].rotation, b.rotation) * RAD));
+  // Keep genuinely inferred visible lower segments while the proximal torso is
+  // made unobserved. This catches a filter that simply freezes the whole avatar.
   for (let i = 0; i < 6; i++) at();
+  const expectedPartial = Object.entries(BODY_BONES).filter(([name, ids]) => /Lower/.test(name) && ids.every(id => seed.keypoints[id]?.observable !== false && seed.keypoints[id]?.score >= .29)).map(([name]) => name);
+  for (let i = 0; i < 18; i++) at('partial');
+  const retainedPartial = expectedPartial.filter(name => output.bones[name]?.observed);
+  const partialRootSuppressed = output.root.metric === false && !output.trackers.some(t => t.role === 'waist' && t.valid);
+  for (let i = 0; i < 12; i++) at();
   const beforeLoss = output;
   at('missing'); const earlyLoss = output;
   const earlyHoldError = Math.max(0, ...Object.entries(beforeLoss.bones).filter(([, b]) => b.observed).map(([name, b]) => quaternionAngle(b.rotation, earlyLoss.bones[name].rotation) * RAD));
   const physicalTrackersDuringLoss = [output.trackers.filter(t => t.valid).length];
   for (let i = 0; i < 39; i++) { at('missing'); physicalTrackersDuringLoss.push(output.trackers.filter(t => t.valid).length); }
-  const neutralError = Math.max(0, ...Object.values(output.bones).map(b => quaternionAngle(b.rotation) * RAD));
+  const neutralError = Math.max(0, ...Object.values(output.bones).map(b => quaternionAngle(b.rotation, b.neutralRotation || IDENTITY) * RAD));
   const recovery = [];
   for (let i = 0; i < 5; i++) { at(); recovery.push(output.coverage.drivenBones); }
   const aggregate = result.finish();
-  return { protocol: 'repeat one real inferred observation for 14 frames; inject one out-of-image high-confidence spike; restore for 6 frames; remove every observation for 40 frames; restore for 5 frames; 30 Hz. These are observation-fault challenges, not model-accuracy measurements.',
-    baselineDrivenBones: warmDriven, baselineMaxRotationDeg: hadMotion,
-    spikeAcceptedPoints: spike.filtered.stability?.acceptedPoints || 0, spikeMaxRotationDeg: spikeJump,
+  return { protocol: 'repeat one real inferred observation for 14 frames; inject one out-of-image high-confidence spike; restore for 6 frames; remove shoulders/hips for 18 frames while retaining inferred lower segments; restore for 12 frames; remove every observation for 40 frames; restore for 5 frames; 30 Hz. These are observation-fault challenges, not model-accuracy measurements.',
+    baselineDrivenBones: warmDriven, baselineMaxDeviationFromNeutralDeg: hadMotion, neutralPolicy: output.neutralPolicy,
+    spikeAcceptedPoints: spike.filtered.stability?.acceptedPoints || 0, spikeMaxObservedBoneRotationDeg: spikeJump,
     earlyHoldErrorDeg: earlyHoldError, neutralErrorDegAfterLoss: neutralError, recoveryDrivenBones: recovery,
+    partialObservation: { applicable: expectedPartial.length > 0, expectedVisibleSubchains: expectedPartial, retainedVisibleSubchains: retainedPartial, rootSuppressed: partialRootSuppressed },
     validPhysicalTrackersDuringLoss: Math.max(...physicalTrackersDuringLoss), aggregate,
     checks: { usefulBaseline: warmDriven >= 2 && hadMotion > 3, spikeRejected: spike.filtered.stability?.acceptedPoints === 0,
       spikeDidNotJump: spikeJump < .01, briefLossHolds: earlyHoldError < .01, lostReturnsToNeutral: neutralError < .5,
+      partialVisibleSubchainsRemain: expectedPartial.length === 0 || retainedPartial.length > 0, partialTorsoDoesNotMoveRoot: partialRootSuppressed,
       noFreshTrackersWhileLost: physicalTrackersDuringLoss.every(n => n === 0), firstRecoveryFrameNotFresh: recovery[0] === 0,
       sustainedRecoveryResumesMotion: Math.max(...recovery.slice(1)) >= Math.max(2, Math.floor(warmDriven * .5)), finiteRotations: aggregate.finiteRotations } };
 }

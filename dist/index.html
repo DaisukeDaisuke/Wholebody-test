@@ -19,7 +19,7 @@
 <label>全身の推論<select id="backend"><option value="wasm">CPU / WASM</option><option value="webgpu">WebGPU</option></select></label>
 <label>推論頻度 <output id="fps-value">30</output> 回/秒<input id="target-fps" type="range" min="5" max="60" step="5" value="30"></label>
 <div class="toggle"><input id="face-enabled" type="checkbox" checked><label for="face-enabled">表情 <small>CPU・最大10回/秒</small></label></div>
-<div class="toggle"><input id="foot-enabled" type="checkbox" checked><label for="foot-enabled">足裏・甲・側面 <small>CPU・最大5回/秒</small></label></div>
+<div class="toggle"><input id="foot-enabled" type="checkbox" checked><label for="foot-enabled">足裏・甲・側面 <small>CPU・各足 最大5回/秒</small></label></div>
 <button id="start" class="primary">開始</button><button id="stop" class="secondary" disabled>一時停止</button>
 <p id="model-status" class="status" aria-live="polite">モデル未読込</p>
 <details><summary>範囲・校正</summary><p class="small">映像上をドラッグして人物や部位を囲みます。</p><button id="reset-roi" class="secondary">範囲を全画面へ戻す</button><label>表示閾値<input id="confidence" type="range" min="0.05" max="0.8" step="0.05" value="0.25"></label><label>身長（m）<input id="height" type="number" min="0.5" max="2.6" step="0.01" value="1.70"></label><div class="toggle"><input id="height-confirm" type="checkbox"><label for="height-confirm">実寸を入力済み</label></div><label class="file-button secondary">カメラ校正JSON<input id="calibration-file" type="file" accept="application/json,.json"></label><p id="calibration-status" class="small">未校正</p></details>

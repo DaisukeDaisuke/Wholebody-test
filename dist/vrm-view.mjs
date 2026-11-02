@@ -1,6 +1,6 @@
 import { THREE, OrbitControls, GLTFLoader, VRMLoaderPlugin, VRMUtils } from './vendor/vrm-runtime.mjs';
 import { COCO_CONNECTIONS } from './geometry.mjs';
-import { retargetPose } from './retarget.mjs';
+import { retargetPose, neutralPoseForRig } from './retarget.mjs';
 
 const COLORS = { measured: 0xb8ee96, inferred: 0x68d8df, predicted: 0xf0bb77, demo: 0xcc9fff };
 const finite3 = p => Array.isArray(p) && p.length >= 3 && p.slice(0, 3).every(Number.isFinite);
@@ -311,6 +311,7 @@ export function createVRMView({ container, onState = () => {}, onRenderMetrics =
   }
   function applyPose(now) {
     if (!vrm || !rig) return;
+    if (!pose) { vrm.humanoid.setNormalizedPose(neutralPoseForRig(rig)); lastRetarget = null; return; }
     const stale = pose && now - poseReceivedAt > 250;
     const current = !pose ? null : stale ? { ...pose, timestampMs: now,
       joints: pose.joints.map((joint, id) => ({ ...joint, id, position: null, score: 0, source: 'missing', observable2D: false })),

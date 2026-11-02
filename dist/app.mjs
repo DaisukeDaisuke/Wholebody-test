@@ -37,7 +37,7 @@ async function prepareModels(){
   if(loading)return;loading=true;$('start').disabled=true;
   try{
     if(!manifest){const response=await fetch('./models.json',{cache:'no-cache'});if(!response.ok)throw new Error('学習済みモデルのマニフェストを取得できません。');manifest=await response.json();}
-    const requested=$('backend').value, spec=manifest.bodies?.[$('model-choice').value]||manifest.body;
+    const requested=$('mode').value==='wholebody'?$('backend').value:'wasm', spec=manifest.bodies?.[$('model-choice').value]||manifest.body;
     if(actualBackend!==requested||activeBody?.sha256!==spec.sha256){if(body)await body.release();body=null;timings.length=bodyTimes.length=partTimes.length=0;bodyCalls=0;lastBodyMs=null;}
     activeBody=spec;
     actualBackend=requested;
@@ -156,6 +156,7 @@ async function processFrame(source,token){
   if(mode==='wholebody'){
     source.observation=source.stabilizer.filterObservation(makeObservation(source,stamp),{minScore:Number($('confidence').value)});
     source.points=source.points.map((p,i)=>({...p,score:source.observation.keypoints[(activeBody.coco133_indices||COCO59)[i]]?.score||0}));
+    for(const [side,ankle] of [['left',15],['right',16]])if(source.observation.keypoints[ankle]?.observable===false)delete source.feet[side];
   }
   if(source===selected){
     faceReadout(performance.now()-source.lastFace<400?source.face:null);
@@ -183,7 +184,7 @@ async function loop(token){
 async function start(){
   if(!sources.length){notify('動画またはカメラを選択してください。');return;}
   stop();if(inFlight)await inFlight.catch(()=>{});if(!await prepareModels())return;running=true;const token=++generation;$('start').disabled=true;$('stop').disabled=false;$('status-dot').classList.add('on');$('top-status').textContent=`${actualBackend==='webgpu'?'WebGPU':'CPU'} · 推論中`;
-  await initView();view?.setPaused(false);for(const s of sources){s.stabilizer.reset();s.lastMediaTime=-Infinity;await s.video.play().catch(()=>{});}frameCounter=0;lastMetricsAt=performance.now();notify('');void loop(token);
+  await initView();view?.setPaused(false);for(const s of sources){s.stabilizer.reset();s.observation=null;s.lastMediaTime=-Infinity;await s.video.play().catch(()=>{});}frameCounter=0;lastMetricsAt=performance.now();notify('');void loop(token);
 }
 function stop(){running=false;generation++;for(const s of sources)if(!s.stream)s.video.pause();$('start').disabled=loading;$('stop').disabled=true;$('status-dot').classList.remove('on');$('top-status').textContent='一時停止';bridge.stop();}
 async function initView(){if(view)return view;if(viewPromise)return viewPromise;viewPromise=(async()=>{const {createVRMView}=await import('./vrm-view.mjs');view=createVRMView({container:$('avatar-canvas'),onState:s=>$('avatar-status').textContent=s.hasVRM?`${s.fileName} · ${s.appliedBoneCount} ボーン反映`:'VRM未選択',onError:fail});if(lastPose)view.updatePose(lastPose);return view;})();try{return await viewPromise;}catch(e){viewPromise=null;throw e;}}

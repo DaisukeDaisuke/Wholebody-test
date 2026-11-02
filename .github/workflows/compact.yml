@@ -111,6 +111,10 @@ jobs:
         with:
           name: parts-${{ github.sha }}
           path: artifacts/parts
+      - name: Check configured private-input availability
+        env:
+          PRIVATE_VIDEO_URL: ${{ secrets.PRIVATE_VIDEO_URL }}
+        run: node -e 'console.log(JSON.stringify({privateVideoFetchConfigured:Boolean(process.env.PRIVATE_VIDEO_URL)}))'
       - uses: actions/cache/restore@v4
         with:
           path: artifacts/fast59
@@ -142,6 +146,17 @@ jobs:
         run: |
           for file in dist/*.mjs server/*.mjs ci/*.mjs; do node --check "$file"; done
           node ci/privacy.mjs
+      - name: Retain aggregate evaluation diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compact-vrc-evaluation-${{ github.sha }}
+          path: |
+            dist/evidence/headless-video.json
+            artifacts/hf/publication.json
+            artifacts/private-video-status.json
+          if-no-files-found: warn
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: compact-vrc-site-${{ github.sha }}

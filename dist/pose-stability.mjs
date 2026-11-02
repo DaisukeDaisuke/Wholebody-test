@@ -79,7 +79,9 @@ export class PoseStabilizer {
     // The projected length may shrink during foreshortening; only collapse and
     // impossible extension are rejected. A learned minimum would reject turns.
     for (const [a, b, ratio] of BODY_SEGMENTS) {
-      if (!current(a)) { if (current(b)) mark(b, 'parentUnobserved'); continue; }
+      // A visible elbow/wrist or knee/ankle pair still observes its own segment
+      // when the shoulder/hip is outside the image. Do not erase that subchain.
+      if (!current(a)) continue;
       if (!current(b)) continue;
       const d = distance(xy(points[a]), xy(points[b]));
       if (d < 1.5 || (initialScale && d > scale * ratio * 1.9)) mark(b, 'implausibleBoneLength');
@@ -128,6 +130,7 @@ export class PoseStabilizer {
     const measuredAt = finite(observation?.timestampMs) ? observation.timestampMs : input.observationTimestampMs ?? time;
     const pose = { ...input, observationTimestampMs: measuredAt, joints: Array.from({ length: 133 }, (_, id) => ({ ...input.joints[id], id, position: input.joints[id]?.position?.slice() || null })) };
     const height = input.units === 'body-height' ? 1 : finite(input.diagnostics?.bodyHeight) ? input.diagnostics.bodyHeight : finite(opts.bodyHeightM) ? opts.bodyHeightM : 1.7;
+    const scaleObserved = input.metric === true || input.diagnostics?.scaleCueCount >= 2;
     let rejected3D = 0;
     for (let id = 0; id < pose.joints.length; id++) {
       const j = pose.joints[id], old = this.jointStates[id];
@@ -135,7 +138,7 @@ export class PoseStabilizer {
       if (j.source !== 'measuredMultiView' && j.source !== 'estimatedMultiView' && observation?.keypoints?.[id]?.observable === false) { pose.joints[id] = missingJoint(j, id, 'observationRejected'); continue; }
       const dt = old ? (time - old.time) / 1000 : 0;
       const maxSpeed = TORSO.includes(id) ? opts.maxTorsoSpeed : opts.maxLimbSpeed;
-      if (old && dt > 0 && dt < .45 && distance(j.position, old.rawPosition) > height * (.12 + maxSpeed * dt)) {
+      if (scaleObserved && old && dt > 0 && dt < .45 && distance(j.position, old.rawPosition) > height * (.12 + maxSpeed * dt)) {
         pose.joints[id] = missingJoint(j, id, 'implausible3DVelocity'); rejected3D++; continue;
       }
       const alpha = old && dt > 0 && dt < .25 ? 1 - Math.exp(-dt * 1000 / Math.max(1, opts.smoothingMs)) : 1;
@@ -147,10 +150,10 @@ export class PoseStabilizer {
     }
     for (const [a, b, ratio] of BODY_SEGMENTS) {
       const first = pose.joints[a], second = pose.joints[b];
-      if (!vector(first?.position)) { if (vector(second?.position)) { pose.joints[b] = missingJoint(second, b, 'parentUnobserved'); rejected3D++; } continue; }
+      if (!vector(first?.position)) continue;
       if (vector(second?.position)) {
         const d = distance(first.position, second.position);
-        if (d < height * .002 || d > height * ratio * 2) { pose.joints[b] = missingJoint(second, b, 'implausible3DBoneLength'); rejected3D++; }
+        if (d < height * .002 || (scaleObserved && d > height * ratio * 2)) { pose.joints[b] = missingJoint(second, b, 'implausible3DBoneLength'); rejected3D++; }
       }
     }
     for (const [anchor, ids] of [[15, [17, 18, 19]], [16, [20, 21, 22]], [9, Array.from({ length: 21 }, (_, i) => 91 + i)], [10, Array.from({ length: 21 }, (_, i) => 112 + i)]]) {

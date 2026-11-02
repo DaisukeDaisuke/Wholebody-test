@@ -101,14 +101,40 @@ function rigData(rig) {
   return { bones, order };
 }
 
+function relaxedNeutralRotations(rest, armAngleDeg = 10) {
+  const neutral = Object.fromEntries(Object.keys(rest).map(name => [name, IDENTITY.slice()]));
+  const hips = [rest.leftUpperLeg?.position, rest.rightUpperLeg?.position], shoulders = [rest.leftUpperArm?.position, rest.rightUpperArm?.position];
+  const torso = [...hips, ...shoulders].every(p => vec(p)) ? torsoFrame(hips[0], hips[1], mid(...hips), mid(...shoulders)) : null;
+  const up = torso?.y || [0, 1, 0], lateral = torso?.x || [-1, 0, 0], angle = clamp(armAngleDeg, 0, 30) * Math.PI / 180;
+  for (const side of ['left', 'right']) {
+    const name = side + 'UpperArm', bone = rest[name], child = rest[side + 'LowerArm'];
+    if (!bone || !child) continue;
+    const direction = sub(child.position, bone.position), outward = mul(lateral, side === 'left' ? -1 : 1);
+    const down = add(mul(up, -Math.cos(angle)), mul(outward, Math.sin(angle)));
+    const desired = multiplyQuaternion(between(direction, down), bone.rotation);
+    const parent = bone.parent ? rest[bone.parent].rotation : IDENTITY;
+    const actualLocal = multiplyQuaternion(inverse(bone.intermediateRotation), multiplyQuaternion(inverse(parent), desired));
+    neutral[name] = normalizeQ(multiplyQuaternion(actualLocal, inverse(bone.localRotation)));
+  }
+  return neutral;
+}
+
+/** Explicit display fallback, not an observation: rest pose except upper arms
+ * directed down, ten degrees outward, expressed in each rig bone's local frame. */
+export function neutralPoseForRig(rig, { relaxedArmAngleDeg = 10 } = {}) {
+  const { bones } = rigData(rig), rotations = relaxedNeutralRotations(bones, relaxedArmAngleDeg);
+  return Object.fromEntries(Object.entries(rotations).map(([name, rotation]) => [name, { rotation }]));
+}
+
 /**
  * rig bones: model-space rest position/world rotation, actual node localRotation,
  * and nearest humanoid parent. Output matches three-vrm setNormalizedPose:
  * actualLocalQuaternion = outputDelta * restLocalQuaternion, not the reverse.
  */
 export function retargetPose(pose, rig, options = {}) {
-  const opts = { minScore: .1, maxJointAgeMs: 180, smoothingMs: 45, holdMs: 140, neutralMs: 650, reacquireFrames: 2, maxRootSpeed: 2, ...options };
+  const opts = { minScore: .1, maxJointAgeMs: 180, smoothingMs: 45, holdMs: 140, neutralMs: 650, reacquireFrames: 2, maxRootSpeed: 2, relaxedArmAngleDeg: 10, ...options };
   const { bones: rest, order } = rigData(rig), read = jointReader(pose, opts);
+  const neutralRotations = relaxedNeutralRotations(rest, opts.relaxedArmAngleDeg);
   const inputKey = `${pose?.inputMode || ''}:${pose?.sourceId || ''}:${pose?.targetVersion ?? ''}:${pose?.coordinateFrame || ''}:${pose?.worldCalibrationId || ''}:${pose?.units || ''}`;
   const previous = opts.previous?.inputKey === inputKey && (pose?.timestampMs ?? 0) >= (opts.previous.timestampMs ?? 0) ? opts.previous : null;
   const now = pose?.timestampMs ?? 0, measuredAt = Math.min(now, pose?.observationTimestampMs ?? now);
@@ -175,7 +201,8 @@ export function retargetPose(pose, rig, options = {}) {
       if (rest[name] && restChild && all(js)) {
         const direction = segmentDirection(js), height = pose?.diagnostics?.bodyHeight || (pose?.units === 'body-height' ? 1 : 1.7);
         const ratio = suffix === 'UpperArm' ? .186 : suffix === 'LowerArm' ? .146 : .246;
-        if (norm(direction) > height * .002 && norm(direction) < height * ratio * 2) segments[name] = { js, direction, restDirection: sub(restChild, reference(name)), secondary: null };
+        const scaleObserved = pose?.metric === true || pose?.diagnostics?.scaleCueCount >= 2;
+        if (norm(direction) > height * .002 && (!scaleObserved || norm(direction) < height * ratio * 2)) segments[name] = { js, direction, restDirection: sub(restChild, reference(name)), secondary: null };
       }
     }
     const base = left ? 91 : 112, palm = get([base, base + 5, base + 9, base + 17]);
@@ -252,7 +279,7 @@ export function retargetPose(pose, rig, options = {}) {
       }
       target = { rotation: normalizeQ(rotation), ...quality(segment.js), valid: true, twistStatus: segment.secondary ? 'estimatedFromPalm' : 'inheritedUnobservedTwist' };
     }
-    const old = previous?.bones?.[name], oldDelta = vec(old?.rotation, 4) ? old.rotation : IDENTITY;
+    const old = previous?.bones?.[name], neutralRotation = neutralRotations[name], oldDelta = vec(old?.rotation, 4) ? old.rotation : neutralRotation;
     const fresh = !!target && observationFresh && target.ageMs <= opts.maxJointAgeMs;
     const newMeasurement = fresh && (!Number.isFinite(old?.lastCandidateMs) || measuredAt > old.lastCandidateMs);
     const wasTracking = old?.trackingState === 'tracking' && Number.isFinite(old.lastObservedMs) && now - old.lastObservedMs <= opts.maxJointAgeMs;
@@ -270,15 +297,16 @@ export function retargetPose(pose, rig, options = {}) {
       desired = old.lastObservedRotation; trackingState = 'holding';
     } else {
       neutralWeight = smoothstep((age - opts.holdMs) / Math.max(1, opts.neutralMs));
-      desired = vec(old?.lastObservedRotation, 4) ? slerp(old.lastObservedRotation, IDENTITY, neutralWeight) : IDENTITY;
+      desired = vec(old?.lastObservedRotation, 4) ? slerp(old.lastObservedRotation, neutralRotation, neutralWeight) : neutralRotation;
       trackingState = fresh && !Number.isFinite(lastObservedMs) ? 'acquiring' : neutralWeight >= 1 ? 'neutral' : 'returning';
     }
     // Filter in local bone coordinates. Holding an old world rotation while its
     // parent moves creates a compensating twist; local hold preserves the limb.
     const alpha = opts.smoothingMs > 0 && dt > 0 && dt < 250 ? 1 - Math.exp(-dt / opts.smoothingMs) : 1;
     let delta = observed ? slerp(oldDelta, desired, alpha) : desired;
+    if (!observed && !vec(old?.lastObservedRotation, 4)) delta = slerp(oldDelta, desired, 1 - Math.exp(-Math.max(dt, 0) / 120));
     const speedDeg = /^(hips|spine|chest|upperChest)$/.test(name) ? 120 : /^(head|neck)$/.test(name) ? 210 : /Foot$/.test(name) ? 360 : /Thumb|Index|Middle|Ring|Little/.test(name) ? 900 : 720;
-    const maxStep = Math.min(Math.PI / 4, speedDeg * Math.PI / 180 * Math.min(Math.max(dt, 0), 120) / 1000);
+    const maxStep = Math.min(Math.PI / 4, (observed ? speedDeg : Math.min(speedDeg, 360)) * Math.PI / 180 * Math.min(Math.max(dt, 0), 120) / 1000);
     delta = normalizeQ(limitRotation(oldDelta, delta, maxStep));
     const actualLocal = multiplyQuaternion(delta, bone.localRotation);
     solved[name] = normalizeQ(multiplyQuaternion(parent, multiplyQuaternion(bone.intermediateRotation, actualLocal)));
@@ -289,7 +317,7 @@ export function retargetPose(pose, rig, options = {}) {
       score: observed ? target.score : 0, ageMs: Number.isFinite(age) ? age : null,
       trackingState, recoveryCount, lastCandidateMs: fresh ? measuredAt : old?.lastCandidateMs ?? null,
       lastObservedMs, lastObservedRotation: observed ? delta.slice() : old?.lastObservedRotation || null,
-      neutralWeight, rotation: delta, worldRotation: solved[name] };
+      neutralWeight, neutralRotation, rotation: delta, worldRotation: solved[name] };
   }
   const currentRootObserved = ['measuredMultiView', 'estimatedMultiView'].includes(pose?.root?.source) || pose?.diagnostics?.depthAnchorSource === 'providedCurrentMeasurement';
   const metric = observationFresh && currentRootObserved && pose?.metric === true && pose?.coordinateFrame === 'world' && pose?.units === 'm' && pose?.root?.valid === true && vec(pose.root.position);
@@ -311,7 +339,7 @@ export function retargetPose(pose, rig, options = {}) {
   if (!metric) warnings.push('absoluteRootUncalibrated');
   if (validNames.some(name => outputBones[name].depthAmbiguous)) warnings.push('footDirectionIsImagePlaneOnly');
   warnings.push('individualToeArticulationUnobserved');
-  return { schemaVersion: 1, timestampMs: pose?.timestampMs ?? 0, inputKey, normalizedPose, bones: outputBones,
+  return { schemaVersion: 1, timestampMs: pose?.timestampMs ?? 0, inputKey, normalizedPose, bones: outputBones, neutralPolicy: { upperArms: 'rig-relative down with outward angle', outwardAngleDeg: opts.relaxedArmAngleDeg, otherBones: 'rest-local rotation', isObservation: false },
     root: { position: rootPosition, visualPosition, lastObservedPosition: metric ? visualPosition.slice() : oldRoot?.lastObservedPosition || null, lastObservedMs: metric ? measuredAt : oldRoot?.lastObservedMs ?? null, metric, mode: metric ? 'world-estimate' : 'relative-only', distanceStatus: pose?.root?.distanceStatus || 'uncalibrated' },
     trackers: poseToTrackers(pose), footReferenceAngles,
     coverage: { availableBones: order.length, drivenBones: validNames.length, drivenBoneNames: validNames, heldBones: Object.values(outputBones).filter(b => b.trackingState === 'holding').length, returningBones: Object.values(outputBones).filter(b => b.trackingState === 'returning').length, missingBones: order.length - validNames.length }, warnings: [...new Set(warnings)] };
